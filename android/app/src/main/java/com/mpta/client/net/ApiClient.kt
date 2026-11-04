@@ -1,5 +1,6 @@
 package com.mpta.client.net
 
+import com.mpta.client.core.ClaimResult
 import com.mpta.client.core.ClientProtocol
 import com.mpta.client.core.FingerprintHostnameVerifier
 import com.mpta.client.core.FingerprintTrustManager
@@ -16,8 +17,8 @@ import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 
-/** Non-2xx HTTP response. */
-class ApiException(val code: Int, message: String) : IOException(message)
+/** Non-2xx HTTP response. [body] is the raw response body (e.g. the 409 `{error, runningSessions}`). */
+class ApiException(val code: Int, message: String, val body: String = "") : IOException(message)
 
 object PinnedHttp {
     /** OkHttp client that trusts only the certificate with [fingerprint] (DESIGN.md §2). */
@@ -61,7 +62,7 @@ class ApiClient(
                 try {
                     http.newCall(builder.build()).execute().use { resp ->
                         val text = resp.body?.string().orEmpty()
-                        if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text))
+                        if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
                         return@withContext text
                     }
                 } catch (e: ApiException) {
@@ -99,9 +100,32 @@ class ApiClient(
         return o.getString("deviceId") to o.getString("token")
     }
 
+    /**
+     * PIN claim (DESIGN.md §12.1): `{pin, deviceName}` → `{deviceId, token, fp}`. This client must already be
+     * pinned to the fingerprint the user confirmed; the caller also checks the returned fp against it.
+     */
+    suspend fun claimPin(pin: String, deviceName: String): ClaimResult {
+        val text = request("POST", "/api/pair/claim", JSONObject().put("pin", pin).put("deviceName", deviceName), auth = false)
+        return try {
+            ClaimResult.parse(text)
+        } catch (e: IllegalArgumentException) {
+            throw IOException(e.message, e)
+        }
+    }
+
+    /** Raw `GET /api/info` JSON (`{name, version, fp, port, hosts, update?}`). */
+    suspend fun info(): String = request("GET", "/api/info")
+
+    /** `POST /api/update/apply {force}`; throws [ApiException] 409 while host sessions are running and !force. */
+    suspend fun applyHostUpdate(force: Boolean) {
+        request("POST", "/api/update/apply", JSONObject().put("force", force))
+    }
+
     private fun httpErrorMessage(code: Int, body: String): String = when (code) {
         401 -> "인증 실패 (401) — 기기 등록이 취소되었거나 코드가 만료되었습니다"
         404 -> "찾을 수 없음 (404)"
+        409 -> "요청 충돌 (409) ${body.take(200)}"
+        429 -> "시도 횟수 초과 (429) — 잠시 후 다시 시도하세요"
         else -> "서버 오류 ($code) ${body.take(200)}"
     }
 

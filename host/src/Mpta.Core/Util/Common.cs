@@ -31,6 +31,12 @@ public sealed class MptaConfig
 {
     public const int DefaultPort = 7380;
     public int Port { get; set; } = DefaultPort;
+    /// <summary>"auto" (default) | "notify" | "off" (DESIGN §11.3).</summary>
+    public string AutoUpdate { get; set; } = "auto";
+    /// <summary>Releases feed URL; empty = GitHub default. Env MPTA_UPDATE_URL takes precedence.</summary>
+    public string? UpdateUrl { get; set; }
+    /// <summary>UDP LAN discovery port (DESIGN §12.2); 0 disables discovery.</summary>
+    public int DiscoveryPort { get; set; } = 7381;
 
     public static MptaConfig LoadOrCreate(string home)
     {

@@ -21,16 +21,33 @@ internal sealed class HostRunner : IDisposable
     public JsonNode? Info { get; private set; }
     public int Starts { get; private set; }
 
-    public HostRunner(string exe, string home, int port, IReadOnlyList<string> binds, string logPath)
+    /// <summary>Extra environment for serve and CLI runs (e.g. MPTA_UPDATE_URL).</summary>
+    public IReadOnlyDictionary<string, string> ExtraEnv { get; }
+    /// <summary>Extra `serve` arguments (e.g. --discovery-port N).</summary>
+    public IReadOnlyList<string> ExtraArgs { get; }
+    /// <summary>The `mpta serve` process QA started (after a self-update handoff this one has exited).</summary>
+    public Process? Proc => _proc;
+
+    public HostRunner(string exe, string home, int port, IReadOnlyList<string> binds, string logPath,
+        IReadOnlyDictionary<string, string>? extraEnv = null, IReadOnlyList<string>? extraArgs = null)
     {
         Exe = exe;
         Home = home;
         Port = port;
         Binds = binds;
         _logPath = logPath;
+        ExtraEnv = extraEnv ?? new Dictionary<string, string>();
+        ExtraArgs = extraArgs ?? Array.Empty<string>();
     }
 
-    public IDictionary<string, string> Env => new Dictionary<string, string> { ["MPTA_HOME"] = Home };
+    public IDictionary<string, string> Env
+    {
+        get
+        {
+            var env = new Dictionary<string, string>(ExtraEnv) { ["MPTA_HOME"] = Home };
+            return env;
+        }
+    }
 
     private void Log(string line)
     {
@@ -60,7 +77,7 @@ internal sealed class HostRunner : IDisposable
     public async Task<string?> Start(int timeoutMs)
     {
         Starts++;
-        Log($"==== [{DateTime.Now:O}] start #{Starts}: {Exe} serve --port {Port} {string.Join(" ", Binds.Select(b => "--bind " + b))} (MPTA_HOME={Home}) ====");
+        Log($"==== [{DateTime.Now:O}] start #{Starts}: {Exe} serve --port {Port} {string.Join(" ", Binds.Select(b => "--bind " + b))} {string.Join(" ", ExtraArgs)} (MPTA_HOME={Home}) ====");
         _job = new Job();
         var psi = new ProcessStartInfo(Exe)
         {
@@ -81,7 +98,8 @@ internal sealed class HostRunner : IDisposable
             psi.ArgumentList.Add("--bind");
             psi.ArgumentList.Add(b);
         }
-        psi.Environment["MPTA_HOME"] = Home;
+        foreach (var a in ExtraArgs) psi.ArgumentList.Add(a);
+        foreach (var kv in Env) psi.Environment[kv.Key] = kv.Value;
         try
         {
             _proc = Process.Start(psi);

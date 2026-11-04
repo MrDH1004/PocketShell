@@ -17,6 +17,15 @@ internal sealed class Ctx
     /// <summary>"pwsh" when pwsh.exe is on PATH, else "powershell" (both accept the PowerShell expressions used below).</summary>
     public required string Shell { get; init; }
 
+    /// <summary>versionName from repo-root version.properties (DESIGN §11.1).</summary>
+    public string VersionName { get; init; } = "";
+    /// <summary>Local releases feed the main host's MPTA_UPDATE_URL points at (no newer release).</summary>
+    public FakeReleaseServer? Releases { get; init; }
+    /// <summary>UDP LAN discovery port given to the main host (--discovery-port).</summary>
+    public int DiscoveryPort { get; init; }
+    /// <summary>Additional hosts started by scenarios (update cases); killed by the global cleanup.</summary>
+    public List<HostRunner> ExtraHosts { get; } = new();
+
     public Api Local { get; private set; } = null!;
     public Api? LanApi { get; private set; }
 

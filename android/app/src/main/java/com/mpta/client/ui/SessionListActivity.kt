@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -17,11 +18,14 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.mpta.client.BuildConfig
 import com.mpta.client.MptaApp
 import com.mpta.client.R
+import com.mpta.client.core.HostUpdateStatus
 import com.mpta.client.core.SessionInfo
 import com.mpta.client.core.SessionSections
 import com.mpta.client.net.ApiException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.time.OffsetDateTime
@@ -34,7 +38,11 @@ class SessionListActivity : AppCompatActivity() {
 
     private lateinit var swipe: SwipeRefreshLayout
     private lateinit var message: TextView
+    private lateinit var hostUpdateBar: View
+    private lateinit var hostUpdateText: TextView
+    private lateinit var hostUpdateApply: Button
     private val adapter = SessionAdapter(::openSession, ::confirmDelete)
+    private val appUpdate = AppUpdateController(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -51,11 +59,15 @@ class SessionListActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.subtitle = app.pairing()?.pcName
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
-        toolbar.menu.add(0, MENU_UNPAIR, 1, R.string.unpair)
+        toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
+        toolbar.menu.add(0, MENU_UNPAIR, 2, R.string.unpair)
+        if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 3, R.string.update_debug_url)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_REFRESH -> refresh()
+                MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_UNPAIR -> confirmUnpair()
+                MENU_DEBUG_UPDATE_URL -> appUpdate.showDebugUrlDialog()
             }
             true
         }
@@ -67,6 +79,13 @@ class SessionListActivity : AppCompatActivity() {
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
         findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { showNewSessionDialog() }
+
+        hostUpdateBar = findViewById(R.id.hostUpdateBar)
+        hostUpdateText = findViewById(R.id.hostUpdateText)
+        hostUpdateApply = findViewById(R.id.hostUpdateApply)
+        hostUpdateApply.setOnClickListener { confirmHostUpdate() }
+
+        if (savedInstanceState == null) appUpdate.autoCheck()
     }
 
     override fun onResume() {
@@ -82,6 +101,7 @@ class SessionListActivity : AppCompatActivity() {
                 val sections = SessionSections.of(api.sessions())
                 adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
                 showMessage(if (adapter.itemCount == 0) getString(R.string.sessions_empty) else null)
+                refreshHostUpdate()
             } catch (e: ApiException) {
                 if (e.code == 401) showMessage("인증 실패: 이 기기의 등록이 취소되었습니다. 메뉴 > 페어링 해제 후 다시 페어링하세요.")
                 else showMessage(e.message)
@@ -93,6 +113,76 @@ class SessionListActivity : AppCompatActivity() {
                 swipe.isRefreshing = false
             }
         }
+    }
+
+    /** Shows `/api/info.update`; hosts without the field (pre-0.1.1) simply hide the bar. */
+    private suspend fun refreshHostUpdate() {
+        val api = (application as MptaApp).api() ?: return
+        val status = try {
+            HostUpdateStatus.fromInfo(api.info())
+        } catch (e: IOException) {
+            null
+        }
+        if (status == null || !status.isVisible) {
+            hostUpdateBar.visibility = View.GONE
+            return
+        }
+        val stateText = when (status.state) {
+            HostUpdateStatus.STATE_AVAILABLE -> getString(R.string.host_update_state_available)
+            HostUpdateStatus.STATE_DOWNLOADING -> getString(R.string.host_update_state_downloading)
+            HostUpdateStatus.STATE_READY -> getString(R.string.host_update_state_ready)
+            HostUpdateStatus.STATE_APPLYING -> getString(R.string.host_update_state_applying)
+            HostUpdateStatus.STATE_ERROR -> getString(R.string.host_update_state_error, status.error ?: "")
+            else -> status.state
+        }
+        hostUpdateText.text = getString(R.string.host_update_status, status.current, status.latest.ifBlank { "?" }, stateText)
+        hostUpdateApply.visibility = if (status.canApply) View.VISIBLE else View.GONE
+        hostUpdateBar.visibility = View.VISIBLE
+    }
+
+    private fun confirmHostUpdate() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.host_update_apply)
+            .setMessage(R.string.host_update_apply_confirm)
+            .setPositiveButton(R.string.confirm) { _, _ -> applyHostUpdate(force = false) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyHostUpdate(force: Boolean) {
+        val api = (application as MptaApp).api() ?: return
+        hostUpdateApply.isEnabled = false
+        lifecycleScope.launch {
+            try {
+                api.applyHostUpdate(force)
+                showMessage(getString(R.string.host_update_applying_message))
+                // The host restarts; give it a moment before reloading the list.
+                delay(HOST_RESTART_WAIT_MS)
+                refresh()
+            } catch (e: ApiException) {
+                if (e.code == 409 && !force) {
+                    confirmForceHostUpdate(HostUpdateStatus.runningSessionsFrom409(e.body))
+                } else {
+                    showMessage(getString(R.string.host_update_failed, e.message ?: ""))
+                }
+            } catch (e: IOException) {
+                showMessage(getString(R.string.host_update_failed, e.message ?: ""))
+            } finally {
+                hostUpdateApply.isEnabled = true
+            }
+        }
+    }
+
+    private fun confirmForceHostUpdate(running: Int?) {
+        if (isFinishing) return
+        val msg = if (running != null) getString(R.string.host_update_running_n, running)
+        else getString(R.string.host_update_running)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.host_update_running_title)
+            .setMessage(msg)
+            .setPositiveButton(R.string.host_update_force) { _, _ -> applyHostUpdate(force = true) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun showMessage(text: String?) {
@@ -175,6 +265,9 @@ class SessionListActivity : AppCompatActivity() {
     private companion object {
         const val MENU_REFRESH = 1
         const val MENU_UNPAIR = 2
+        const val MENU_CHECK_UPDATE = 3
+        const val MENU_DEBUG_UPDATE_URL = 4
+        const val HOST_RESTART_WAIT_MS = 5000L
     }
 }
 

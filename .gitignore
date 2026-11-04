@@ -9,3 +9,4 @@ qa/out/
 .omc/*
 !.omc/specs/
 .kotlin/
+android/.omc/

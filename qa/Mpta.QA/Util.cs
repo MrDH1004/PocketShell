@@ -126,6 +126,12 @@ internal static class Util
         return port;
     }
 
+    public static int FreeUdpPort()
+    {
+        using var u = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)u.Client.LocalEndPoint!).Port;
+    }
+
     /// <summary>Returns (LAN private IPv4, Tailscale CGNAT IPv4) of up interfaces; LAN prefers interfaces with a gateway.</summary>
     public static (string? Lan, string? Tailscale) DetectAddresses()
     {

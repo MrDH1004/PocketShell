@@ -10,7 +10,7 @@ using static Mpta.QA.Util;
 namespace Mpta.QA;
 
 /// <summary>One function per acceptance criterion (spec AC-x), written strictly against docs/DESIGN.md.</summary>
-internal static class Scenarios
+internal static partial class Scenarios
 {
     // ---------------------------------------------------------------- AC-1
     public static async Task<Outcome> AC1(Ctx c, Ev ev)

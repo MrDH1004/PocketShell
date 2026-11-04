@@ -117,8 +117,14 @@ public sealed class SessionManager : IDisposable
         }
     }
 
+    private bool _disposed;
+
+    /// <summary>Terminates running shells (they become history) and closes every session's files (output.vt), so another
+    /// process — e.g. the new host after a self-update handoff — can open the sessions directory.</summary>
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _flushTimer.Dispose();
         // Terminate running shells so they become history entries with a clean meta.json.
         var running = _sessions.Values.Where(s => s.IsRunning).ToList();
@@ -126,5 +132,6 @@ public sealed class SessionManager : IDisposable
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (running.Any(s => s.IsRunning) && DateTime.UtcNow < deadline) Thread.Sleep(50);
         FlushAll();
+        foreach (var s in _sessions.Values) s.Dispose();
     }
 }

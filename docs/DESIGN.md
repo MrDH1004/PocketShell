@@ -70,6 +70,9 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 | POST | `/api/pair/start` | 2절 |
 | POST | `/api/pair/claim` | 2절 |
 | GET/DELETE | `/api/devices[/id]` | 2절 |
+| GET | `/api/update` | 11.3절 |
+| POST | `/api/update/check` | 11.3절 (즉시 확인) |
+| POST | `/api/update/apply` | 11.3절 |
 
 ## 5. WebSocket 스트림
 `wss://<host>:7380/ws/sessions/{id}?client=android|cli|qa&cols=N&rows=N[&openPcTab=0|1]`
@@ -89,11 +92,12 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - 입력 변환: 출력 가능 문자→유니코드 KEY_EVENT(down+up); `\r`→VK_RETURN; `\x7f`/`\b`→VK_BACK; `\t`→VK_TAB; 단독 `\x1b`→VK_ESCAPE; `\x1b[A/B/C/D`→화살표; `\x1b[H/F`→Home/End; `\x1b[5~/6~`→PgUp/PgDn; `\x1b[3~`→Delete; 0x01~0x1a→Ctrl+문자(VK 'A'+n-1, LEFT_CTRL_PRESSED, uChar=제어문자).
 
 ## 7. CLI (`mpta.exe`)
-- `mpta serve [--port N] [--bind ip]...`
+- `mpta serve [--port N] [--bind ip]... [--discovery-port N]` (`--discovery-port 0` = LAN 검색 끔, 12.2절)
 - `mpta list` 세션 표(종류/ID/제목/셸/폴더/상태/최근활동)
 - `mpta new [--shell pwsh] [--cwd D] [--title T] [--attach]` (기본: 생성 후 현재 콘솔에서 attach)
 - `mpta attach <id>` 현재 콘솔을 VT 입력/출력 모드로 전환(`ENABLE_VIRTUAL_TERMINAL_PROCESSING`, `ENABLE_VIRTUAL_TERMINAL_INPUT`, raw 입력), 콘솔 크기 보고(창 크기 변경 시 resize 전송), 출력 바이트 그대로 stdout에 쓰기. `client=cli`. 분리 단축키: `Ctrl+]` 후 `d`. 세션 exit 시 메시지 출력 후 종료.
-- `mpta pair` → pair/start 호출, 콘솔에 ASCII QR + payload 출력, PNG 열기.
+- `mpta pair` → pair/start 호출, 콘솔에 ASCII QR + payload 출력, PNG 열기. `mpta pair --pin` → 12.1절.
+- `mpta update [--check] [--force]` → 11.3절.
 - `mpta devices`, `mpta revoke <id>`
 - CLI는 `local.token`과 `cert.sha256`을 읽어 `wss://127.0.0.1:<port>`로 접속(핀닝).
 - 클라이언트 verb 공통 옵션: `--port N`(우선순위: `--port` > 환경변수 `MPTA_PORT` > config.json port), `--home DIR`(> `MPTA_HOME` > `%APPDATA%\mpta`). `mpta serve --port N`은 config.json을 바꾸지 않는다.
@@ -141,8 +145,17 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - 새 버전 발견 → `%MPTA_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
 - 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
 - `POST /api/update/apply {force?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions}`. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
-- 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `mpta serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 다음 시작 시 `*.old` 삭제 시도.
+- 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `mpta serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 업데이트가 커밋된 뒤(기존 프로세스 종료 후)에만 `*.old` 삭제.
 - CLI: `mpta update [--check] [--force]`.
+- 구현 확정 사항(host):
+  - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `MPTA_UPDATE_URL`이 우선), 확인 주기는 환경변수 `MPTA_UPDATE_INTERVAL_SEC`(기본 6시간, QA용).
+  - 모드: `auto` = 발견 즉시 다운로드·검증 후 유휴 시 자동 적용, `notify` = `available`까지만(다운로드는 apply 시), `off` = 백그라운드 확인 없음(명시적 check/apply는 동작).
+  - `POST /api/update/check` → 즉시 피드 확인 후 `GET /api/update`와 같은 객체. `POST /api/update/apply` 성공 = 200 + 같은 객체(적용은 비동기), 더 새 버전 없음 = 400. 피드는 호스트 자산(`mpta-host-win-x64-v<ver>.zip`)이 있는 릴리스 중 최고 버전을 고른다.
+  - staging: `%MPTA_HOME%\updates\<ver>\app\` + 다운로드한 zip + `.ready`(검증된 sha256). `.ready` staging 재사용 시 보관된 zip을 다시 해시해 일치할 때만 그 zip에서 `app\`을 다시 풀어 사용(불일치·zip 없음 → 재다운로드). mpta.exe 위치는 zip 루트 또는 단일 최상위 폴더(최초·재사용 동일 규칙). 현재 버전 이하의 staging은 시작 시 삭제.
+  - 포트 인계: 기존 프로세스가 WS를 1012로 닫고 Kestrel·UDP 검색 소켓을 정지(포트 해제) → 세션 파일 핸들 해제 → 파일 교체(`*.old`) → 같은 인자로 새 `mpta serve` 실행(환경변수 `MPTA_UPDATE_PARENT_PID`=기존 pid) → 새 프로세스는 바인드 실패 시 20초간 재시도, 기존 프로세스는 루프백 `/api/info`(지문 핀닝)가 **새 버전**을 보고하면 종료(30초 제한). 실패(새 프로세스 종료/시간 초과/버전 불일치) 시 새 프로세스 kill → `*.old` 복원 → 같은 프로세스에서 리스너 재개·세션(history) 재로드, state=`error`. 롤백된 버전은 같은 프로세스에서 자동 재적용하지 않는다(명시적 apply는 재시도).
+  - 커밋 규칙: 업데이트는 기존 프로세스가 인계에 성공해 **종료한 시점에 커밋**된다. 그 전까지는 기존 프로세스가 롤백할 수 있으므로 업데이트로 실행된 새 프로세스(`MPTA_UPDATE_PARENT_PID` 설정)는 기존 pid가 종료하기 전에는 어떤 `*.old`도 지우지 않는다(시작 시 정리 생략, 기존 pid 종료 후에만 정리, 60초 내 종료하지 않으면 정리하지 않고 다음 시작에 맡김). 일반 시작(`MPTA_UPDATE_PARENT_PID` 없음)은 시작 시 정리.
+  - `*.old` 정리 대상: 교체 시 설치 폴더에 기록하는 매니페스트 `mpta.update-files.txt`(교체한 상대 경로 목록, 자기 자신 포함, 다른 파일과 같은 방식으로 `*.old` 백업·롤백)에 있는 파일 `X` 중 `X`가 존재하는 `X.old`만 삭제. 매니페스트가 없으면 아무것도 지우지 않고, 목록에 없는 사용자 `*.old` 파일은 건드리지 않는다.
+  - 롤백 방어: 백업이 있어야 할 파일의 `X.old`가 없으면 `X`를 삭제하지 않고(현재 파일 유지) 실패로 기록해 `error` 메시지(restore problems)에 포함.
 
 ### 11.4 Android
 - 앱 시작 시(하루 1회 제한) + 세션 목록 메뉴 "업데이트 확인"에서 확인.
@@ -160,7 +173,9 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - 무차별 대입 방지: PIN 실패 5회면 해당 PIN 즉시 폐기(새로 발급해야 함). 원격 IP별 claim 실패 10회/10분 초과 시 429. 실패는 로그에 기록.
 - 한계(문서화): 6자리 PIN은 능동 MITM에 대해 PAKE 수준의 보호를 주지 못함 → fpShort 육안 비교로 보완, LAN/Tailscale 전용.
 - QR 경로(`code`)는 그대로 유지. claim body는 `code` 또는 `pin` 중 하나.
+- 구현 확정 사항(host): claim 응답은 code/pin 모두 `{deviceId, token, fp}`. IP별 실패 한도(10회/10분 → 429)는 code·pin claim 실패를 합산하며, 한도 초과 중에는 올바른 PIN/code도 429. 틀린 PIN·만료·폐기 = 401. `pair/start` 본문 생략 또는 `mode`≠`"pin"`이면 기존 QR 응답.
 
 ### 12.2 LAN 검색
 - 호스트가 UDP 7381(설정 가능)에서 대기, 사설 IPv4 인터페이스에만 바인딩. 요청 데이터그램 `MPTA?1` → 응답 JSON `{"v":1,"name","hosts":[...],"port":7380,"fpShort"}` (토큰·민감정보 없음).
+- 구현 확정 사항(host): 바인딩 대상 = 서버 bind 목록 중 사설 IPv4(10/8, 172.16/12, 192.168/16) + 127.0.0.1(로컬 도구용, 외부 노출 없음). Tailscale CGNAT·0.0.0.0에는 바인딩하지 않음. 포트: `--discovery-port N` > `config.json` `discoveryPort`(기본 7381), 0이면 끔. 바인드 실패는 경고만(서버는 계속).
 - 폰: 각 Wi-Fi 브로드캐스트 주소(및 255.255.255.255)로 전송, 1.5초간 응답 수집해 목록 표시. Tailscale은 IP 직접 입력.

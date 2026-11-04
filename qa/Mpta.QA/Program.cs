@@ -5,7 +5,7 @@ using Mpta.QA;
 
 // E2E QA driver for mpta (docs/DESIGN.md §9).
 // Usage: dotnet run --project qa/Mpta.QA -c Release [-- --host-exe <path>] [--only AC-1,AC-7,...] [--no-build]
-//        [--port N] [--cap-seconds 300] [--gradle-timeout-seconds 900]
+//        [--port N] [--cap-seconds 900] [--gradle-timeout-seconds 900]
 
 Console.OutputEncoding = Encoding.UTF8;
 
@@ -13,7 +13,7 @@ string? hostExe = null;
 string? only = null;
 bool noBuild = false;
 int? fixedPort = null;
-int capSeconds = 300;
+int capSeconds = 900;
 int gradleTimeout = 900;
 for (int i = 0; i < args.Length; i++)
 {
@@ -28,7 +28,7 @@ for (int i = 0; i < args.Length; i++)
         case "--gradle-timeout-seconds": gradleTimeout = int.Parse(Next()); break;
         case "-h":
         case "--help":
-            Console.WriteLine("Mpta.QA [--host-exe <mpta.exe>] [--only AC-1,AC-7,ANDROID] [--no-build] [--port N] [--cap-seconds 300] [--gradle-timeout-seconds 900]");
+            Console.WriteLine("Mpta.QA [--host-exe <mpta.exe>] [--only AC-1,AC-7,ANDROID] [--no-build] [--port N] [--cap-seconds 900] [--gradle-timeout-seconds 900]");
             return 0;
         default:
             Console.Error.WriteLine($"unknown argument: {args[i]}");
@@ -70,6 +70,15 @@ var hostScenarios = new List<(string Id, string Name, int TimeoutS, Func<Ctx, Ev
     ("AC-9", "list has host/external/history with fields", 45, Scenarios.AC9),
     ("AC-10", "resume history: replay + same cwd/shell", 50, Scenarios.AC10),
     ("AC-4/11", "host restart keeps history + output.vt", 70, Scenarios.AC4_11),
+    ("US008-API", "version.properties -> /api/info.version, GET /api/update, `mpta update --check`", 40, Scenarios.US008Api),
+    ("US009-CLI", "`mpta pair --pin` prints PIN + fpShort (PIN is claimable)", 40, Scenarios.US009Cli),
+    ("US009-DISC", "UDP LAN discovery MPTA?1 reply, no secrets, private binds only", 30, Scenarios.US009Discovery),
+    ("US009-PIN", "PIN pairing: rules, 5 wrong kill, new PIN claim -> token + fp", 45, Scenarios.US009Pin),
+    ("US008-UPDATE", "self-update: verify, 409 w/ session, idle auto-apply -> new version same port, *.old cleanup", 330, Scenarios.US008Update),
+    ("US008-REFUSE", "bad/missing sha256 -> update refused, install dir unchanged", 90, Scenarios.US008Refuse),
+    ("US008-ROLLBACK", "new build fails to start -> rollback, old version keeps serving", 120, Scenarios.US008Rollback),
+    ("US008-ROLLBACK-LATE", "new build serves but fails the version check -> full rollback, fresh start works", 150, Scenarios.US008RollbackLate),
+    ("US009-429", "per-IP claim failures > 10 / 10 min -> 429", 45, Scenarios.US009RateLimit),
 };
 var selectedHost = hostScenarios.Where(s => Selected(s.Id)).ToList();
 bool runSmoke = Selected("ANDROID-SMOKE");
@@ -80,6 +89,12 @@ var (lan, ts) = Util.DetectAddresses();
 string shell = Util.FindOnPath("pwsh.exe") != null ? "pwsh" : "powershell";
 HostRunner? host = null;
 Ctx? ctx = null;
+using var releases = new FakeReleaseServer();
+var versionName = UpdateFixture.ReadVersionName(root);
+// Main host: the feed only lists the current version, so no update is ever found (and no GitHub traffic).
+releases.SetFile(UpdateFixture.AssetName(versionName), new byte[] { 1, 2, 3 });
+releases.SetReleases(releases.Release(versionName, false, new[] { (UpdateFixture.AssetName(versionName), (string?)("sha256:" + UpdateFixture.Sha256(new byte[] { 1, 2, 3 }))) }));
+int discoveryPort = Util.FreeUdpPort();
 using var aux = new Job();
 string headerExe = "(not used)";
 int port = fixedPort ?? Util.FreePort();
@@ -102,6 +117,7 @@ async Task Cleanup()
         try { await Util.KillAttachProcesses(ctx.AttachIds); }
         catch (Exception e) when (e is IOException or InvalidOperationException) { Console.Error.WriteLine("attach cleanup: " + e.Message); }
     }
+    if (ctx != null) foreach (var h in ctx.ExtraHosts.ToList()) h.Kill();
     host?.Kill();
     aux.Dispose();
 }
@@ -143,7 +159,9 @@ try
             hostExe = Path.GetFullPath(hostExe!);
             headerExe = hostExe;
             File.WriteAllText(Path.Combine(home, "config.json"), JsonSerializer.Serialize(new { port }), new UTF8Encoding(false));
-            host = new HostRunner(hostExe, home, port, binds, hostLog);
+            host = new HostRunner(hostExe, home, port, binds, hostLog,
+                new Dictionary<string, string> { ["MPTA_UPDATE_URL"] = releases.FeedUrl },
+                new[] { "--discovery-port", discoveryPort.ToString() });
             Console.WriteLine($"starting host: {hostExe} serve --port {port} {string.Join(" ", binds.Select(b => "--bind " + b))}");
             deadline = DateTime.UtcNow.AddSeconds(capSeconds); // cap covers scenarios, not the build
             var err = await host.Start(30000);
@@ -159,7 +177,11 @@ try
         {
             results.Add(new Result("HOST-SETUP", "build/locate/start mpta serve", Outcome.PASS,
                 $"ready on 127.0.0.1:{port}; binds={string.Join(",", binds)}; fp={host!.Fp[..16]}...; info={Util.Compact(host.Info, 200)}", sw.Elapsed));
-            ctx = new Ctx { Root = root, OutDir = outDir, Work = work, Host = host, Aux = aux, Lan = lan, Tailscale = ts, Shell = shell };
+            ctx = new Ctx
+            {
+                Root = root, OutDir = outDir, Work = work, Host = host, Aux = aux, Lan = lan, Tailscale = ts, Shell = shell,
+                VersionName = versionName, Releases = releases, DiscoveryPort = discoveryPort,
+            };
             ctx.ResetApis();
             foreach (var s in selectedHost)
             {
@@ -211,6 +233,9 @@ bool Selected(string id)
             if (dash > 0) aliases.Add("AC-" + part[..dash]); // AC-21-FOCUS also runs with --only AC-21
         }
     if (id.StartsWith("ANDROID")) aliases.Add("ANDROID");
+    if (id.StartsWith("US") && id.Length > 5) aliases.Add(id[..5].ToUpperInvariant()); // --only US008 runs all US008-*
+    if (id.StartsWith("US") && id.Length > 6)
+        for (int i = id.IndexOf('-', 6); i > 0; i = id.IndexOf('-', i + 1)) aliases.Add(id[..i].ToUpperInvariant()); // US008-ROLLBACK-LATE also runs with --only US008-ROLLBACK
     return aliases.Overlaps(wanted);
 }
 

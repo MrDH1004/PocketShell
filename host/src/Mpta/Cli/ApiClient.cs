@@ -55,6 +55,31 @@ public sealed class ApiClient : IDisposable
         }
     }
 
+    /// <summary>Like <see cref="SendAsync"/> but returns non-success responses instead of throwing.</summary>
+    public async Task<(int Status, JsonElement Body, string Text)> SendRawAsync(HttpMethod method, string path, object? body = null)
+    {
+        using var req = new HttpRequestMessage(method, path);
+        if (body != null) req.Content = new StringContent(JsonSerializer.Serialize(body, Json.Options), Encoding.UTF8, "application/json");
+        HttpResponseMessage resp;
+        try { resp = await _http.SendAsync(req); }
+        catch (HttpRequestException ex) { throw new CliException($"cannot reach mpta host at https://127.0.0.1:{Port}: {ex.Message}"); }
+        using (resp)
+        {
+            var text = await resp.Content.ReadAsStringAsync();
+            JsonElement el = default;
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(text);
+                    el = doc.RootElement.Clone();
+                }
+                catch (JsonException) { }
+            }
+            return ((int)resp.StatusCode, el, text);
+        }
+    }
+
     public async Task<ClientWebSocket> ConnectWsAsync(string sessionId, int cols, int rows, CancellationToken ct)
     {
         var ws = new ClientWebSocket();

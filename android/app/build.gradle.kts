@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// Single version source (DESIGN.md §11.1): repo-root version.properties.
+val versionProps = Properties().apply {
+    rootProject.file("../version.properties").inputStream().use { load(it) }
+}
+val mptaVersionName: String = versionProps.getProperty("versionName")
+    ?: error("version.properties: versionName missing")
+val mptaVersionCode: Int = versionProps.getProperty("versionCode")?.trim()?.toIntOrNull()
+    ?: error("version.properties: versionCode missing or not an integer")
 
 android {
     namespace = "com.mpta.client"
@@ -11,12 +22,15 @@ android {
         applicationId = "com.mpta.client"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = mptaVersionCode
+        versionName = mptaVersionName
     }
 
     buildTypes {
         release {
+            // Update-in-place requires the same signing key as v0.1.0, which was signed with the default
+            // debug keystore (~/.android/debug.keystore). Release reuses that signing config.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -33,6 +47,7 @@ android {
 
     buildFeatures {
         viewBinding = false
+        buildConfig = true
     }
 
     testOptions {

@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Security.Cryptography.X509Certificates;
 using System.Net;
 using System.Net.WebSockets;
 using System.Reflection;
@@ -15,6 +17,7 @@ using Mpta.Core.Auth;
 using Mpta.Core.External;
 using Mpta.Core.Net;
 using Mpta.Core.Sessions;
+using Mpta.Core.Update;
 using Mpta.Core.Util;
 
 namespace Mpta.Server;
@@ -69,56 +72,150 @@ internal sealed class WsConn
 
 public sealed class HostServer
 {
+    /// <summary>Set by the updating (old) process on the new `mpta serve` it launches (DESIGN §11.3 handoff).</summary>
+    public const string UpdateParentPidEnv = "MPTA_UPDATE_PARENT_PID";
+
     private readonly string _home;
     private readonly int _port;
     private readonly List<IPAddress> _binds;
+    private readonly IReadOnlyList<string> _serveArgs;
+    private readonly int _discoveryPort;
     private readonly ConcurrentDictionary<WsConn, byte> _conns = new();
 
     private SessionManager _sessions = null!;
     private ExternalConsoles _externals = null!;
     private TokenAuthenticator _auth = null!;
     private PairingManager _pairing = null!;
+    private PinPairing _pins = null!;
+    private ClaimRateLimiter _claimLimiter = null!;
     private WtTabLauncher _wt = null!;
+    private UpdateService _update = null!;
+    private DiscoveryResponder? _discovery;
+    private X509Certificate2 _cert = null!;
     private string _fp = "";
+    private string _fpShort = "";
+    private string _installDir = "";
+    private string _exe = "";
+    private string _localToken = "";
 
-    public HostServer(string home, int port, List<IPAddress> binds)
+    // Update handoff state (see RunAsync / HandoffAsync).
+    private WebApplication? _app;
+    private int _applyBusy;
+    private volatile bool _handoffPending;
+    private string? _handoffStaging;
+    private bool _handoffForce;
+
+    /// <param name="serveArgs">Arguments after `serve`, replayed verbatim to the new process on update.</param>
+    public HostServer(string home, int port, List<IPAddress> binds, IReadOnlyList<string> serveArgs, int discoveryPort)
     {
         _home = home;
         _port = port;
         _binds = binds;
+        _serveArgs = serveArgs;
+        _discoveryPort = discoveryPort;
     }
 
-    private static string Version => typeof(HostServer).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
+    public static string Version => typeof(HostServer).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     private List<string> PublicHosts() => _binds.Where(ip => !IPAddress.IsLoopback(ip)).Select(ip => ip.ToString()).ToList();
+
+    private int RunningSessions() => _sessions.All.Count(s => s.IsRunning);
 
     public async Task<int> RunAsync()
     {
         Directory.CreateDirectory(_home);
         Log.InitFile(_home);
         var (cert, fp) = CertManager.LoadOrCreate(_home);
+        _cert = cert;
         _fp = fp;
-        var localToken = TokenAuthenticator.LoadOrCreateLocalToken(_home);
-        _auth = new TokenAuthenticator(localToken, new DeviceStore(MptaPaths.DevicesFile(_home)));
+        _fpShort = PinPairing.FpShort(fp);
+        _localToken = TokenAuthenticator.LoadOrCreateLocalToken(_home);
+        _auth = new TokenAuthenticator(_localToken, new DeviceStore(MptaPaths.DevicesFile(_home)));
         _pairing = new PairingManager();
+        _pins = new PinPairing();
+        _claimLimiter = new ClaimRateLimiter();
         _sessions = new SessionManager(_home);
-        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine mpta.exe path");
-        _externals = new ExternalConsoles(exe);
+        _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine mpta.exe path");
+        _installDir = Path.GetDirectoryName(_exe)!;
+        _externals = new ExternalConsoles(_exe);
         var attachArgs = new List<string> { "--port", _port.ToString() };
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MPTA_HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
-        _wt = new WtTabLauncher(exe, attachArgs);
+        _wt = new WtTabLauncher(_exe, attachArgs);
 
+        // Launched by an updating predecessor: the update is not committed until that process has exited (it may still
+        // roll back and needs every *.old), so clean only after it is gone; tolerate a briefly busy port.
+        int? parentPid = int.TryParse(Environment.GetEnvironmentVariable(UpdateParentPidEnv), out var pp) ? pp : null;
+        Environment.SetEnvironmentVariable(UpdateParentPidEnv, null); // not inherited by shells / later children
+        if (parentPid == null) CleanupOldInstallFiles("startup");
+        else _ = Task.Run(() => CleanupAfterParentExit(parentPid.Value));
+
+        var cfg = MptaConfig.LoadOrCreate(_home);
+        var envUrl = Environment.GetEnvironmentVariable("MPTA_UPDATE_URL");
+        var feed = !string.IsNullOrWhiteSpace(envUrl) ? envUrl.Trim() : !string.IsNullOrWhiteSpace(cfg.UpdateUrl) ? cfg.UpdateUrl.Trim() : ReleaseFeed.DefaultUrl;
+        var interval = int.TryParse(Environment.GetEnvironmentVariable("MPTA_UPDATE_INTERVAL_SEC"), out var isec) && isec > 0
+            ? TimeSpan.FromSeconds(isec) : TimeSpan.FromHours(6);
+        var current = SemVer.TryParse(Version, out var cv) ? cv : SemVer.Parse("0.0.0");
+        _update = new UpdateService(_home, current, feed, cfg.AutoUpdate, interval, RunningSessions);
+        _update.AutoApply = () => { TryBeginApply(force: false); return Task.CompletedTask; };
+
+        Log.Info($"mpta {Version} data dir: {_home}");
+        Log.Info($"cert fingerprint (sha256): {fp} (short {_fpShort})");
+        int exitCode = 0;
+        try
+        {
+            _update.Start();
+            // Normally one iteration. An update handoff stops Kestrel (releasing the port) and, if the new process
+            // fails, rolls the files back and loops to re-open the listeners in this same process (sessions kept).
+            bool retryBind = parentPid != null;
+            while (true)
+            {
+                var app = BuildApp();
+                var startErr = await StartWithRetry(app, retryBind ? TimeSpan.FromSeconds(20) : TimeSpan.Zero);
+                if (startErr != null)
+                {
+                    Log.Error($"cannot listen on port {_port}: {startErr}");
+                    await app.DisposeAsync();
+                    exitCode = 1;
+                    break;
+                }
+                _app = app;
+                StartDiscovery();
+                Log.Info($"mpta {Version} serving https/wss on port {_port}: {string.Join(", ", _binds)}");
+                await app.WaitForShutdownAsync();
+                StopDiscovery();
+                _app = null;
+                await app.DisposeAsync();
+                if (!_handoffPending) break;
+                _handoffPending = false;
+                if (await HandoffAsync()) break;
+                retryBind = true; // rolled back: re-open listeners (port was just released by us)
+            }
+        }
+        finally
+        {
+            Log.Info("shutting down: terminating running sessions");
+            StopDiscovery();
+            _update.Dispose();
+            _externals.Dispose();
+            _sessions.Dispose();
+        }
+        return exitCode;
+    }
+
+    private WebApplication BuildApp()
+    {
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = Array.Empty<string>(), ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(o => o.SingleLine = true);
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(5));
         builder.WebHost.ConfigureKestrel(k =>
         {
             foreach (var ip in _binds)
                 k.Listen(ip, _port, lo =>
                 {
                     lo.Protocols = HttpProtocols.Http1;
-                    lo.UseHttps(cert);
+                    lo.UseHttps(_cert);
                 });
         });
 
@@ -127,21 +224,235 @@ public sealed class HostServer
         app.Use(AuthMiddleware);
         MapApi(app);
         app.Map("/ws/sessions/{id}", HandleWs);
+        return app;
+    }
 
-        Log.Info($"mpta {Version} serving https/wss on port {_port}: {string.Join(", ", _binds)}");
-        Log.Info($"data dir: {_home}");
-        Log.Info($"cert fingerprint (sha256): {fp}");
+    /// <summary>Starts Kestrel; on "address in use" retries until <paramref name="retryFor"/> elapses. Returns null or the error.</summary>
+    private static async Task<string?> StartWithRetry(WebApplication app, TimeSpan retryFor)
+    {
+        var deadline = DateTime.UtcNow + retryFor;
+        while (true)
+        {
+            try
+            {
+                await app.StartAsync();
+                return null;
+            }
+            catch (IOException ex)
+            {
+                if (DateTime.UtcNow >= deadline) return ex.Message;
+                Log.Warn($"bind failed ({ex.Message}); retrying");
+                await Task.Delay(500);
+            }
+        }
+    }
+
+    private void StartDiscovery()
+    {
+        if (_discoveryPort <= 0) return;
+        var addrs = DiscoveryResponder.SelectAddresses(_binds);
+        if (addrs.Count == 0) return;
+        _discovery = new DiscoveryResponder(DiscoveryResponder.BuildReply(Environment.MachineName, PublicHosts(), _port, _fpShort));
+        _discovery.Start(addrs, _discoveryPort);
+    }
+
+    private void StopDiscovery()
+    {
+        _discovery?.Dispose();
+        _discovery = null;
+    }
+
+    private void CleanupOldInstallFiles(string when)
+    {
+        var (deleted, remaining) = InstallTransaction.CleanupOld(_installDir);
+        if (deleted + remaining > 0) Log.Info($"update cleanup ({when}): deleted {deleted} *.old file(s), {remaining} still locked");
+    }
+
+    private async Task CleanupAfterParentExit(int pid)
+    {
         try
         {
-            await app.RunAsync();
+            using var p = Process.GetProcessById(pid);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await p.WaitForExitAsync(cts.Token);
+        }
+        catch (ArgumentException) { /* already gone */ }
+        catch (InvalidOperationException) { }
+        catch (OperationCanceledException)
+        {
+            // Still alive = handoff not committed (it could roll back); leave the backups for the next start.
+            Log.Warn($"update: previous host pid {pid} still running after 60s; keeping *.old backups");
+            return;
+        }
+        await Task.Delay(300);
+        CleanupOldInstallFiles("after previous host exit");
+    }
+
+    // ------------------------------------------------------------------ update apply / handoff (DESIGN §11.3)
+
+    /// <summary>Validates and starts an apply in the background. Returns the HTTP status + body for POST /api/update/apply.</summary>
+    private (int Status, object Body) TryBeginApply(bool force)
+    {
+        if (!_update.HasNewer) return (400, new { error = "no update available", update = _update.Status });
+        int running = RunningSessions();
+        if (running > 0 && !force)
+            return (409, new { error = $"{running} host session(s) running; close them or use force", runningSessions = running });
+        if (Interlocked.CompareExchange(ref _applyBusy, 1, 0) != 0) return (200, _update.Status);
+        _ = Task.Run(() => ApplyFlowAsync(force));
+        return (200, _update.Status);
+    }
+
+    private async Task ApplyFlowAsync(bool force)
+    {
+        bool handedToLoop = false;
+        try
+        {
+            var staging = await _update.EnsureStagedAsync();
+            if (staging == null) return; // state=error (or nothing newer) already recorded
+            if (!force && RunningSessions() > 0)
+            {
+                Log.Info("update: a session started before apply; waiting for idle");
+                _update.MarkReady();
+                return;
+            }
+            _update.MarkApplying();
+            Log.Info($"update: applying {_update.Status.Latest} (force={force}); releasing port {_port}");
+            await Task.Delay(300); // let the apply HTTP response flush
+            _handoffStaging = staging;
+            _handoffForce = force;
+            _handoffPending = true;
+            handedToLoop = true;
+            // Close WebSockets first so Kestrel's graceful stop does not wait for long-lived connections.
+            await Task.WhenAll(_conns.Keys.ToList().Select(c => c.CloseAsync(1012, "host updating")));
+            var app = _app;
+            if (app != null) app.Lifetime.StopApplication();
+        }
+        catch (Exception ex)
+        {
+            _update.MarkError($"apply failed: {ex.Message}");
         }
         finally
         {
-            Log.Info("shutting down: terminating running sessions");
-            _externals.Dispose();
-            _sessions.Dispose();
+            if (!handedToLoop) Interlocked.Exchange(ref _applyBusy, 0);
         }
-        return 0;
+    }
+
+    /// <summary>
+    /// Runs with Kestrel stopped (port free): swap install files (old → *.old), launch the new `mpta serve` with the same
+    /// arguments, and wait until it answers /api/info with the new version. Returns true when this process should exit.
+    /// On failure the new process is killed, files are restored and false is returned so listeners re-open here.
+    /// </summary>
+    private async Task<bool> HandoffAsync()
+    {
+        var staging = _handoffStaging!;
+        var expected = _update.Status.Latest ?? "";
+        bool success = false, released = false;
+        try
+        {
+            // Kestrel is stopped now, so no session can start any more; re-check (one may have started during the stop).
+            int running = RunningSessions();
+            if (running > 0 && !_handoffForce)
+            {
+                Log.Info("update: a session started while stopping; re-opening listeners and waiting for idle");
+                _update.MarkReady();
+                return false;
+            }
+            // Release session files (output.vt is held open) so the new process can load the sessions directory.
+            // With force, running shells are terminated here.
+            _sessions.Dispose();
+            released = true;
+            if (running > 0) Log.Info($"update: force -> terminated {running} session(s)");
+
+            InstallTransaction tx;
+            try { tx = InstallTransaction.Apply(staging, _installDir); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _update.MarkError($"install failed ({ex.Message}); previous files restored");
+                return false;
+            }
+            Log.Info($"update: replaced {tx.Targets.Count} file(s) in {_installDir}; starting new host");
+
+            Process? child = null;
+            string? err;
+            try
+            {
+                var psi = new ProcessStartInfo(_exe) { UseShellExecute = false, WorkingDirectory = Environment.CurrentDirectory };
+                psi.ArgumentList.Add("serve");
+                foreach (var a in _serveArgs) psi.ArgumentList.Add(a);
+                psi.Environment[UpdateParentPidEnv] = Environment.ProcessId.ToString();
+                child = Process.Start(psi);
+                err = child == null ? "Process.Start returned null" : await WaitForNewHost(child, expected, TimeSpan.FromSeconds(30));
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                err = "launch failed: " + ex.Message;
+            }
+            if (err == null)
+            {
+                Log.Info($"update: new host {expected} (pid {child!.Id}) is serving on port {_port}; exiting old process {Version}");
+                child.Dispose();
+                success = true;
+                return true;
+            }
+
+            if (child != null)
+            {
+                try
+                {
+                    if (!child.HasExited) child.Kill(entireProcessTree: true);
+                    child.WaitForExit(5000);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                child.Dispose();
+            }
+            var failures = tx.Rollback();
+            _update.MarkApplyFailed(expected);
+            _update.MarkError($"new version {expected} failed to start ({err}); rolled back to {Version}" +
+                              (failures.Count > 0 ? $"; restore problems: {string.Join("; ", failures)}" : ""));
+            return false;
+        }
+        finally
+        {
+            if (!success && released) _sessions = new SessionManager(_home); // keep serving: reload sessions (history) from disk
+            Interlocked.Exchange(ref _applyBusy, 0);
+        }
+    }
+
+    /// <summary>Polls the new process's /api/info (pinned TLS, local token). Null = serving the expected version.</summary>
+    private async Task<string?> WaitForNewHost(Process child, string expected, TimeSpan timeout)
+    {
+        var probe = _binds.FirstOrDefault(IPAddress.IsLoopback) ?? _binds[0];
+        var handler = new SocketsHttpHandler();
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, c, _, _) => c != null && CertManager.Fingerprint(c) == _fp;
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _localToken);
+        var host = probe.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{probe}]" : probe.ToString();
+        var url = $"https://{host}:{_port}/api/info";
+        var deadline = DateTime.UtcNow + timeout;
+        string last = "no response";
+        while (DateTime.UtcNow < deadline)
+        {
+            if (child.HasExited) return $"new process exited with code {child.ExitCode}";
+            try
+            {
+                using var resp = await http.GetAsync(url);
+                var body = await resp.Content.ReadAsStringAsync();
+                if (resp.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    var v = doc.RootElement.TryGetProperty("version", out var ve) ? ve.GetString() ?? "" : "";
+                    if (SemVer.TryParse(v, out var got) && SemVer.TryParse(expected, out var want) && got.Equals(want)) return null;
+                    return $"new process reports version '{v}', expected '{expected}'";
+                }
+                last = $"HTTP {(int)resp.StatusCode}";
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException)
+            {
+                last = ex.Message;
+            }
+            await Task.Delay(300);
+        }
+        return $"no /api/info from new process within {timeout.TotalSeconds:0}s ({last})";
     }
 
     private async Task AuthMiddleware(HttpContext ctx, Func<Task> next)
@@ -171,7 +482,16 @@ public sealed class HostServer
 
     private void MapApi(WebApplication app)
     {
-        app.MapGet("/api/info", () => Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts() }));
+        app.MapGet("/api/info", () => Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status }));
+
+        app.MapGet("/api/update", () => Json(_update.Status));
+        app.MapPost("/api/update/check", async () => Json(await _update.CheckAsync()));
+        app.MapPost("/api/update/apply", async (HttpContext ctx) =>
+        {
+            var req = await ReadBody<ApplyRequest>(ctx);
+            var (status, body) = TryBeginApply(req?.Force == true);
+            return Json(body, status);
+        });
 
         app.MapGet("/api/sessions", () =>
         {
@@ -246,9 +566,16 @@ public sealed class HostServer
             }
         });
 
-        app.MapPost("/api/pair/start", (HttpContext ctx) =>
+        app.MapPost("/api/pair/start", async (HttpContext ctx) =>
         {
             if (!AuthOf(ctx).IsLocal) return Error(401, "local token required");
+            var req = await ReadBody<PairStartRequest>(ctx);
+            if (string.Equals(req?.Mode, "pin", StringComparison.OrdinalIgnoreCase))
+            {
+                var (pin, pexp) = _pins.Start();
+                Log.Info($"pairing PIN issued (fp {_fpShort}), expires {Ids.IsoUtc(pexp)}");
+                return Json(new { pin, expiresAt = Ids.IsoUtc(pexp), fpShort = _fpShort, hosts = PublicHosts(), port = _port });
+            }
             var (code, exp) = _pairing.Start();
             var payload = new QrPayload { Name = Environment.MachineName, Hosts = PublicHosts(), Port = _port, Fp = _fp, Code = code }.ToJson();
             var (ascii, png) = PairingQr.Render(payload);
@@ -260,11 +587,26 @@ public sealed class HostServer
 
         app.MapPost("/api/pair/claim", async (HttpContext ctx) =>
         {
+            var remote = ctx.Connection.RemoteIpAddress;
+            if (remote is { IsIPv4MappedToIPv6: true }) remote = remote.MapToIPv4();
+            var ip = remote?.ToString() ?? "?";
+            if (_claimLimiter.IsLimited(ip))
+            {
+                Log.Warn($"pairing claim from {ip} rejected: too many failures (429)");
+                return Error(429, "too many failed pairing attempts; try again later");
+            }
             var body = await ReadBody<ClaimRequest>(ctx);
-            if (body == null || !_pairing.TryConsume(body.Code)) return Error(401, "invalid or expired pairing code");
-            var (dev, token) = _auth.Devices.Add(body.DeviceName ?? "device");
-            Log.Info($"device paired: {dev.Id} ({dev.Name})");
-            return Json(new { deviceId = dev.Id, token });
+            bool byPin = !string.IsNullOrEmpty(body?.Pin);
+            bool ok = body != null && (byPin ? _pins.TryConsume(body.Pin) == PinClaimResult.Ok : _pairing.TryConsume(body.Code));
+            if (!ok)
+            {
+                _claimLimiter.RecordFailure(ip);
+                Log.Warn($"pairing claim failed from {ip} ({(byPin ? "pin" : "code")})");
+                return Error(401, byPin ? "invalid or expired PIN" : "invalid or expired pairing code");
+            }
+            var (dev, token) = _auth.Devices.Add(body!.DeviceName ?? "device");
+            Log.Info($"device paired: {dev.Id} ({dev.Name}) via {(byPin ? "pin" : "code")} from {ip}");
+            return Json(new { deviceId = dev.Id, token, fp = _fp });
         });
 
         app.MapGet("/api/devices", (HttpContext ctx) =>
@@ -288,7 +630,18 @@ public sealed class HostServer
     private sealed class ClaimRequest
     {
         public string? Code { get; set; }
+        public string? Pin { get; set; }
         public string? DeviceName { get; set; }
+    }
+
+    private sealed class PairStartRequest
+    {
+        public string? Mode { get; set; }
+    }
+
+    private sealed class ApplyRequest
+    {
+        public bool Force { get; set; }
     }
 
     private static async Task<T?> ReadBody<T>(HttpContext ctx) where T : class
