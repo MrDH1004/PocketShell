@@ -1,0 +1,13 @@
+This module (terminal-view) is vendored from Termux:
+  https://github.com/termux/termux-app/tree/8629e632fcb95da272221be327db653fb24befe9/terminal-view
+which is released under the Apache License, Version 2.0 (see LICENSE in this directory).
+It is derived from "Terminal Emulator for Android" by Jack Palevich
+(https://github.com/jackpal/Android-Terminal-Emulator), also Apache-2.0.
+
+Modifications for MyPCToAndroid (mpta):
+  - TerminalView / TerminalViewClient / TextSelectionCursorController use RemoteTerminalSession.
+  - TerminalView.onCreateInputConnection: input type changed from TYPE_NULL to a composing text
+    type so Korean (Hangul) IMEs such as Gboard can compose; composed text is sent as UTF-8 only
+    when committed (commitText / finishComposingText). The commit-text-to-code-point logic was
+    extracted to ImeTextDecoder.java so it is unit-testable on the JVM.
+  - Gradle build script rewritten (Kotlin DSL, no maven-publish).

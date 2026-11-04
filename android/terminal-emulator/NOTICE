@@ -1,0 +1,14 @@
+This module (terminal-emulator) is vendored from Termux:
+  https://github.com/termux/termux-app/tree/8629e632fcb95da272221be327db653fb24befe9/terminal-emulator
+which is released under the Apache License, Version 2.0 (see LICENSE in this directory).
+It is derived from "Terminal Emulator for Android" by Jack Palevich
+(https://github.com/jackpal/Android-Terminal-Emulator), also Apache-2.0.
+
+Modifications for MyPCToAndroid (mpta):
+  - Removed JNI pty code (src/main/jni, JNI.java) and the local-subprocess TerminalSession.java.
+  - Added RemoteTerminalSession.java: network-backed session (input/resize go to a callback,
+    remote output bytes are fed to TerminalEmulator.append on the main thread).
+  - TerminalSessionClient now refers to RemoteTerminalSession; setTerminalShellPid removed.
+  - Gradle build script rewritten (Kotlin DSL, no NDK, no maven-publish).
+  TerminalEmulator / TerminalBuffer / TextStyle / WcWidth are unmodified (truecolor and
+  wide-character behavior is Termux's).

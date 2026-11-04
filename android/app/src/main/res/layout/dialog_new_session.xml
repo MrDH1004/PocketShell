@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <RadioGroup
+        android:id="@+id/shellGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <RadioButton
+            android:id="@+id/shellPwsh"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/shell_pwsh" />
+
+        <RadioButton
+            android:id="@+id/shellPowershell"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/shell_powershell" />
+
+        <RadioButton
+            android:id="@+id/shellCmd"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/shell_cmd" />
+
+        <RadioButton
+            android:id="@+id/shellBash"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/shell_bash" />
+    </RadioGroup>
+
+    <EditText
+        android:id="@+id/titleInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/new_session_title_hint"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:maxLines="1" />
+</LinearLayout>

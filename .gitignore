@@ -1,0 +1,11 @@
+bin/
+obj/
+.gradle/
+build/
+local.properties
+*.apk
+qa/out/
+.idea/
+.omc/*
+!.omc/specs/
+.kotlin/
