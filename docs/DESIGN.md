@@ -123,3 +123,44 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - 페어링 PNG 경로: `<MPTA_HOME>/pair-qr.png`.
 - 서버 정상 종료 시 실행 중 host 세션 셸을 종료하고 history로 남긴다. 강제 종료/재부팅 후에는 시작 시 state=running인 meta를 exited(history)로 변환.
 - attach CLI 분리 키 감지는 원시 `0x1d` 외에 win32-input-mode 시퀀스(`ESC[Vk;Sc;Uc;Kd;Cs;Rc_`, ConPTY가 `?9001h`를 요청하면 콘솔이 보냄)도 인식한다. 입력은 가공 없이 전달.
+
+## 11. 자동 업데이트 (PC 호스트 + Android)
+### 11.1 버전 단일 출처
+- 저장소 루트 `version.properties`: `versionName=0.1.1-alpha`, `versionCode=2` (정수, 릴리스마다 +1).
+- 호스트: csproj가 이 파일을 읽어 `InformationalVersion`=versionName 설정. `GET /api/info`의 `version`=versionName.
+- Android: gradle이 읽어 `versionName`/`versionCode` 설정. git 태그 = `v<versionName>`.
+- 비교: SemVer 2.0 (prerelease 포함, `0.1.1-alpha < 0.1.1 < 0.1.2-alpha`). 숫자 식별자는 숫자 비교.
+
+### 11.2 업데이트 소스
+- GitHub Releases: `GET https://api.github.com/repos/MrDH1004/MyPCToAndroid/releases?per_page=10` (prerelease 포함, draft 제외), 가장 높은 SemVer 태그 선택. 환경변수/설정 `MPTA_UPDATE_URL`(호스트), 앱 디버그 설정으로 URL 대체 가능(QA용 로컬 서버). User-Agent: `mpta-updater`.
+- 자산 이름 규칙: `mpta-android-v<ver>.apk`, `mpta-host-win-x64-v<ver>.zip`.
+- 무결성: 자산의 `digest`(`sha256:<hex>`) 필드와 다운로드 파일 SHA-256 일치 필수. digest 없으면 같은 릴리스의 `SHA256SUMS.txt`(`<hex>  <name>`)로 대체, 둘 다 없으면 업데이트 거부.
+
+### 11.3 PC 호스트
+- `serve` 시작 시 + 6시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
+- 새 버전 발견 → `%MPTA_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
+- 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
+- `POST /api/update/apply {force?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions}`. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
+- 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `mpta serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 다음 시작 시 `*.old` 삭제 시도.
+- CLI: `mpta update [--check] [--force]`.
+
+### 11.4 Android
+- 앱 시작 시(하루 1회 제한) + 세션 목록 메뉴 "업데이트 확인"에서 확인.
+- 새 버전 → 다이얼로그(버전, 릴리스 노트) → 다운로드(앱 캐시) → SHA-256 검증 → FileProvider URI로 설치 인텐트(`REQUEST_INSTALL_PACKAGES`, 출처 허용 미설정 시 설정 화면 안내). 서명 키가 같아야 덮어쓰기 설치됨(릴리스는 동일 키로 서명).
+- 세션 목록에 PC 호스트 업데이트 상태 표시(`/api/info.update`), "PC 업데이트 적용" 버튼(세션 실행 중이면 확인 후 force).
+
+### 11.5 릴리스 스크립트
+- `scripts/release.ps1 -Version <x.y.z[-pre]>`: version.properties 갱신(versionCode+1) → host publish(win-x64, framework-dependent) zip → APK 빌드(같은 서명 키) → SHA256SUMS.txt → 커밋·태그·푸시 → `gh release create`(prerelease 여부는 버전에 `-`가 있으면 true).
+
+## 12. PIN 페어링 + LAN 검색
+### 12.1 PIN 페어링 (QR 대안)
+- `POST /api/pair/start {mode:"pin"}` (local 토큰) 또는 `mpta pair --pin` → `{pin:"123456", expiresAt, fpShort, hosts, port}`. PIN: 암호학적 난수 6자리, 5분 만료, 일회용. 동시에 유효한 PIN은 1개(새로 발급하면 이전 PIN 폐기).
+- `fpShort`: 인증서 SHA-256 앞 8바이트를 `XXXX-XXXX-XXXX-XXXX`(대문자 hex) 형식으로 표시. PC 콘솔에 PIN과 함께 크게 출력.
+- 폰: 호스트 주소(LAN 검색 결과 선택 또는 IP 직접 입력) + PIN 입력 → TLS 연결해 서버 인증서 지문을 받아(TOFU) `fpShort`를 화면에 표시하고 PC 화면과 같은지 사용자 확인 → `POST /api/pair/claim {pin, deviceName}` (인증 없음) → `{deviceId, token, fp}`. 이후에는 저장된 fp로 핀닝(QR 경로와 동일).
+- 무차별 대입 방지: PIN 실패 5회면 해당 PIN 즉시 폐기(새로 발급해야 함). 원격 IP별 claim 실패 10회/10분 초과 시 429. 실패는 로그에 기록.
+- 한계(문서화): 6자리 PIN은 능동 MITM에 대해 PAKE 수준의 보호를 주지 못함 → fpShort 육안 비교로 보완, LAN/Tailscale 전용.
+- QR 경로(`code`)는 그대로 유지. claim body는 `code` 또는 `pin` 중 하나.
+
+### 12.2 LAN 검색
+- 호스트가 UDP 7381(설정 가능)에서 대기, 사설 IPv4 인터페이스에만 바인딩. 요청 데이터그램 `MPTA?1` → 응답 JSON `{"v":1,"name","hosts":[...],"port":7380,"fpShort"}` (토큰·민감정보 없음).
+- 폰: 각 Wi-Fi 브로드캐스트 주소(및 255.255.255.255)로 전송, 1.5초간 응답 수집해 목록 표시. Tailscale은 IP 직접 입력.
