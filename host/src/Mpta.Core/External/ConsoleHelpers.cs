@@ -159,6 +159,7 @@ public static class ConsoleHelpers
         }
         int cx = info.dwCursorPosition.X - info.srWindow.Left;
         int cy = info.dwCursorPosition.Y - info.srWindow.Top;
+        VtFrame.GrayPromptPlaceholder(chars, attrs, width, height, cx, cy);
         return ReaderFrame.Encode(width, height, VtFrame.Build(chars, attrs, width, height, cx, cy));
     }
 

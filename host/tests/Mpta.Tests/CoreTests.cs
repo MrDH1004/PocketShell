@@ -235,6 +235,45 @@ public class VtFrameTests
         Assert.EndsWith("\x1b[2;2H\x1b[?25h", s);
     }
 
+    private static (char[] Chars, ushort[] Attrs) Grid(params string[] rows)
+    {
+        var chars = new char[8 * rows.Length];
+        var attrs = new ushort[chars.Length];
+        for (int y = 0; y < rows.Length; y++)
+            for (int x = 0; x < 8; x++)
+            {
+                chars[y * 8 + x] = x < rows[y].Length ? rows[y][x] : ' ';
+                attrs[y * 8 + x] = 0x07;
+            }
+        return (chars, attrs);
+    }
+
+    [Fact]
+    public void PromptPlaceholderTurnsGrayWhenCursorRightAfterPrompt()
+    {
+        var (chars, attrs) = Grid("───", "❯ hint1", "hint2", "───", "status");
+        attrs[8 + 4] = 0x0A;      // a colored cell keeps its color
+        attrs[8 + 5] |= 0x0100;   // leading-byte flag is preserved
+        VtFrame.GrayPromptPlaceholder(chars, attrs, 8, 5, 2, 1);
+        Assert.Equal(0x07, attrs[8 + 0]);        // prompt itself untouched
+        Assert.Equal(0x08, attrs[8 + 2]);
+        Assert.Equal(0x0A, attrs[8 + 4]);
+        Assert.Equal(0x0108, attrs[8 + 5]);
+        Assert.Equal(0x08, attrs[16]);           // wrapped row inside the box
+        Assert.Equal(0x07, attrs[24]);           // bottom border
+        Assert.Equal(0x07, attrs[32]);           // below the box
+    }
+
+    [Fact]
+    public void TypedPromptTextKeepsItsColor()
+    {
+        var (chars, attrs) = Grid("❯ typed", "x");
+        VtFrame.GrayPromptPlaceholder(chars, attrs, 8, 2, 7, 0); // cursor at the end of typed text
+        Assert.All(attrs, a => Assert.Equal(0x07, a));
+        VtFrame.GrayPromptPlaceholder(chars, attrs, 8, 2, 2, 1); // cursor not after the prompt
+        Assert.All(attrs, a => Assert.Equal(0x07, a));
+    }
+
     [Fact]
     public void ExternalFilterKeepsPersonOpenedAndAgentShells()
     {

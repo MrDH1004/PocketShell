@@ -59,6 +59,34 @@ public static class VtFrame
 
     private const ushort ColorMask = 0x00FF | Win32.COMMON_LVB_UNDERSCORE | Win32.COMMON_LVB_REVERSE_VIDEO;
 
+    private const char PromptChar = '❯'; // ❯ (Claude Code input prompt)
+    private const ushort DefaultColor = 0x07; // white on black
+    private const ushort GrayColor = 0x08;    // bright black on black → SGR 90
+
+    /// <summary>
+    /// Claude Code draws its suggested prompt in faint (SGR 2), which legacy console attributes cannot express: it reads
+    /// back as plain 0x07, the same as typed text. The suggestion is only shown while the input is empty, i.e. the
+    /// cursor sits right after "❯ " with text to its right; typed text puts the cursor at its end. In that state the
+    /// default-colored cells from the cursor to the input box's bottom border (a row starting with '─') are turned gray.
+    /// </summary>
+    public static void GrayPromptPlaceholder(char[] chars, ushort[] attrs, int width, int height, int cursorX, int cursorY)
+    {
+        if (cursorY < 0 || cursorY >= height || cursorX < 2 || cursorX >= width) return;
+        int row = cursorY * width;
+        char gap = chars[row + cursorX - 1];
+        if (chars[row + cursorX - 2] != PromptChar || (gap != ' ' && gap != ' ')) return; // Claude Code uses NBSP
+        for (int y = cursorY; y < height; y++)
+        {
+            int start = y * width;
+            if (y > cursorY && chars[start] == '─') break; // ─ bottom border of the input box
+            for (int x = y == cursorY ? cursorX : 0; x < width; x++)
+            {
+                int i = start + x;
+                if ((attrs[i] & 0x00FF) == DefaultColor) attrs[i] = (ushort)((attrs[i] & 0xFF00) | GrayColor);
+            }
+        }
+    }
+
     /// <summary>
     /// Frame = ESC[?25l ESC[H, then per row: position, SGR runs + text, ESC[0m ESC[K; then cursor ESC[r;cH and ESC[?25h.
     /// <paramref name="cursorX"/>/<paramref name="cursorY"/> are 0-based relative to the window; cursor is hidden if outside.
