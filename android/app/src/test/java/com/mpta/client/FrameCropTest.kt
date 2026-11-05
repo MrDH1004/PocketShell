@@ -43,6 +43,14 @@ class FrameCropTest {
     }
 
     @Test
+    fun clearBelowErasesRowsUnderTheConsoleAndKeepsCursor() {
+        val f = frame(listOf("a", "b"), 2 to 3)
+        val out = String(FrameCrop.clearBelow(f.toByteArray(), 2), Charsets.UTF_8)
+        assertEquals(f + "${esc}7$esc[3;1H$esc[J${esc}8", out)
+        assertArrayEquals("x".toByteArray(), FrameCrop.clearBelow("x".toByteArray(), 2))
+    }
+
+    @Test
     fun passesThroughWhenItFitsOrIsNotAFrame() {
         val f = frame(listOf("a", "b"), 1 to 1)
         assertEquals(f, crop(f, 5))

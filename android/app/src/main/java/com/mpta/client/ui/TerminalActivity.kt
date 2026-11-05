@@ -88,7 +88,8 @@ class TerminalActivity : AppCompatActivity() {
     private val frameTail = FrameTail()
     /** External console's row count from the last size notice (0 = unknown). */
     private var consoleRows = 0
-    /** Phone row count the current screen content was drawn for. */
+    private var consoleCols = 0
+    /** Phone grid (cols * 10000 + rows) the current screen content was drawn for; -1 forces a redraw. */
     private var drawnRows = 0
     private var fitWidth = 0
     private var fitHeight = 0
@@ -223,13 +224,22 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /** External frames are absolute-positioned for the PC's row count: cut to the phone's rows when fewer. */
-    private fun display(frame: ByteArray): ByteArray =
-        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleRows > viewRows) FrameCrop.crop(frame, viewRows) else frame
+    private fun display(frame: ByteArray): ByteArray = when {
+        sessionKind != SessionInfo.KIND_EXTERNAL || consoleRows <= 0 -> frame
+        consoleRows > viewRows -> FrameCrop.crop(frame, viewRows)
+        // More phone rows than PC rows (zoomed out): the frame never touches the rows below, so clear them.
+        consoleRows < viewRows -> FrameCrop.clearBelow(frame, consoleRows)
+        else -> frame
+    }
 
     /** The PC sends a frame only when its console changes: redraw the last one after the phone's grid changed. */
     private fun redrawIfRowsChanged() {
-        if (viewRows == drawnRows) return
-        drawnRows = viewRows
+        val grid = viewCols * 10_000 + viewRows
+        if (grid == drawnRows) return
+        drawnRows = grid
+        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleRows > 0) {
+            setStatus("연결됨 · PC ${consoleCols}×${consoleRows} · 화면 ${viewCols}×${viewRows}")
+        }
         val frame = frameTail.snapshot()
         if (frame.isEmpty()) return
         val shown = display(frame)
@@ -263,7 +273,7 @@ class TerminalActivity : AppCompatActivity() {
         override fun onOutput(bytes: ByteArray) {
             if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                 frameTail.append(bytes)
-                drawnRows = viewRows
+                drawnRows = viewCols * 10_000 + viewRows
             }
             val shown = display(bytes)
             session.appendRemoteOutput(shown, 0, shown.size)
@@ -277,6 +287,7 @@ class TerminalActivity : AppCompatActivity() {
                 is ServerMessage.Size -> {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                         consoleRows = message.rows
+                        consoleCols = message.cols
                         fitToConsole(message.cols, message.rows)
                     }
                     setStatus("연결됨 · PC ${message.cols}×${message.rows} · 화면 ${viewCols}×${viewRows}")

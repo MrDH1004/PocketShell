@@ -13,6 +13,16 @@ object FrameCrop {
     private val ROW = Regex("\u001b\\[(\\d+);1H(.*?)\u001b\\[0m\u001b\\[K")
     private val CURSOR = Regex("\u001b\\[(\\d+);(\\d+)H\u001b\\[\\?25h$")
 
+    /**
+     * Phone has more rows than the console: after the frame, erase everything below row [consoleRows] (left over from
+     * before a zoom/resize), keeping the cursor where the frame put it (DECSC/DECRC).
+     */
+    fun clearBelow(frame: ByteArray, consoleRows: Int): ByteArray {
+        if (consoleRows <= 0 || !String(frame, 0, minOf(frame.size, START.length), Charsets.UTF_8).startsWith(START)) return frame
+        val tail = "\u001b7\u001b[${consoleRows + 1};1H\u001b[J\u001b8".toByteArray(Charsets.US_ASCII)
+        return frame + tail
+    }
+
     fun crop(frame: ByteArray, viewRows: Int): ByteArray {
         if (viewRows <= 0) return frame
         val text = String(frame, Charsets.UTF_8)
