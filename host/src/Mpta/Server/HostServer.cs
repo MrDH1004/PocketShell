@@ -300,29 +300,28 @@ public sealed class HostServer
             return;
         }
         await Task.Delay(300);
-        // The update is committed now. The tray still runs the previous build and holds its *.old files: ask it to
-        // restart on the new files, give it time, then clean up (and once more later if it was slow).
-        if (!SignalTrayRestart())
-        {
-            CleanupOldInstallFiles("after previous host exit");
-            return;
-        }
+        // The update is committed now. The tray still runs the previous build and holds its *.old files: hint it to
+        // restart on the new files, then clean up. Retry for a few minutes: without the hint (older tray, other port)
+        // the tray restarts on its own once the new build has been installed for 60 s.
+        SignalTrayRestart();
         await Task.Delay(TimeSpan.FromSeconds(5));
         if (CleanupOldInstallFiles("after tray restart") == 0) return;
-        await Task.Delay(TimeSpan.FromSeconds(15));
-        CleanupOldInstallFiles("retry");
+        foreach (var wait in new[] { 15, 30, 60, 90 })
+        {
+            await Task.Delay(TimeSpan.FromSeconds(wait));
+            if (CleanupOldInstallFiles("retry") == 0) return;
+        }
     }
 
-    private bool SignalTrayRestart()
+    private void SignalTrayRestart()
     {
         if (!EventWaitHandle.TryOpenExisting(Brand.TrayRestartEventName(_port), out var ev))
         {
-            Log.Info("update: no tray restart listener (tray not running or older than 0.2.4)");
-            return false;
+            Log.Info("update: no tray restart listener (tray not running, older than 0.2.4, or on another port)");
+            return;
         }
         using (ev) ev.Set();
         Log.Info("update: asked the tray to restart on the new version");
-        return true;
     }
 
     // ------------------------------------------------------------------ update apply / handoff (DESIGN §11.3)

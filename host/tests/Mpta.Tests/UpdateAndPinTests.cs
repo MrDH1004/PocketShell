@@ -215,6 +215,30 @@ public class InstallTransactionTests
     }
 
     [Fact]
+    public void CleanupSweepsStaleLeftoversOfFilesNoLongerShipped()
+    {
+        var install = TempDir();
+        var staging = TempDir();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(install, "sub"));
+            var orphan = Path.Combine(install, "sub", "gone.dll.old" + InstallTransaction.StaleMarker + "ab12cd34");
+            File.WriteAllText(orphan, "moved aside by an earlier update");
+            File.WriteAllText(Path.Combine(install, "a.dll"), "old");
+            File.WriteAllText(Path.Combine(staging, "a.dll"), "new"); // gone.dll is not in this update's manifest
+            InstallTransaction.Apply(staging, install);
+
+            Assert.Equal((2, 0), InstallTransaction.CleanupOld(install)); // a.dll.old + the orphan
+            Assert.False(File.Exists(orphan));
+        }
+        finally
+        {
+            Directory.Delete(install, true);
+            Directory.Delete(staging, true);
+        }
+    }
+
+    [Fact]
     public void CleanupWithoutManifestDeletesNothing()
     {
         var install = TempDir();

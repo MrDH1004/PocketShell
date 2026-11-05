@@ -10,9 +10,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length == 2 && args[0] == WaitPidArg && int.TryParse(args[1], out var pid)) WaitForExit(pid);
+        int pid = 0;
+        bool restarting = args.Length == 2 && string.Equals(args[0], WaitPidArg, StringComparison.Ordinal) && int.TryParse(args[1], out pid);
+        if (restarting) WaitForExit(pid);
         using var single = new Mutex(true, @"Local\PocketShell.Tray", out var first);
-        if (!first) return 0; // already in the tray
+        // The previous tray has already hidden its icon: keep waiting for it rather than leaving no tray at all.
+        if (!first && !(restarting && AcquireAfterPrevious(single))) return 0; // already in the tray
 
         ApplicationConfiguration.Initialize();
         var home = MptaPaths.Home;
@@ -28,6 +31,17 @@ internal static class Program
             MessageBox.Show(ex.Message, Brand.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
+    }
+
+    private static bool AcquireAfterPrevious(Mutex single)
+    {
+        try
+        {
+            if (single.WaitOne(TimeSpan.FromSeconds(60))) return true;
+            TrayLog.Write(MptaPaths.Home, "previous tray still holds the single-instance mutex after 60s; exiting");
+            return false;
+        }
+        catch (AbandonedMutexException) { return true; } // previous tray exited without releasing it: now ours
     }
 
     private static void WaitForExit(int pid)

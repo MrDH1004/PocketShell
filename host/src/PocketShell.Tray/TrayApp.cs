@@ -21,8 +21,15 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _autoStart;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly string _version;
-    /// <summary>Set by a new `psh serve` after a committed update: restart this tray on the new files.</summary>
+    /// <summary>Full informational version of this build (incl. +commit), compared with the installed PocketShell.dll.</summary>
+    private readonly string _buildVersion;
+    /// <summary>Hint set by a new `psh serve` after a committed update; a restart still requires a newer installed build.</summary>
     private readonly EventWaitHandle _restartEvent;
+    /// <summary>Since when the installed build differs from this one (fallback restart when the hint was missed).</summary>
+    private DateTime? _installedDiffersSince;
+    private DateTime _nextRestartTry = DateTime.MinValue;
+    private static readonly TimeSpan RestartWithoutHintAfter = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan RestartRetryDelay = TimeSpan.FromSeconds(60);
 
     /// <summary>The user wants the server up (cleared by "서버 중지"); drives the watchdog restart.</summary>
     private bool _wantRunning = true;
@@ -36,7 +43,8 @@ internal sealed class TrayApp : ApplicationContext
     {
         _home = home;
         _server = new ServerControl(home);
-        _version = typeof(TrayApp).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "";
+        _buildVersion = typeof(TrayApp).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+        _version = _buildVersion.Split('+')[0];
         _runningIcon = LoadIcon("tray-running.ico");
         _stoppedIcon = LoadIcon("tray-stopped.ico");
 
@@ -104,7 +112,7 @@ internal sealed class TrayApp : ApplicationContext
     private async Task TickAsync()
     {
         if (_busy) return;
-        if (_restartEvent.WaitOne(0))
+        if (ShouldRestartForUpdate(hinted: _restartEvent.WaitOne(0)))
         {
             RestartForUpdate();
             return;
@@ -201,11 +209,49 @@ internal sealed class TrayApp : ApplicationContext
     }
 
     /// <summary>
+    /// True when the installed PocketShell.dll is a different build than this process and either the server hinted that
+    /// its update is committed or the difference has lasted <see cref="RestartWithoutHintAfter"/> (hint missed, port
+    /// changed). A hint alone never restarts the tray, so a stray signal is harmless.
+    /// </summary>
+    private bool ShouldRestartForUpdate(bool hinted)
+    {
+        var installed = InstalledBuildVersion();
+        if (installed == null || _buildVersion.Length == 0 || string.Equals(installed, _buildVersion, StringComparison.Ordinal))
+        {
+            if (hinted) TrayLog.Write(_home, $"restart hint ignored: installed={installed ?? "(none)"} running={_buildVersion}");
+            _installedDiffersSince = null;
+            return false;
+        }
+        var now = DateTime.UtcNow;
+        if (_installedDiffersSince == null) TrayLog.Write(_home, $"installed build {installed} differs from running {_buildVersion} (hinted={hinted})");
+        _installedDiffersSince ??= now;
+        if (now < _nextRestartTry) return false;
+        return hinted || now - _installedDiffersSince.Value >= RestartWithoutHintAfter;
+    }
+
+    /// <summary>
+    /// Version of the installed psh.dll (same release, same informational version as the tray). Not PocketShell.dll:
+    /// for a file loaded in this process, FileVersionInfo keeps returning the loaded (pre-update) image's version.
+    /// </summary>
+    private static string? InstalledBuildVersion()
+    {
+        var dll = Path.Combine(AppContext.BaseDirectory, Path.ChangeExtension(Brand.CliExe, ".dll"));
+        try
+        {
+            var v = FileVersionInfo.GetVersionInfo(dll).ProductVersion;
+            return string.IsNullOrEmpty(v) ? null : v;
+        }
+        catch (FileNotFoundException) { return null; } // mid-swap
+    }
+
+    /// <summary>
     /// The install dir now holds a newer build while this process still runs (and locks) the previous one: start the
     /// new PocketShell.exe, which waits for this process to exit, and quit without stopping the server.
+    /// On failure this tray keeps running and tries again after <see cref="RestartRetryDelay"/>.
     /// </summary>
     private void RestartForUpdate()
     {
+        _nextRestartTry = DateTime.UtcNow + RestartRetryDelay;
         var exe = Path.Combine(AppContext.BaseDirectory, Brand.TrayExe);
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
         psi.ArgumentList.Add(Program.WaitPidArg);

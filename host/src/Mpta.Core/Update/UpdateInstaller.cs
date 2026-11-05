@@ -64,13 +64,10 @@ public sealed class InstallTransaction
     /// </summary>
     private static void RemoveLeftover(string old)
     {
-        try { File.Delete(old); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            var aside = old + StaleMarker + Guid.NewGuid().ToString("N")[..8];
-            File.Move(old, aside);
-            Log.Warn($"update: {Path.GetFileName(old)} is still in use ({ex.Message}); moved aside to {Path.GetFileName(aside)}");
-        }
+        if (TryDelete(old)) return;
+        var aside = old + StaleMarker + Guid.NewGuid().ToString("N")[..8];
+        File.Move(old, aside);
+        Log.Warn($"update: moved the in-use {Path.GetFileName(old)} aside to {Path.GetFileName(aside)}");
     }
 
     /// <summary>
@@ -118,15 +115,17 @@ public sealed class InstallTransaction
         {
             var target = Path.GetFullPath(Path.Combine(installDir, rel));
             if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!File.Exists(target)) continue;
             var old = target + OldSuffix;
-            var dir = Path.GetDirectoryName(target)!;
-            var stale = Directory.EnumerateFiles(dir, Path.GetFileName(old) + StaleMarker + "*");
-            foreach (var f in File.Exists(old) ? stale.Prepend(old) : stale)
-            {
-                if (TryDelete(f)) deleted++;
-                else remaining++;
-            }
+            if (!File.Exists(target) || !File.Exists(old)) continue;
+            if (TryDelete(old)) deleted++;
+            else remaining++;
+        }
+        // Moved-aside leftovers are never needed for a rollback; they may belong to files a later update no longer
+        // ships (not in the manifest any more), so sweep the whole install dir for the marker.
+        foreach (var stale in Directory.EnumerateFiles(installDir, "*" + OldSuffix + StaleMarker + "*", SearchOption.AllDirectories))
+        {
+            if (TryDelete(stale)) deleted++;
+            else remaining++;
         }
         return (deleted, remaining);
     }
