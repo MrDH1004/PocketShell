@@ -21,6 +21,8 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _autoStart;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly string _version;
+    /// <summary>Set by a new `psh serve` after a committed update: restart this tray on the new files.</summary>
+    private readonly EventWaitHandle _restartEvent;
 
     /// <summary>The user wants the server up (cleared by "서버 중지"); drives the watchdog restart.</summary>
     private bool _wantRunning = true;
@@ -59,7 +61,8 @@ internal sealed class TrayApp : ApplicationContext
         _icon.DoubleClick += (_, _) => ShowPin();
 
         FirstRunAutoStart();
-        _timer = new System.Windows.Forms.Timer { Interval = 2000 };
+        _restartEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Brand.TrayRestartEventName(_server.Port));
+        _timer =new System.Windows.Forms.Timer { Interval = 2000 };
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
         _ = StartAsync(userAction: false);
@@ -101,6 +104,11 @@ internal sealed class TrayApp : ApplicationContext
     private async Task TickAsync()
     {
         if (_busy) return;
+        if (_restartEvent.WaitOne(0))
+        {
+            RestartForUpdate();
+            return;
+        }
         var running = _server.IsRunning;
         if (running != _lastRunning) Refresh();
         if (running || !_wantRunning) { _downTicks = 0; return; }
@@ -190,6 +198,35 @@ internal sealed class TrayApp : ApplicationContext
     {
         Directory.CreateDirectory(dir);
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dir}\"") { UseShellExecute = true })?.Dispose();
+    }
+
+    /// <summary>
+    /// The install dir now holds a newer build while this process still runs (and locks) the previous one: start the
+    /// new PocketShell.exe, which waits for this process to exit, and quit without stopping the server.
+    /// </summary>
+    private void RestartForUpdate()
+    {
+        var exe = Path.Combine(AppContext.BaseDirectory, Brand.TrayExe);
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
+        psi.ArgumentList.Add(Program.WaitPidArg);
+        psi.ArgumentList.Add(Environment.ProcessId.ToString());
+        try
+        {
+            using var p = Process.Start(psi);
+            if (p == null) { TrayLog.Write(_home, "update restart: Process.Start returned null; keeping this tray"); return; }
+            TrayLog.Write(_home, $"update installed: restarting tray (v{_version} -> new pid {p.Id})");
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            TrayLog.Write(_home, $"update restart: cannot start {exe}: {ex.Message}; keeping this tray");
+            return;
+        }
+        _timer.Stop();
+        _icon.Visible = false;
+        _icon.Dispose();
+        _pinForm?.Close();
+        _restartEvent.Dispose();
+        ExitThread();
     }
 
     private async Task ExitAsync()

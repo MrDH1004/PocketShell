@@ -275,10 +275,12 @@ public sealed class HostServer
         _discovery = null;
     }
 
-    private void CleanupOldInstallFiles(string when)
+    /// <summary>Returns how many backups are still locked.</summary>
+    private int CleanupOldInstallFiles(string when)
     {
         var (deleted, remaining) = InstallTransaction.CleanupOld(_installDir);
         if (deleted + remaining > 0) Log.Info($"update cleanup ({when}): deleted {deleted} *.old file(s), {remaining} still locked");
+        return remaining;
     }
 
     private async Task CleanupAfterParentExit(int pid)
@@ -298,7 +300,29 @@ public sealed class HostServer
             return;
         }
         await Task.Delay(300);
-        CleanupOldInstallFiles("after previous host exit");
+        // The update is committed now. The tray still runs the previous build and holds its *.old files: ask it to
+        // restart on the new files, give it time, then clean up (and once more later if it was slow).
+        if (!SignalTrayRestart())
+        {
+            CleanupOldInstallFiles("after previous host exit");
+            return;
+        }
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        if (CleanupOldInstallFiles("after tray restart") == 0) return;
+        await Task.Delay(TimeSpan.FromSeconds(15));
+        CleanupOldInstallFiles("retry");
+    }
+
+    private bool SignalTrayRestart()
+    {
+        if (!EventWaitHandle.TryOpenExisting(Brand.TrayRestartEventName(_port), out var ev))
+        {
+            Log.Info("update: no tray restart listener (tray not running or older than 0.2.4)");
+            return false;
+        }
+        using (ev) ev.Set();
+        Log.Info("update: asked the tray to restart on the new version");
+        return true;
     }
 
     // ------------------------------------------------------------------ update apply / handoff (DESIGN §11.3)

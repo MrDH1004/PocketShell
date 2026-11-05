@@ -17,6 +17,8 @@ public static class Brand
     /// <summary>Named objects shared by `psh serve` and the tray (per port, so QA hosts on other ports are separate).</summary>
     public static string ServeMutexName(int port) => $@"Local\PocketShell.Serve.{port}";
     public static string StopEventName(int port) => $@"Local\PocketShell.Stop.{port}";
+    /// <summary>Created by the tray; set by a new `psh serve` once its update is committed so the tray restarts on the new files.</summary>
+    public static string TrayRestartEventName(int port) => $@"Local\PocketShell.TrayRestart.{port}";
 }
 
 public static class MptaPaths

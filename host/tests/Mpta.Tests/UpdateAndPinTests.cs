@@ -179,6 +179,42 @@ public class InstallTransactionTests
     }
 
     [Fact]
+    public void LoadedLeftoverBackupIsMovedAsideAndCleanedLater()
+    {
+        var install = TempDir();
+        var staging = TempDir();
+        IntPtr lib = IntPtr.Zero;
+        try
+        {
+            // a.dll.old left by an earlier update and still loaded (like the tray running the previous build):
+            // Windows refuses to delete a mapped image but allows renaming it.
+            var leftover = Path.Combine(install, "a.dll.old");
+            File.Copy(Path.Combine(Environment.SystemDirectory, "version.dll"), leftover);
+            lib = System.Runtime.InteropServices.NativeLibrary.Load(leftover);
+            Assert.ThrowsAny<UnauthorizedAccessException>(() => File.Delete(leftover));
+
+            File.WriteAllText(Path.Combine(install, "a.dll"), "current");
+            File.WriteAllText(Path.Combine(staging, "a.dll"), "new");
+            InstallTransaction.Apply(staging, install);
+            Assert.Equal("new", File.ReadAllText(Path.Combine(install, "a.dll")));
+            Assert.Equal("current", File.ReadAllText(Path.Combine(install, "a.dll.old")));
+            var aside = Assert.Single(Directory.GetFiles(install, "a.dll.old" + InstallTransaction.StaleMarker + "*"));
+
+            Assert.Equal((1, 1), InstallTransaction.CleanupOld(install)); // a.dll.old deleted, the loaded one not yet
+            System.Runtime.InteropServices.NativeLibrary.Free(lib);
+            lib = IntPtr.Zero;
+            Assert.Equal((1, 0), InstallTransaction.CleanupOld(install));
+            Assert.False(File.Exists(aside));
+        }
+        finally
+        {
+            if (lib != IntPtr.Zero) System.Runtime.InteropServices.NativeLibrary.Free(lib);
+            Directory.Delete(install, true);
+            Directory.Delete(staging, true);
+        }
+    }
+
+    [Fact]
     public void CleanupWithoutManifestDeletesNothing()
     {
         var install = TempDir();

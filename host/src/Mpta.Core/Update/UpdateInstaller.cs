@@ -47,11 +47,30 @@ public sealed class InstallTransaction
         if (hadOld)
         {
             var old = target + OldSuffix;
-            if (File.Exists(old)) File.Delete(old); // leftover from an earlier update whose cleanup failed
+            if (File.Exists(old)) RemoveLeftover(old); // leftover from an earlier update whose cleanup failed
             File.Move(target, old);
         }
         _ops.Add((target, hadOld));
         write(target);
+    }
+
+    /// <summary>Marker between "X.old" and a random suffix for leftovers moved aside: "X.old.stale-&lt;hex&gt;".</summary>
+    public const string StaleMarker = ".stale-";
+
+    /// <summary>
+    /// Deletes a leftover <c>X.old</c>. A process still running the old build (e.g. the tray from before the previous
+    /// update) keeps it loaded: Windows refuses the delete but allows a rename, so it is moved aside to
+    /// <c>X.old.stale-&lt;hex&gt;</c> and <see cref="CleanupOld"/> removes it once nothing holds it.
+    /// </summary>
+    private static void RemoveLeftover(string old)
+    {
+        try { File.Delete(old); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var aside = old + StaleMarker + Guid.NewGuid().ToString("N")[..8];
+            File.Move(old, aside);
+            Log.Warn($"update: {Path.GetFileName(old)} is still in use ({ex.Message}); moved aside to {Path.GetFileName(aside)}");
+        }
     }
 
     /// <summary>
@@ -99,19 +118,30 @@ public sealed class InstallTransaction
         {
             var target = Path.GetFullPath(Path.Combine(installDir, rel));
             if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!File.Exists(target)) continue;
             var old = target + OldSuffix;
-            if (!File.Exists(old) || !File.Exists(target)) continue;
-            try
+            var dir = Path.GetDirectoryName(target)!;
+            var stale = Directory.EnumerateFiles(dir, Path.GetFileName(old) + StaleMarker + "*");
+            foreach (var f in File.Exists(old) ? stale.Prepend(old) : stale)
             {
-                File.Delete(old);
-                deleted++;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                remaining++;
-                Log.Warn($"update cleanup: cannot delete {old} yet: {ex.Message}");
+                if (TryDelete(f)) deleted++;
+                else remaining++;
             }
         }
         return (deleted, remaining);
+    }
+
+    private static bool TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Warn($"update cleanup: cannot delete {path} yet: {ex.Message}");
+            return false;
+        }
     }
 }
