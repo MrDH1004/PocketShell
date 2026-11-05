@@ -551,6 +551,8 @@ public final class TerminalView extends View {
 
     /** Perform a scroll, either from dragging the screen or by scrolling a mouse wheel. */
     void doScroll(MotionEvent event, int rowsDown) {
+        // PocketShell: external consoles keep their own history outside the emulator (see onRemoteScroll).
+        if (mClient != null && mClient.onRemoteScroll(rowsDown)) return;
         boolean up = rowsDown < 0;
         int amount = Math.abs(rowsDown);
         for (int i = 0; i < amount; i++) {

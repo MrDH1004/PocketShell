@@ -28,6 +28,14 @@ public interface TerminalViewClient {
      */
     void onSingleTapUp(MotionEvent e);
 
+    /**
+     * PocketShell: finger/wheel scroll of {@code rowsDown} rows (negative = towards older lines). Return true when the
+     * client scrolled its own content, so the emulator transcript is not scrolled.
+     */
+    default boolean onRemoteScroll(int rowsDown) {
+        return false;
+    }
+
     boolean shouldBackButtonBeMappedToEscape();
 
     boolean shouldEnforceCharBasedInput();

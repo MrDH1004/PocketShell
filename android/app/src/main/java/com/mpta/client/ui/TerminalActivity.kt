@@ -25,13 +25,10 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.mpta.client.MptaApp
 import com.mpta.client.R
-import com.mpta.client.core.FrameCrop
-import com.mpta.client.core.FrameTail
+import com.mpta.client.core.ConsoleHistory
 import com.mpta.client.core.KeyMapper
 import com.mpta.client.core.ServerMessage
 import com.mpta.client.core.SessionInfo
@@ -84,7 +81,10 @@ class TerminalActivity : AppCompatActivity() {
      */
     private var fitCols = 0
     private var fitRows = 0
-    private val frameTail = FrameTail()
+    /** External console: lines scrolled off the PC window + the current window (scroll-back on the phone). */
+    private val history = ConsoleHistory()
+    /** Lines above the live bottom the user scrolled to (0 = live). */
+    private var scroll = 0
     /** External console's row count from the last size notice (0 = unknown). */
     private var consoleRows = 0
     private var consoleCols = 0
@@ -123,6 +123,10 @@ class TerminalActivity : AppCompatActivity() {
 
         session = RemoteTerminalSession(TRANSCRIPT_ROWS, sessionClient, object : RemoteTerminalSession.Transport {
             override fun sendInput(data: ByteArray) {
+                if (scroll > 0) { // typing returns to the live view
+                    scroll = 0
+                    drawExternal()
+                }
                 connection?.sendInput(data)
             }
 
@@ -201,8 +205,12 @@ class TerminalActivity : AppCompatActivity() {
         fitRows = rows
         fitWidth = width
         fitHeight = height
-        // Keyboard up: fit the width only and show the bottom part (FrameCrop) instead of a tiny whole console.
-        val widthOnly = ViewCompat.getRootWindowInsets(terminalView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        // Keyboard up: fit the width only and show the bottom part (ConsoleHistory) instead of a tiny whole console.
+        // Judged by the IME padding actually applied to the root (applySystemInsets), which is what resized this view:
+        // the IME inset flag could still say "visible" while the keyboard was closing, leaving the width-only font.
+        val root = findViewById<View>(R.id.root)
+        val widthOnly = root.height > 0 && root.paddingBottom > root.height / 5
+        Log.i(TAG, "fit ${cols}x$rows view=${width}x$height rootPadBottom=${root.paddingBottom}/${root.height} widthOnly=$widthOnly")
         val paint = Paint().apply { typeface = Typeface.MONOSPACE; isAntiAlias = true }
         var px = spToPx(fontSizeSp)
         while (px > MIN_FIT_TEXT_PX) {
@@ -229,31 +237,31 @@ class TerminalActivity : AppCompatActivity() {
         } else {
             applyTextSize(spToPx(fontSizeSp))
         }
+        scroll = 0
         drawnRows = -1
         redrawIfRowsChanged()
     }
 
-    /** External frames are absolute-positioned for the PC's row count: cut to the phone's rows when fewer. */
-    private fun display(frame: ByteArray): ByteArray = when {
-        sessionKind != SessionInfo.KIND_EXTERNAL || consoleRows <= 0 -> frame
-        consoleRows > viewRows -> FrameCrop.crop(frame, viewRows)
-        // More phone rows than PC rows (zoomed out): the frame never touches the rows below, so clear them.
-        consoleRows < viewRows -> FrameCrop.clearBelow(frame, consoleRows)
-        else -> frame
+    /** Draws (history + window) for the current phone rows and scroll position (external consoles). */
+    private fun drawExternal() {
+        if (!history.hasFrame) return
+        val out = history.render(viewRows, scroll)
+        session.appendRemoteOutput(out, 0, out.size)
+        updateExternalStatus()
     }
 
-    /** The PC sends a frame only when its console changes: redraw the last one after the phone's grid changed. */
+    private fun updateExternalStatus() {
+        if (consoleRows <= 0) return
+        val where = if (scroll > 0) "기록 ${scroll}줄 위 (아래로 밀면 실시간)" else "화면 ${viewCols}×${viewRows}"
+        setStatus("연결됨 · PC ${consoleCols}×${consoleRows} · $where")
+    }
+
+    /** The PC sends a frame only when its console changes: redraw after the phone's grid changed. */
     private fun redrawIfRowsChanged() {
         val grid = viewCols * 10_000 + viewRows
         if (grid == drawnRows) return
         drawnRows = grid
-        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleRows > 0) {
-            setStatus("연결됨 · PC ${consoleCols}×${consoleRows} · 화면 ${viewCols}×${viewRows}")
-        }
-        val frame = frameTail.snapshot()
-        if (frame.isEmpty()) return
-        val shown = display(frame)
-        session.appendRemoteOutput(shown, 0, shown.size)
+        if (sessionKind == SessionInfo.KIND_EXTERNAL) drawExternal()
     }
 
     private fun onViewResized(cols: Int, rows: Int) {
@@ -272,8 +280,7 @@ class TerminalActivity : AppCompatActivity() {
     private val connectionListener = object : TerminalConnection.Listener {
         override fun onConnected(host: String) {
             // The server replays the whole output.vt after hello: start from a blank emulator.
-            session.resetForReplay()
-            frameTail.clear()
+            session.resetForReplay() // external history survives reconnects (same console)
             terminalView.onScreenUpdated()
             setStatus("연결됨 · $host · 재생 중…")
             // The size in the URL may be stale if the view changed while connecting.
@@ -282,11 +289,15 @@ class TerminalActivity : AppCompatActivity() {
 
         override fun onOutput(bytes: ByteArray) {
             if (sessionKind == SessionInfo.KIND_EXTERNAL) {
-                frameTail.append(bytes)
-                drawnRows = viewCols * 10_000 + viewRows
+                val shifted = history.accept(bytes)
+                if (shifted >= 0) {
+                    if (scroll > 0) scroll += shifted // keep the lines the user is reading in place
+                    drawnRows = viewCols * 10_000 + viewRows
+                    drawExternal()
+                    return
+                }
             }
-            val shown = display(bytes)
-            session.appendRemoteOutput(shown, 0, shown.size)
+            session.appendRemoteOutput(bytes, 0, bytes.size)
         }
 
         override fun onControl(message: ServerMessage) {
@@ -480,6 +491,16 @@ class TerminalActivity : AppCompatActivity() {
                 return 1.0f
             }
             return scale
+        }
+
+        override fun onRemoteScroll(rowsDown: Int): Boolean {
+            if (sessionKind != SessionInfo.KIND_EXTERNAL || !history.hasFrame) return false
+            val next = (scroll - rowsDown).coerceIn(0, history.maxScroll(viewRows))
+            if (next != scroll) {
+                scroll = next
+                drawExternal()
+            }
+            return true
         }
 
         override fun onSingleTapUp(e: MotionEvent?) {
