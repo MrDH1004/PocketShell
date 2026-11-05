@@ -47,7 +47,7 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
   - Windows Terminal 안의 콘솔은 지난 내용을 콘솔에 남기지 않음. 그래서 PC 서버가 Claude/GPT 콘솔을 백그라운드로 계속 읽어 밀려난 줄을 모아둠(콘솔당 최대 3000줄).
   - 기록은 PC 서버가 실행 중인 동안만 쌓임. 일반 셸은 폰이 열고 있을 때만 쌓임.
 - 한글 입력은 조합 중인 글자도 바로 PC에 보임.
-- 아래 키 바(좌우로 밀기): ESC, CTRL, ALT, TAB, 방향키, HOME/END, PGUP/PGDN 등.
+- 아래 키 바(좌우로 밀기): ESC, TAB, ENTER, CTRL, 방향키, HOME/END, PGUP/PGDN 등.
 
 **접속**
 - 폰에 Tailscale이 켜져 있으면 Tailscale 주소를 먼저, 아니면 같은 Wi-Fi의 LAN 주소를 먼저 시도함. 성공한 주소는 네트워크가 바뀔 때까지 먼저 씀.
