@@ -49,14 +49,13 @@ import java.io.IOException
 /**
  * Terminal screen (AC-15..18): Termux TerminalView backed by [RemoteTerminalSession] over a WebSocket.
  * - history session → POST resume first, then attach to the new session.
- * - external session → "호스트로 인수" (POST /api/external/{pid}/adopt) switches to the new host session.
+ * - external session → mirrors a console opened on the PC (fit to the PC console size).
  */
 class TerminalActivity : AppCompatActivity() {
 
     private lateinit var terminalView: TerminalView
     private lateinit var statusView: TextView
     private lateinit var titleView: TextView
-    private lateinit var adoptButton: Button
     private lateinit var session: RemoteTerminalSession
     private var connection: TerminalConnection? = null
     private var api: ApiClient? = null
@@ -119,7 +118,6 @@ class TerminalActivity : AppCompatActivity() {
 
         titleView = findViewById(R.id.title)
         statusView = findViewById(R.id.status)
-        adoptButton = findViewById(R.id.adoptButton)
         terminalView = findViewById(R.id.terminal)
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId }
 
@@ -145,8 +143,6 @@ class TerminalActivity : AppCompatActivity() {
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<Button>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
-        adoptButton.setOnClickListener { adopt() }
-        adoptButton.visibility = if (sessionKind == SessionInfo.KIND_EXTERNAL) View.VISIBLE else View.GONE
 
         if (sessionKind == SessionInfo.KIND_HISTORY) resumeHistory() else connection?.sessionId = sessionId
     }
@@ -366,30 +362,6 @@ class TerminalActivity : AppCompatActivity() {
                 setStatus("재개 실패: ${e.message}")
             } catch (e: org.json.JSONException) {
                 setStatus("재개 실패: 서버 응답 형식 오류")
-            }
-        }
-    }
-
-    private fun adopt() {
-        val a = api ?: return
-        val pid = externalPid ?: sessionId.removePrefix("ext-").toIntOrNull()
-        if (pid == null) {
-            setStatus("외부 세션 PID를 알 수 없습니다")
-            return
-        }
-        adoptButton.isEnabled = false
-        setStatus("호스트 세션으로 인수 중…")
-        lifecycleScope.launch {
-            try {
-                val s = a.adopt(pid)
-                adoptButton.visibility = View.GONE
-                switchTo(s)
-            } catch (e: IOException) {
-                adoptButton.isEnabled = true
-                setStatus("인수 실패: ${e.message}")
-            } catch (e: org.json.JSONException) {
-                adoptButton.isEnabled = true
-                setStatus("인수 실패: 서버 응답 형식 오류")
             }
         }
     }

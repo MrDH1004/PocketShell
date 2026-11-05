@@ -25,7 +25,6 @@
     <string name="delete_running_confirm">실행 중인 셸을 종료할까요?</string>
     <string name="delete_history_confirm">이 기록을 삭제할까요?</string>
     <string name="confirm">확인</string>
-    <string name="adopt">호스트로 인수</string>
     <string name="external_badge">외부</string>
     <string name="status_connecting">연결 중…</string>
     <string name="keyboard">키보드</string>

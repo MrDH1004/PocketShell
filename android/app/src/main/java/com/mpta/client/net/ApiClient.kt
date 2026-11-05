@@ -95,8 +95,6 @@ class ApiClient(
     suspend fun resume(historyId: String): SessionInfo =
         SessionInfo.fromJson(JSONObject(request("POST", "/api/sessions/${historyId}/resume")))
 
-    suspend fun adopt(pid: Int): SessionInfo =
-        SessionInfo.fromJson(JSONObject(request("POST", "/api/external/$pid/adopt")))
 
     suspend fun delete(id: String) {
         request("DELETE", "/api/sessions/$id")
