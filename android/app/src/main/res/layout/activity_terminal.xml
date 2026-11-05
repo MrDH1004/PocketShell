@@ -52,12 +52,14 @@
             android:src="@drawable/ic_fit_screen"
             android:tint="@color/keybar_text" />
 
-        <Button
+        <ImageButton
             android:id="@+id/keyboardButton"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/keyboard" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/keyboard"
+            android:src="@drawable/ic_keyboard"
+            android:tint="@color/keybar_text" />
     </LinearLayout>
 
     <com.termux.view.TerminalView

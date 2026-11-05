@@ -141,7 +141,7 @@ class TerminalActivity : AppCompatActivity() {
         terminalView.keepScreenOn = true
 
         buildKeyBar(findViewById(R.id.keyBar))
-        findViewById<Button>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
+        findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
 
         if (sessionKind == SessionInfo.KIND_HISTORY) resumeHistory() else connection?.sessionId = sessionId
