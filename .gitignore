@@ -11,3 +11,4 @@ qa/out/
 .kotlin/
 android/.omc/
 host/.omc/
+*/**/.omc/
