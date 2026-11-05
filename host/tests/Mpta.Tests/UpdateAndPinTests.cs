@@ -62,13 +62,13 @@ public class ReleaseFeedTests
     private static string Feed() => """
         [
           {"tag_name":"v9.0.0","draft":true,"prerelease":false,"body":"draft",
-           "assets":[{"name":"mpta-host-win-x64-v9.0.0.zip","browser_download_url":"http://x/9.zip","digest":null}]},
+           "assets":[{"name":"pocketshell-host-win-x64-v9.0.0.zip","browser_download_url":"http://x/9.zip","digest":null}]},
           {"tag_name":"v0.2.0-beta","draft":false,"prerelease":true,"body":"beta notes",
-           "assets":[{"name":"mpta-host-win-x64-v0.2.0-beta.zip","browser_download_url":"http://x/b.zip","digest":"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]},
+           "assets":[{"name":"pocketshell-host-win-x64-v0.2.0-beta.zip","browser_download_url":"http://x/b.zip","digest":"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}]},
           {"tag_name":"v0.3.0","draft":false,"prerelease":false,"body":"android only",
-           "assets":[{"name":"mpta-android-v0.3.0.apk","browser_download_url":"http://x/a.apk"}]},
+           "assets":[{"name":"pocketshell-android-v0.3.0.apk","browser_download_url":"http://x/a.apk"}]},
           {"tag_name":"v0.1.1","draft":false,"prerelease":false,"body":"",
-           "assets":[{"name":"mpta-host-win-x64-v0.1.1.zip","browser_download_url":"http://x/1.zip"},
+           "assets":[{"name":"pocketshell-host-win-x64-v0.1.1.zip","browser_download_url":"http://x/1.zip"},
                      {"name":"SHA256SUMS.txt","browser_download_url":"http://x/sums"}]},
           {"tag_name":"nightly","draft":false,"prerelease":true,"assets":[]}
         ]
@@ -87,8 +87,8 @@ public class ReleaseFeedTests
         var latest = ReleaseFeed.PickLatest(ReleaseFeed.Parse(Feed()), ReleaseFeed.HostAssetName);
         Assert.NotNull(latest);
         Assert.Equal("0.2.0-beta", latest!.Version.ToString()); // 0.3.0 has no host zip, 9.0.0 is a draft
-        Assert.Equal("mpta-host-win-x64-v0.2.0-beta.zip", ReleaseFeed.HostAssetName(latest.Version));
-        Assert.Equal(Hex, ReleaseFeed.ParseDigest(latest.Asset("mpta-host-win-x64-v0.2.0-beta.zip")!.Digest));
+        Assert.Equal("pocketshell-host-win-x64-v0.2.0-beta.zip", ReleaseFeed.HostAssetName(latest.Version));
+        Assert.Equal(Hex, ReleaseFeed.ParseDigest(latest.Asset("pocketshell-host-win-x64-v0.2.0-beta.zip")!.Digest));
     }
 
     [Theory]
@@ -102,9 +102,9 @@ public class ReleaseFeedTests
     [Fact]
     public void Sha256SumsLookup()
     {
-        var sums = $"{Hex.ToUpperInvariant()}  mpta-host-win-x64-v0.1.1.zip\r\n{new string('b', 64)} *mpta-android-v0.1.1.apk\n";
-        Assert.Equal(Hex, ReleaseFeed.FindInSums(sums, "mpta-host-win-x64-v0.1.1.zip"));
-        Assert.Equal(new string('b', 64), ReleaseFeed.FindInSums(sums, "mpta-android-v0.1.1.apk"));
+        var sums = $"{Hex.ToUpperInvariant()}  pocketshell-host-win-x64-v0.1.1.zip\r\n{new string('b', 64)} *pocketshell-android-v0.1.1.apk\n";
+        Assert.Equal(Hex, ReleaseFeed.FindInSums(sums, "pocketshell-host-win-x64-v0.1.1.zip"));
+        Assert.Equal(new string('b', 64), ReleaseFeed.FindInSums(sums, "pocketshell-android-v0.1.1.apk"));
         Assert.Null(ReleaseFeed.FindInSums(sums, "other.zip"));
     }
 }
@@ -125,20 +125,20 @@ public class InstallTransactionTests
         var staging = TempDir();
         try
         {
-            File.WriteAllText(Path.Combine(install, "mpta.exe"), "old-exe");
+            File.WriteAllText(Path.Combine(install, "psh.exe"), "old-exe");
             File.WriteAllText(Path.Combine(install, "keep.txt"), "untouched");
-            File.WriteAllText(Path.Combine(staging, "mpta.exe"), "new-exe");
+            File.WriteAllText(Path.Combine(staging, "psh.exe"), "new-exe");
             Directory.CreateDirectory(Path.Combine(staging, "sub"));
             File.WriteAllText(Path.Combine(staging, "sub", "new.dll"), "new-dll");
 
             var tx = InstallTransaction.Apply(staging, install);
-            Assert.Equal("new-exe", File.ReadAllText(Path.Combine(install, "mpta.exe")));
-            Assert.Equal("old-exe", File.ReadAllText(Path.Combine(install, "mpta.exe.old")));
+            Assert.Equal("new-exe", File.ReadAllText(Path.Combine(install, "psh.exe")));
+            Assert.Equal("old-exe", File.ReadAllText(Path.Combine(install, "psh.exe.old")));
             Assert.Equal("new-dll", File.ReadAllText(Path.Combine(install, "sub", "new.dll")));
 
             Assert.Empty(tx.Rollback());
-            Assert.Equal("old-exe", File.ReadAllText(Path.Combine(install, "mpta.exe")));
-            Assert.False(File.Exists(Path.Combine(install, "mpta.exe.old")));
+            Assert.Equal("old-exe", File.ReadAllText(Path.Combine(install, "psh.exe")));
+            Assert.False(File.Exists(Path.Combine(install, "psh.exe.old")));
             Assert.False(File.Exists(Path.Combine(install, "sub", "new.dll")));
             Assert.Equal("untouched", File.ReadAllText(Path.Combine(install, "keep.txt")));
         }
@@ -237,7 +237,7 @@ public class UpdateStagingTests
             _l.Start();
             int port = ((IPEndPoint)_l.LocalEndpoint).Port;
             var digest = "sha256:" + Convert.ToHexString(SHA256.HashData(zip)).ToLowerInvariant();
-            _feed = $$"""[{"tag_name":"v{{version}}","assets":[{"name":"mpta-host-win-x64-v{{version}}.zip","browser_download_url":"http://127.0.0.1:{{port}}/dl/zip","digest":"{{digest}}"}]}]""";
+            _feed = $$"""[{"tag_name":"v{{version}}","assets":[{"name":"pocketshell-host-win-x64-v{{version}}.zip","browser_download_url":"http://127.0.0.1:{{port}}/dl/zip","digest":"{{digest}}"}]}]""";
             Url = $"http://127.0.0.1:{port}/feed";
             _ = Task.Run(Loop);
         }
@@ -274,7 +274,7 @@ public class UpdateStagingTests
         using var ms = new MemoryStream();
         using (var z = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var name in new[] { "mpta-host/mpta.exe", "mpta-host/mpta.dll" })
+            foreach (var name in new[] { "pocketshell-host/psh.exe", "pocketshell-host/psh.dll" })
             {
                 using var w = new StreamWriter(z.CreateEntry(name).Open());
                 w.Write("content of " + name);
@@ -300,7 +300,7 @@ public class UpdateStagingTests
             using (var s1 = await Check(home, feed.Url))
             {
                 Assert.Equal(UpdateStates.Ready, s1.Status.State);
-                Assert.True(File.Exists(Path.Combine(s1.StagingDir!, "mpta.exe")));
+                Assert.True(File.Exists(Path.Combine(s1.StagingDir!, "psh.exe")));
             }
             Assert.Equal(1, feed.ZipHits);
 
@@ -308,12 +308,12 @@ public class UpdateStagingTests
             using (var s2 = await Check(home, feed.Url))
             {
                 Assert.Equal(UpdateStates.Ready, s2.Status.State);
-                Assert.Equal("content of mpta-host/mpta.exe", File.ReadAllText(Path.Combine(s2.StagingDir!, "mpta.exe")));
+                Assert.Equal("content of pocketshell-host/psh.exe", File.ReadAllText(Path.Combine(s2.StagingDir!, "psh.exe")));
             }
             Assert.Equal(1, feed.ZipHits);
 
             // Cached zip tampered: re-verification fails, so it is downloaded and verified again.
-            var zip = Path.Combine(home, "updates", "1.1.0", "mpta-host-win-x64-v1.1.0.zip");
+            var zip = Path.Combine(home, "updates", "1.1.0", "pocketshell-host-win-x64-v1.1.0.zip");
             File.AppendAllText(zip, "x");
             using (var s3 = await Check(home, feed.Url))
                 Assert.Equal(UpdateStates.Ready, s3.Status.State);

@@ -19,6 +19,29 @@ public final class ImeTextDecoder {
     private ImeTextDecoder() {
     }
 
+    /**
+     * mpta: edit that turns the composing text already shown on the remote terminal ({@code sent}) into
+     * {@code target}: delete {@link #backspaces} code points, then type {@link #append}. Composition is mirrored
+     * live (e.g. ㅁ → 모 → 몸) instead of appearing only when the IME commits.
+     */
+    public static int backspaces(String sent, String target) {
+        int p = commonPrefix(sent, target);
+        return sent.codePointCount(p, sent.length());
+    }
+
+    public static String append(String sent, String target) {
+        return target.substring(commonPrefix(sent, target));
+    }
+
+    private static int commonPrefix(String a, String b) {
+        int n = Math.min(a.length(), b.length());
+        int i = 0;
+        while (i < n && a.charAt(i) == b.charAt(i)) i++;
+        // Never split a surrogate pair.
+        if (i > 0 && Character.isHighSurrogate(a.charAt(i - 1))) i--;
+        return i;
+    }
+
     public static void decode(CharSequence text, boolean shiftHeld, Sink sink) {
         final int textLengthInChars = text.length();
         for (int i = 0; i < textLengthInChars; i++) {

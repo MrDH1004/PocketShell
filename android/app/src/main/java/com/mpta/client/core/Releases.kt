@@ -23,11 +23,11 @@ data class ReleaseCandidate(
 object Releases {
     const val SUMS_ASSET = "SHA256SUMS.txt"
 
-    fun androidAssetName(version: SemVer): String = "mpta-android-v$version.apk"
+    fun androidAssetName(version: SemVer): String = "pocketshell-android-v$version.apk"
 
     /**
      * Parses the `GET /repos/{owner}/{repo}/releases` array and returns the highest-SemVer non-draft release
-     * that carries the Android asset `mpta-android-v<ver>.apk`. Releases with a non-SemVer tag are skipped.
+     * that carries the Android asset `pocketshell-android-v<ver>.apk`. Releases with a non-SemVer tag are skipped.
      * Throws [IllegalArgumentException] if the body is not a JSON array.
      */
     fun pickLatestAndroid(json: String): ReleaseCandidate? {

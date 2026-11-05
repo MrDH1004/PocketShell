@@ -3,6 +3,34 @@ using Mpta.Core.Native;
 
 namespace Mpta.Core.External;
 
+/// <summary>console-reader → server payload: 2-byte LE cols + 2-byte LE rows of the console window, then the VT frame.</summary>
+public static class ReaderFrame
+{
+    public const int HeaderSize = 4;
+
+    public static byte[] Encode(int cols, int rows, byte[] vt)
+    {
+        var payload = new byte[HeaderSize + vt.Length];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(0, 2), (ushort)cols);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(2, 2), (ushort)rows);
+        vt.CopyTo(payload, HeaderSize);
+        return payload;
+    }
+
+    /// <summary>Splits a payload; false if it is shorter than the header or the size is zero.</summary>
+    public static bool TryDecode(byte[] payload, out int cols, out int rows, out byte[] vt)
+    {
+        cols = rows = 0;
+        vt = Array.Empty<byte>();
+        if (payload.Length < HeaderSize) return false;
+        cols = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, 2));
+        rows = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(2, 2));
+        if (cols == 0 || rows == 0) return false;
+        vt = payload.AsSpan(HeaderSize).ToArray();
+        return true;
+    }
+}
+
 /// <summary>Converts console cell attributes to 16-color SGR and builds full-screen VT frames (DESIGN §5/§6).</summary>
 public static class VtFrame
 {

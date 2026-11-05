@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>PocketShell</AssemblyName>
+    <RootNamespace>PocketShell.Tray</RootNamespace>
+    <ApplicationIcon>..\..\..\assets\pocketshell.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Product>PocketShell</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\assets\tray-running.ico" LogicalName="tray-running.ico" />
+    <EmbeddedResource Include="..\..\..\assets\tray-stopped.ico" LogicalName="tray-stopped.ico" />
+    <EmbeddedResource Include="..\..\..\assets\pocketshell.ico" LogicalName="app.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Mpta.Core\Mpta.Core.csproj" />
+  </ItemGroup>
+</Project>

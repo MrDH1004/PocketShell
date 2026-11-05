@@ -316,13 +316,19 @@ private class SessionAdapter(
                 val v = holder.itemView
                 v.findViewById<TextView>(R.id.title).text = s.title.ifBlank { s.shell.ifBlank { s.id } }
                 v.findViewById<View>(R.id.badge).visibility = if (s.isExternal) View.VISIBLE else View.GONE
+                // External consoles: only what tells them apart (AI CLI + folder); their "last activity" is always now.
                 val detail = buildList {
-                    if (s.shell.isNotBlank()) add(s.shell)
-                    if (s.isExternal && s.pid != null) add("PID ${s.pid}")
+                    when (s.agent) {
+                        "claude" -> add("Claude")
+                        "gpt" -> add("GPT")
+                    }
+                    if (!s.isExternal && s.shell.isNotBlank()) add(s.shell)
                     if (s.cwd.isNotBlank()) add(s.cwd)
                 }.joinToString(" · ")
                 v.findViewById<TextView>(R.id.detail).text = detail
-                v.findViewById<TextView>(R.id.time).text = formatTime(s.lastActivity)
+                val time = v.findViewById<TextView>(R.id.time)
+                time.text = if (s.isExternal) "" else formatTime(s.lastActivity)
+                time.visibility = if (s.isExternal) View.GONE else View.VISIBLE
                 v.setOnClickListener { onClick(s) }
                 v.setOnLongClickListener { onLongClick(s); true }
             }

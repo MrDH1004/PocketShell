@@ -135,6 +135,19 @@ class RemoteTerminalTest {
     }
 
     @Test
+    fun composingTextIsMirroredWithBackspaces() {
+        // Hangul composition ㅁ → 모 → 몸 → 모 (jamo removed) → 목
+        val steps = listOf("" to "ㅁ", "ㅁ" to "모", "모" to "몸", "몸" to "모", "모" to "목")
+        val edits = steps.map { (a, b) -> ImeTextDecoder.backspaces(a, b) to ImeTextDecoder.append(a, b) }
+        assertEquals(listOf(0 to "ㅁ", 1 to "모", 1 to "몸", 1 to "모", 1 to "목"), edits)
+        // Word-level composition (Samsung predictive): only the changed tail is retyped.
+        assertEquals(0 to "lo", ImeTextDecoder.backspaces("hel", "hello") to ImeTextDecoder.append("hel", "hello"))
+        assertEquals(2 to "p", ImeTextDecoder.backspaces("hello", "help") to ImeTextDecoder.append("hello", "help"))
+        // A surrogate pair counts as one deletion and is never split.
+        assertEquals(1 to "", ImeTextDecoder.backspaces("a😀", "a") to ImeTextDecoder.append("a😀", "a"))
+    }
+
+    @Test
     fun writeCodePointWithAltPrefixesEscape() {
         val (s, t) = newSession()
         s.writeCodePoint(true, 'b'.code)

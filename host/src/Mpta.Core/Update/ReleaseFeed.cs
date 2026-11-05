@@ -13,11 +13,11 @@ public sealed record ReleaseInfo(SemVer Version, string Tag, bool Prerelease, st
 /// <summary>GitHub Releases feed parsing and selection (DESIGN §11.2).</summary>
 public static class ReleaseFeed
 {
-    public const string DefaultUrl = "https://api.github.com/repos/MrDH1004/MyPCToAndroid/releases?per_page=10";
-    public const string UserAgent = "mpta-updater";
+    public const string DefaultUrl = "https://api.github.com/repos/MrDH1004/PocketShell/releases?per_page=10";
+    public const string UserAgent = "pocketshell-updater";
     public const string SumsAssetName = "SHA256SUMS.txt";
 
-    public static string HostAssetName(SemVer v) => $"mpta-host-win-x64-v{v}.zip";
+    public static string HostAssetName(SemVer v) => $"pocketshell-host-win-x64-v{v}.zip";
 
     /// <summary>Parses the releases array. Drafts and tags that are not SemVer are dropped.</summary>
     public static List<ReleaseInfo> Parse(string json)

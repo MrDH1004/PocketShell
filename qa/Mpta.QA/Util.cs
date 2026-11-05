@@ -228,7 +228,7 @@ internal static class Util
     {
         var killed = new List<int>();
         if (sessionIds.Count == 0) return killed;
-        foreach (var (pid, cmd) in await ProcessesByName("mpta.exe"))
+        foreach (var (pid, cmd) in await ProcessesByName("psh.exe"))
         {
             if (!cmd.Contains("attach", StringComparison.OrdinalIgnoreCase)) continue;
             if (!sessionIds.Any(id => cmd.Contains(id, StringComparison.OrdinalIgnoreCase))) continue;

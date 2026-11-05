@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deep navy gradient with a soft top-left glow (scripts/make_icons.py). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0 H108 V108 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="0" android:startY="0" android:endX="0" android:endY="108"
+                android:startColor="#1E2948" android:endColor="#090D1A"/>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0 H108 V108 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial"
+                android:centerX="30" android:centerY="18" android:gradientRadius="60"
+                android:startColor="#2678A0E6" android:endColor="#0078A0E6"/>
+        </aapt:attr>
+    </path>
+</vector>

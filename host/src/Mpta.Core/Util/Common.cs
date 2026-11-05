@@ -5,6 +5,20 @@ using System.Text.Json.Serialization;
 
 namespace Mpta.Core.Util;
 
+/// <summary>Product names (the exe names are also part of the update asset contract).</summary>
+public static class Brand
+{
+    public const string Name = "PocketShell";
+    /// <summary>Server + CLI (`psh serve`, `psh attach` ...).</summary>
+    public const string CliExe = "psh.exe";
+    /// <summary>Tray app the user starts; it starts/stops `psh serve`.</summary>
+    public const string TrayExe = "PocketShell.exe";
+
+    /// <summary>Named objects shared by `psh serve` and the tray (per port, so QA hosts on other ports are separate).</summary>
+    public static string ServeMutexName(int port) => $@"Local\PocketShell.Serve.{port}";
+    public static string StopEventName(int port) => $@"Local\PocketShell.Stop.{port}";
+}
+
 public static class MptaPaths
 {
     public static string Home
@@ -13,7 +27,7 @@ public static class MptaPaths
         {
             var env = Environment.GetEnvironmentVariable("MPTA_HOME");
             if (!string.IsNullOrWhiteSpace(env)) return Path.GetFullPath(env);
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "mpta");
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), Brand.Name);
         }
     }
 

@@ -22,24 +22,24 @@ class ReleasesTest {
     @Test
     fun picksHighestSemverNotListOrderAndSkipsDrafts() {
         val json = "[" + listOf(
-            release("v0.1.0-alpha", asset("mpta-android-v0.1.0-alpha.apk", "sha256:$hexA")),
-            release("v0.2.0", asset("mpta-android-v0.2.0.apk", "sha256:$hexA"), draft = true),
-            release("v0.1.1-alpha", asset("mpta-android-v0.1.1-alpha.apk", "sha256:${hexB.uppercase()}")),
-            release("v0.1.1-alpha.0", asset("mpta-android-v0.1.1-alpha.0.apk", "sha256:$hexA")),
-            release("nightly", asset("mpta-android-vnightly.apk")),
+            release("v0.1.0-alpha", asset("pocketshell-android-v0.1.0-alpha.apk", "sha256:$hexA")),
+            release("v0.2.0", asset("pocketshell-android-v0.2.0.apk", "sha256:$hexA"), draft = true),
+            release("v0.1.1-alpha", asset("pocketshell-android-v0.1.1-alpha.apk", "sha256:${hexB.uppercase()}")),
+            release("v0.1.1-alpha.0", asset("pocketshell-android-v0.1.1-alpha.0.apk", "sha256:$hexA")),
+            release("nightly", asset("pocketshell-android-vnightly.apk")),
         ).joinToString(",") + "]"
         val c = Releases.pickLatestAndroid(json)!!
         assertEquals(SemVer.parse("0.1.1-alpha.0"), c.version)
-        assertEquals("mpta-android-v0.1.1-alpha.0.apk", c.apkName)
-        assertEquals("https://example.test/mpta-android-v0.1.1-alpha.0.apk", c.apkUrl)
+        assertEquals("pocketshell-android-v0.1.1-alpha.0.apk", c.apkName)
+        assertEquals("https://example.test/pocketshell-android-v0.1.1-alpha.0.apk", c.apkUrl)
         assertEquals(hexA, c.apkSha256)
         assertEquals("notes v0.1.1-alpha.0", c.notes)
     }
 
     @Test
     fun skipsReleaseWithoutAndroidAsset() {
-        val json = "[" + release("v0.3.0", asset("mpta-host-win-x64-v0.3.0.zip", "sha256:$hexA")) + "," +
-            release("v0.2.0", asset("mpta-android-v0.2.0.apk", "sha256:$hexB")) + "]"
+        val json = "[" + release("v0.3.0", asset("pocketshell-host-win-x64-v0.3.0.zip", "sha256:$hexA")) + "," +
+            release("v0.2.0", asset("pocketshell-android-v0.2.0.apk", "sha256:$hexB")) + "]"
         assertEquals(SemVer.parse("0.2.0"), Releases.pickLatestAndroid(json)!!.version)
     }
 
@@ -47,17 +47,17 @@ class ReleasesTest {
     fun digestNormalizedAndSumsFallback() {
         val json = "[" + release(
             "v0.1.1-alpha",
-            asset("mpta-android-v0.1.1-alpha.apk"),
+            asset("pocketshell-android-v0.1.1-alpha.apk"),
             asset("SHA256SUMS.txt"),
         ) + "]"
         val c = Releases.pickLatestAndroid(json)!!
         assertNull(c.apkSha256)
         assertEquals("https://example.test/SHA256SUMS.txt", c.sumsUrl)
 
-        val sums = "$hexA  mpta-host-win-x64-v0.1.1-alpha.zip\n${hexB.uppercase()} *mpta-android-v0.1.1-alpha.apk\n"
+        val sums = "$hexA  pocketshell-host-win-x64-v0.1.1-alpha.zip\n${hexB.uppercase()} *pocketshell-android-v0.1.1-alpha.apk\n"
         assertEquals(hexB, Releases.parseSha256Sums(sums, c.apkName))
         assertNull(Releases.parseSha256Sums(sums, "other.apk"))
-        assertNull(Releases.parseSha256Sums("zz  mpta-android-v0.1.1-alpha.apk", c.apkName))
+        assertNull(Releases.parseSha256Sums("zz  pocketshell-android-v0.1.1-alpha.apk", c.apkName))
     }
 
     @Test
@@ -71,7 +71,7 @@ class ReleasesTest {
 
     @Test
     fun newerThanUsesSemverPrecedence() {
-        val json = "[" + release("v0.1.1-alpha", asset("mpta-android-v0.1.1-alpha.apk", "sha256:$hexA")) + "]"
+        val json = "[" + release("v0.1.1-alpha", asset("pocketshell-android-v0.1.1-alpha.apk", "sha256:$hexA")) + "]"
         val c = Releases.pickLatestAndroid(json)
         assertNotNull(Releases.newerThan("0.1.0-alpha", c))
         assertNotNull(Releases.newerThan("0.1.0", c))

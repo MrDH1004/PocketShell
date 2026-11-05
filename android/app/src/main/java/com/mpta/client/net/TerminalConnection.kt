@@ -16,14 +16,14 @@ import okio.ByteString.Companion.toByteString
 /**
  * WebSocket stream for one session (DESIGN.md §5) with automatic reconnect (AC-18).
  *
- * - Hosts are tried in pairing order; the next host is tried immediately when a host cannot be reached.
+ * - Hosts are tried in [HostSelector] order; the next host is tried immediately when a host cannot be reached.
  * - When all hosts fail or an open connection drops, it reconnects after 1, 2, 4, 8, 10, 10... seconds.
  * - [connectNow] (onResume / network change) skips the wait.
  * All [Listener] callbacks run on the main thread, in the order OkHttp delivered them.
  */
 class TerminalConnection(
     private val http: OkHttpClient,
-    private val hosts: List<String>,
+    private val selector: HostSelector,
     private val port: Int,
     private val token: String,
     private val listener: Listener,
@@ -50,6 +50,8 @@ class TerminalConnection(
     private var generation = 0
     private var started = false
     private val reconnectRunnable = Runnable { startAttempt() }
+    /** Host order for the current attempt, recomputed from the network at each attempt. */
+    private var hosts: List<String> = emptyList()
 
     var sessionId: String = ""
 
@@ -113,6 +115,7 @@ class TerminalConnection(
     private fun startAttempt() {
         if (!started || state == State.FATAL) return
         state = State.CONNECTING
+        hosts = selector.ordered()
         tryHost(0)
     }
 
@@ -129,6 +132,7 @@ class TerminalConnection(
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 opened = true
+                selector.reportSuccess(host)
                 post {
                     state = State.OPEN
                     backoff.reset()

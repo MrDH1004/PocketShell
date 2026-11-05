@@ -78,7 +78,7 @@ public sealed class UpdateService : IDisposable
         get { lock (_gate) return new UpdateStatus { Current = _status.Current, Latest = _status.Latest, State = _status.State, Error = _status.Error }; }
     }
 
-    /// <summary>Staged app directory (contains mpta.exe) when State is ready/applying.</summary>
+    /// <summary>Staged app directory (contains psh.exe) when State is ready/applying.</summary>
     public string? StagingDir { get { lock (_gate) return _stagingDir; } }
 
     /// <summary>True when the last check found a release newer than the running version.</summary>
@@ -280,7 +280,7 @@ public sealed class UpdateService : IDisposable
             if (exeDir == null)
             {
                 TryDeleteDir(dir);
-                MarkError($"refusing update {rel.Tag}: {assetName} does not contain mpta.exe");
+                MarkError($"refusing update {rel.Tag}: {assetName} does not contain {Brand.CliExe}");
                 return null;
             }
             File.WriteAllText(readyFile, expected);
@@ -309,9 +309,9 @@ public sealed class UpdateService : IDisposable
 
     private static string? FindExeDir(string appDir)
     {
-        if (File.Exists(Path.Combine(appDir, "mpta.exe"))) return appDir;
+        if (File.Exists(Path.Combine(appDir, Brand.CliExe))) return appDir;
         var subs = Directory.GetDirectories(appDir);
-        return subs.Length == 1 && File.Exists(Path.Combine(subs[0], "mpta.exe")) ? subs[0] : null;
+        return subs.Length == 1 && File.Exists(Path.Combine(subs[0], Brand.CliExe)) ? subs[0] : null;
     }
 
     /// <summary>Removes staging folders for versions that are not newer than the running one (applied or obsolete).</summary>

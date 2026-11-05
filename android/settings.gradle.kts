@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "mpta-android"
+rootProject.name = "pocketshell-android"
 include(":app", ":terminal-emulator", ":terminal-view")

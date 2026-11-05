@@ -12,21 +12,21 @@ namespace Mpta;
 public static class Program
 {
     private const string Usage = """
-        mpta — PC terminal host for Android mirroring
+        psh — PC terminal host for Android mirroring
 
         usage:
-          mpta serve [--port N] [--bind ip]... [--discovery-port N]   (N=0 disables LAN discovery)
-          mpta list
-          mpta new [--shell pwsh|powershell|cmd|bash|wsl|<exe>] [--cwd D] [--title T] [--attach|--no-attach]
-          mpta attach <id>
-          mpta pair [--pin]
-          mpta devices
-          mpta revoke <deviceId>
-          mpta update [--check] [--force]
-          mpta console-info <pid>...      (internal helper)
-          mpta console-reader <pid>       (internal helper)
+          psh serve [--port N] [--bind ip]... [--discovery-port N]   (N=0 disables LAN discovery)
+          psh list
+          psh new [--shell pwsh|powershell|cmd|bash|wsl|<exe>] [--cwd D] [--title T] [--attach|--no-attach]
+          psh attach <id>
+          psh pair [--pin]
+          psh devices
+          psh revoke <deviceId>
+          psh update [--check] [--force]
+          psh console-info <pid>...      (internal helper)
+          psh console-reader <pid>       (internal helper)
 
-        client verbs accept: --port N (default: $MPTA_PORT or config.json port) and --home DIR (default: $MPTA_HOME or %APPDATA%\mpta)
+        client verbs accept: --port N (default: $MPTA_PORT or config.json port) and --home DIR (default: $MPTA_HOME or %APPDATA%\PocketShell)
         """;
 
     public static async Task<int> Main(string[] args)
@@ -45,7 +45,7 @@ public static class Program
                 case "console-info":
                     return ConsoleHelpers.RunConsoleInfo(rest.Select(int.Parse));
                 case "console-reader":
-                    if (rest.Count != 1 || !int.TryParse(rest[0], out var rpid)) { Console.Error.WriteLine("usage: mpta console-reader <pid>"); return 2; }
+                    if (rest.Count != 1 || !int.TryParse(rest[0], out var rpid)) { Console.Error.WriteLine("usage: psh console-reader <pid>"); return 2; }
                     return ConsoleHelpers.RunConsoleReader(rpid);
                 case "serve":
                     return await Serve(rest);
@@ -60,13 +60,13 @@ public static class Program
                 case "list": return await ListCmd(api);
                 case "new": return await NewCmd(api, opts);
                 case "attach":
-                    if (opts.Positional.Count != 1) throw new CliException("usage: mpta attach <id>");
+                    if (opts.Positional.Count != 1) throw new CliException("usage: psh attach <id>");
                     return await AttachCommand.RunAsync(api, opts.Positional[0]);
                 case "pair": return opts.Pin ? await PairPinCmd(api) : await PairCmd(api);
                 case "update": return await UpdateCmd(api, opts);
                 case "devices": return await DevicesCmd(api);
                 case "revoke":
-                    if (opts.Positional.Count != 1) throw new CliException("usage: mpta revoke <deviceId>");
+                    if (opts.Positional.Count != 1) throw new CliException("usage: psh revoke <deviceId>");
                     await api.SendAsync(HttpMethod.Delete, $"api/devices/{Uri.EscapeDataString(opts.Positional[0])}");
                     Console.WriteLine($"revoked {opts.Positional[0]}");
                     return 0;
@@ -78,12 +78,12 @@ public static class Program
         }
         catch (CliException ex)
         {
-            Console.Error.WriteLine("mpta: " + ex.Message);
+            Console.Error.WriteLine("psh: " + ex.Message);
             return 1;
         }
         catch (FormatException ex)
         {
-            Console.Error.WriteLine("mpta: " + ex.Message);
+            Console.Error.WriteLine("psh: " + ex.Message);
             return 2;
         }
     }
@@ -141,7 +141,7 @@ public static class Program
         int port = opts.Port ?? cfg.Port;
         List<System.Net.IPAddress> binds;
         try { binds = HostAddresses.ResolveBindAddresses(opts.Binds); }
-        catch (ArgumentException ex) { Console.Error.WriteLine("mpta: " + ex.Message); return 2; }
+        catch (ArgumentException ex) { Console.Error.WriteLine("psh: " + ex.Message); return 2; }
         int discoveryPort = opts.DiscoveryPort ?? cfg.DiscoveryPort;
         return await new HostServer(home, port, binds, args, discoveryPort).RunAsync();
     }
@@ -245,10 +245,10 @@ public static class Program
         var r = await api.SendRawAsync(HttpMethod.Post, "api/update/apply", new { force = o.Force });
         if (r.Status == 409)
         {
-            Console.Error.WriteLine($"mpta: {Str(r.Body, "error")} (use --force to terminate them)");
+            Console.Error.WriteLine($"psh: {Str(r.Body, "error")} (use --force to terminate them)");
             return 1;
         }
-        if (r.Status != 200) { Console.Error.WriteLine($"mpta: apply failed: HTTP {r.Status} {r.Text}"); return 1; }
+        if (r.Status != 200) { Console.Error.WriteLine($"psh: apply failed: HTTP {r.Status} {r.Text}"); return 1; }
         Console.WriteLine($"applying update to {latest}; the host restarts on the same port when ready...");
         // Follow the handoff: the host is briefly unreachable while the new process takes over the port.
         var deadline = DateTime.UtcNow.AddSeconds(90);
@@ -263,13 +263,13 @@ public static class Program
                 var u = info.Body.TryGetProperty("update", out var ue) ? ue : default;
                 if (u.ValueKind == JsonValueKind.Object && Str(u, "state") == "error")
                 {
-                    Console.Error.WriteLine($"mpta: update failed: {Str(u, "error")}");
+                    Console.Error.WriteLine($"psh: update failed: {Str(u, "error")}");
                     return 1;
                 }
             }
             catch (Exception ex) when (ex is CliException or TaskCanceledException) { /* port in handoff */ }
         }
-        Console.Error.WriteLine("mpta: timed out waiting for the updated host; check `mpta update --check` and logs/host.log");
+        Console.Error.WriteLine("psh: timed out waiting for the updated host; check `psh update --check` and logs/host.log");
         return 1;
     }
 

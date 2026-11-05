@@ -190,7 +190,7 @@ class PairingActivity : AppCompatActivity() {
                 val api = ApiClient(payload.hosts, payload.port, null, PinnedHttp.client(payload.fingerprint))
                 val (deviceId, token) = api.claim(payload.code, name)
                 val app = application as MptaApp
-                // Keep the payload order (LAN first, then Tailscale) for all later connections.
+                // All advertised hosts are kept; HostSelector picks the order per network at connect time.
                 app.store.save(Pairing(payload.name, payload.hosts, payload.port, payload.fingerprint, deviceId, token))
                 cameraProvider?.unbindAll()
                 startActivity(Intent(this@PairingActivity, SessionListActivity::class.java)

@@ -18,6 +18,8 @@ data class SessionInfo(
     val rows: Int,
     val pid: Int?,
     val resumedFrom: String?,
+    /** External only: AI CLI running in the console ("claude" | "gpt"). */
+    val agent: String? = null,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
     val isHistory: Boolean get() = kind == KIND_HISTORY || (kind == KIND_HOST && state == STATE_EXITED)
@@ -43,6 +45,7 @@ data class SessionInfo(
             rows = o.optInt("rows", 0),
             pid = if (o.has("pid") && !o.isNull("pid")) o.optInt("pid") else null,
             resumedFrom = if (o.has("resumedFrom") && !o.isNull("resumedFrom")) o.optString("resumedFrom") else null,
+            agent = if (o.has("agent") && !o.isNull("agent")) o.optString("agent") else null,
         )
 
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */

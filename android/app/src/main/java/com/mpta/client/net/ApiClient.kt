@@ -1,5 +1,6 @@
 package com.mpta.client.net
 
+import android.util.Log
 import com.mpta.client.core.ClaimResult
 import com.mpta.client.core.ClientProtocol
 import com.mpta.client.core.FingerprintHostnameVerifier
@@ -38,19 +39,23 @@ object PinnedHttp {
 }
 
 /**
- * REST client for the host (DESIGN.md §4). Each request tries the hosts in order (LAN first, then
- * Tailscale) and moves to the next host only on a connection-level failure.
+ * REST client for the host (DESIGN.md §4). Each request tries the hosts in [HostSelector] order (Tailscale first
+ * when it is on, then same LAN) and moves to the next host only on a connection-level failure.
  */
 class ApiClient(
-    private val hosts: List<String>,
+    val hosts: HostSelector,
     private val port: Int,
     private val token: String?,
     val http: OkHttpClient,
 ) {
+    constructor(hosts: List<String>, port: Int, token: String?, http: OkHttpClient) :
+        this(HostSelector.fixed(hosts), port, token, http)
+
     suspend fun request(method: String, path: String, body: JSONObject? = null, auth: Boolean = true): String =
         withContext(Dispatchers.IO) {
+            val failures = ArrayList<String>()
             var lastError: IOException? = null
-            for (host in hosts) {
+            for (host in hosts.ordered()) {
                 val builder = Request.Builder().url(ClientProtocol.baseUrl(host, port) + path)
                 if (auth && token != null) builder.header("Authorization", "Bearer $token")
                 val reqBody = when {
@@ -61,6 +66,7 @@ class ApiClient(
                 builder.method(method, reqBody)
                 try {
                     http.newCall(builder.build()).execute().use { resp ->
+                        hosts.reportSuccess(host)
                         val text = resp.body?.string().orEmpty()
                         if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
                         return@withContext text
@@ -69,9 +75,12 @@ class ApiClient(
                     throw e
                 } catch (e: IOException) {
                     lastError = e
+                    failures.add("$host: ${e.message ?: e.javaClass.simpleName}")
+                    Log.w(TAG, "$method $path via $host failed", e)
                 }
             }
-            throw lastError ?: IOException("접속할 호스트가 없습니다")
+            if (failures.size <= 1) throw lastError ?: IOException("접속할 호스트가 없습니다")
+            throw IOException(failures.joinToString("\n"), lastError)
         }
 
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
@@ -130,6 +139,7 @@ class ApiClient(
     }
 
     private companion object {
+        const val TAG = "ApiClient"
         val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

@@ -234,6 +234,41 @@ public class VtFrameTests
         Assert.Contains("\x1b[2;1H\x1b[0;92;40mok\x1b[0m\x1b[K", s);
         Assert.EndsWith("\x1b[2;2H\x1b[?25h", s);
     }
+
+    [Fact]
+    public void ExternalFilterKeepsPersonOpenedAndAgentShells()
+    {
+        // Mirrors a real snapshot: WT tab running claude, Explorer-launched cmd, plain WT tab, and background shells.
+        var procs = new List<ProcEntry>
+        {
+            new(100, 4, "explorer.exe"),
+            new(200, 100, "WindowsTerminal.exe"),
+            new(9804, 200, "cmd.exe"), new(9805, 9804, "claude.exe"),
+            new(35456, 100, "cmd.exe"),
+            new(300, 200, "pwsh.exe"),
+            new(59356, 9805, "powershell.exe"),            // claude's tool shell
+            new(500, 1, "node.exe"), new(59776, 500, "cmd.exe"), // MCP server
+            new(46560, 600, "cmd.exe"),                     // parent gone (native host)
+            new(700, 1, "Mpta.QA.exe"), new(800, 700, "cmd.exe"), new(801, 800, "node.exe"), new(802, 801, "codex.exe"),
+        };
+        var got = ExternalConsoles.FindCandidates(procs, selfPid: 99999).ToDictionary(c => c.Proc.Pid, c => c.Agent);
+        Assert.Equal(new[] { 300, 800, 9804, 35456 }, got.Keys.Order().ToArray());
+        Assert.Equal("claude", got[9804]);
+        Assert.Equal("gpt", got[800]);
+        Assert.Null(got[35456]);
+        Assert.Equal(7, ExternalConsoles.FindCandidates(procs, selfPid: 99999, includeAll: true).Count);
+    }
+
+    [Fact]
+    public void ReaderFrameCarriesConsoleSize()
+    {
+        var vt = Encoding.UTF8.GetBytes("\x1b[Hok");
+        Assert.True(ReaderFrame.TryDecode(ReaderFrame.Encode(120, 30, vt), out int c, out int r, out var body));
+        Assert.Equal((120, 30), (c, r));
+        Assert.Equal(vt, body);
+        Assert.False(ReaderFrame.TryDecode(new byte[3], out _, out _, out _));
+        Assert.False(ReaderFrame.TryDecode(ReaderFrame.Encode(0, 30, vt), out _, out _, out _));
+    }
 }
 
 public class VtInputTranslatorTests

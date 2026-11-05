@@ -1,12 +1,12 @@
-﻿<#
+<#
 .SYNOPSIS
-  Builds and publishes an mpta release (docs/DESIGN.md section 11.5).
+  Builds and publishes a PocketShell release (docs/DESIGN.md section 11.5).
 
 .DESCRIPTION
   1. version.properties: versionName=<Version>, versionCode=<previous + 1>
-  2. host: dotnet publish (win-x64, framework-dependent) -> mpta-host-win-x64-v<Version>.zip
+  2. host: dotnet publish psh (server/CLI) + PocketShell (tray) into one folder (win-x64, framework-dependent)
   3. Android: gradlew assembleRelease (release is signed with the same key as v0.1.0, the default debug
-     keystore %USERPROFILE%\.android\debug.keystore) -> mpta-android-v<Version>.apk; signer certificate is
+     keystore %USERPROFILE%\.android\debug.keystore) -> pocketshell-android-v<Version>.apk; signer certificate is
      checked against that keystore so in-place app updates keep working
   4. SHA256SUMS.txt ("<sha256>  <name>")
   5. git commit + tag v<Version> + push, then `gh release create` (prerelease when the version has a '-')
@@ -104,17 +104,17 @@ if (-not $DryRun) {
 
 $old = Read-VersionProps
 $newCode = [int]$old['versionCode'] + 1
-if (-not $OutDir) { $OutDir = Join-Path ([System.IO.Path]::GetTempPath()) ("mpta-release-v$Version-" + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
+if (-not $OutDir) { $OutDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pocketshell-release-v$Version-" + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
 $OutDir = [System.IO.Path]::GetFullPath($OutDir)
 $Work = Join-Path $OutDir '_work'
 New-Item -ItemType Directory -Force -Path $Work | Out-Null
 $originalVersionText = [System.IO.File]::ReadAllText($VersionFile)
 
-Write-Host "mpta release v$Version (versionCode $($old['versionCode']) -> $newCode, prerelease=$IsPrerelease, dryRun=$DryRun)"
+Write-Host "PocketShell release v$Version (versionCode $($old['versionCode']) -> $newCode, prerelease=$IsPrerelease, dryRun=$DryRun)"
 Write-Host "output: $OutDir"
 
-$hostZipName = "mpta-host-win-x64-v$Version.zip"
-$apkName = "mpta-android-v$Version.apk"
+$hostZipName = "pocketshell-host-win-x64-v$Version.zip"
+$apkName = "pocketshell-android-v$Version.apk"
 $hostZip = Join-Path $OutDir $hostZipName
 $apkOut = Join-Path $OutDir $apkName
 $sumsPath = Join-Path $OutDir 'SHA256SUMS.txt'
@@ -129,9 +129,13 @@ try {
     $pub = Join-Path $Work 'host'
     Invoke-Checked 'dotnet' @('publish', (Join-Path $Root 'host\src\Mpta\Mpta.csproj'), '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'false', '-o', $pub, '--artifacts-path', (Join-Path $Work 'artifacts'), '-nologo')
-    if (-not (Test-Path (Join-Path $pub 'mpta.exe'))) { throw "publish output has no mpta.exe" }
-    $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $pub 'mpta.dll')).ProductVersion
-    if ($pv.Split('+')[0] -ne $Version) { throw "published mpta.dll reports version '$pv', expected $Version" }
+    Invoke-Checked 'dotnet' @('publish', (Join-Path $Root 'host\src\PocketShell.Tray\PocketShell.Tray.csproj'), '-c', 'Release', '-r', 'win-x64',
+        '--self-contained', 'false', '-o', $pub, '--artifacts-path', (Join-Path $Work 'artifacts'), '-nologo')
+    foreach ($exe in 'psh', 'PocketShell') {
+        if (-not (Test-Path (Join-Path $pub "$exe.exe"))) { throw "publish output has no $exe.exe" }
+        $pv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $pub "$exe.dll")).ProductVersion
+        if ($pv.Split('+')[0] -ne $Version) { throw "published $exe.dll reports version '$pv', expected $Version" }
+    }
     Get-ChildItem $pub -Filter '*.pdb' | Remove-Item -Force
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path $hostZip) { Remove-Item -Force $hostZip }
@@ -182,12 +186,12 @@ if ($DryRun) {
 Step "git commit + tag v$Version + push"
 Invoke-Checked 'git' @('-C', $Root, 'add', 'version.properties')
 Invoke-Checked 'git' @('-C', $Root, 'commit', '-m', "release v$Version")
-Invoke-Checked 'git' @('-C', $Root, 'tag', '-a', "v$Version", '-m', "mpta v$Version")
+Invoke-Checked 'git' @('-C', $Root, 'tag', '-a', "v$Version", '-m', "PocketShell v$Version")
 Invoke-Checked 'git' @('-C', $Root, 'push')
 Invoke-Checked 'git' @('-C', $Root, 'push', 'origin', "v$Version")
 
 Step "gh release create v$Version"
-$ghArgs = @('release', 'create', "v$Version", $hostZip, $apkOut, $sumsPath, '--title', "mpta v$Version", '--generate-notes')
+$ghArgs = @('release', 'create', "v$Version", $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version", '--generate-notes')
 if ($IsPrerelease) { $ghArgs += '--prerelease' }
 Invoke-Checked 'gh' $ghArgs
 Step "released v$Version (artifacts in $OutDir)"

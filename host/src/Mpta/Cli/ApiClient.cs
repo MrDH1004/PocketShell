@@ -25,7 +25,7 @@ public sealed class ApiClient : IDisposable
         var tokenPath = MptaPaths.LocalTokenFile(home);
         var fpPath = MptaPaths.CertFingerprintFile(home);
         if (!File.Exists(tokenPath) || !File.Exists(fpPath))
-            throw new CliException($"host data not found in {home} (local.token / cert.sha256). Run `mpta serve` first.");
+            throw new CliException($"host data not found in {home} (local.token / cert.sha256). Start PocketShell (tray) or run `psh serve` first.");
         Token = File.ReadAllText(tokenPath, Encoding.UTF8).Trim();
         Fingerprint = File.ReadAllText(fpPath, Encoding.UTF8).Trim().ToLowerInvariant();
         var handler = new SocketsHttpHandler();
@@ -43,7 +43,7 @@ public sealed class ApiClient : IDisposable
         if (body != null) req.Content = new StringContent(JsonSerializer.Serialize(body, Json.Options), Encoding.UTF8, "application/json");
         HttpResponseMessage resp;
         try { resp = await _http.SendAsync(req); }
-        catch (HttpRequestException ex) { throw new CliException($"cannot reach mpta host at https://127.0.0.1:{Port}: {ex.Message}"); }
+        catch (HttpRequestException ex) { throw new CliException($"cannot reach PocketShell host at https://127.0.0.1:{Port}: {ex.Message}"); }
         using (resp)
         {
             var text = await resp.Content.ReadAsStringAsync();
@@ -62,7 +62,7 @@ public sealed class ApiClient : IDisposable
         if (body != null) req.Content = new StringContent(JsonSerializer.Serialize(body, Json.Options), Encoding.UTF8, "application/json");
         HttpResponseMessage resp;
         try { resp = await _http.SendAsync(req); }
-        catch (HttpRequestException ex) { throw new CliException($"cannot reach mpta host at https://127.0.0.1:{Port}: {ex.Message}"); }
+        catch (HttpRequestException ex) { throw new CliException($"cannot reach PocketShell host at https://127.0.0.1:{Port}: {ex.Message}"); }
         using (resp)
         {
             var text = await resp.Content.ReadAsStringAsync();

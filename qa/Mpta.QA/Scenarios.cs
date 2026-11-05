@@ -635,7 +635,7 @@ internal static partial class Scenarios
             ev.Check(s != null, $"cli client (WT tab) attached within 15s ({sw.ElapsedMilliseconds}ms)");
             if (s == null)
             {
-                var procs = (await ProcessesByName("mpta.exe")).Where(p => p.Cmd.Contains(id)).ToList();
+                var procs = (await ProcessesByName("psh.exe")).Where(p => p.Cmd.Contains(id)).ToList();
                 ev.Info($"mpta attach processes for {id}: {procs.Count} {Trunc(string.Join(" ; ", procs.Select(p => p.Cmd)), 200)}");
             }
             await using var a2 = await c.Open(id, client: "android", cols: 80, rows: 24, extra: "&openPcTab=1");
@@ -814,11 +814,11 @@ internal static partial class Scenarios
         if (apk == null) return ev.Skip($"device {serial} present but no debug APK in {apkDir} (run gradlew assembleDebug)");
         var (ic, io) = await Run(adb, new[] { "-s", serial, "install", "-r", apk }, null, null, 180000);
         ev.Check(ic == 0 && io.Contains("Success"), $"install {Path.GetFileName(apk)} on {serial}: exit={ic} {Trunc(io, 120)}");
-        var (mc, mo) = await Run(adb, new[] { "-s", serial, "shell", "monkey", "-p", "com.mpta.client", "-c", "android.intent.category.LAUNCHER", "1" }, null, null, 30000);
+        var (mc, mo) = await Run(adb, new[] { "-s", serial, "shell", "monkey", "-p", "com.pocketshell.app", "-c", "android.intent.category.LAUNCHER", "1" }, null, null, 30000);
         ev.Info($"launch exit={mc} {Trunc(mo, 100)}");
         await Task.Delay(3000);
-        var (_, pid) = await Run(adb, new[] { "-s", serial, "shell", "pidof", "com.mpta.client" }, null, null, 15000);
-        ev.Check(pid.Trim().Length > 0, $"com.mpta.client process running (pid={pid.Trim()})");
+        var (_, pid) = await Run(adb, new[] { "-s", serial, "shell", "pidof", "com.pocketshell.app" }, null, null, 15000);
+        ev.Check(pid.Trim().Length > 0, $"com.pocketshell.app process running (pid={pid.Trim()})");
         return ev.Result();
     }
 

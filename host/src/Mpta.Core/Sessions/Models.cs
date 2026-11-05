@@ -24,13 +24,15 @@ public sealed class SessionDto
     public List<ClientDto> Clients { get; set; } = new();
     public int? Pid { get; set; }
     public string? ResumedFrom { get; set; }
+    /// <summary>External only: AI CLI running in the console ("claude" | "gpt"), else null.</summary>
+    public string? Agent { get; set; }
 
     public SessionDto Clone() => new()
     {
         Id = Id, Kind = Kind, Title = Title, Shell = Shell, Cwd = Cwd, State = State,
         CreatedAt = CreatedAt, LastActivity = LastActivity, Cols = Cols, Rows = Rows,
         Clients = Clients.Select(c => new ClientDto { Id = c.Id, Type = c.Type, Cols = c.Cols, Rows = c.Rows }).ToList(),
-        Pid = Pid, ResumedFrom = ResumedFrom,
+        Pid = Pid, ResumedFrom = ResumedFrom, Agent = Agent,
     };
 }
 

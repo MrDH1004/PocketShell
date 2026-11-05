@@ -44,7 +44,9 @@ internal sealed class HostRunner : IDisposable
     {
         get
         {
-            var env = new Dictionary<string, string>(ExtraEnv) { ["MPTA_HOME"] = Home };
+            // MPTA_EXTERNAL_ALL: QA's external test console is spawned by this driver (not a terminal app), which the
+            // default "opened by a person or running an AI CLI" filter would hide.
+            var env = new Dictionary<string, string>(ExtraEnv) { ["MPTA_HOME"] = Home, ["MPTA_EXTERNAL_ALL"] = "1" };
             return env;
         }
     }
@@ -69,7 +71,7 @@ internal sealed class HostRunner : IDisposable
             return (null, $"dotnet build exit {code} (see qa/out/host-build.log): {string.Join(" ; ", errs)}");
         }
         if (!Directory.Exists(binDir)) return (null, $"build succeeded but {binDir} missing");
-        var exe = Directory.GetFiles(binDir, "mpta.exe", SearchOption.AllDirectories)
+        var exe = Directory.GetFiles(binDir, "psh.exe", SearchOption.AllDirectories)
             .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
         return exe == null ? (null, $"mpta.exe not found under {binDir}") : (exe, "built OK");
     }

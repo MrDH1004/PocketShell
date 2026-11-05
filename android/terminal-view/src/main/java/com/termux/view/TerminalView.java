@@ -339,13 +339,25 @@ public final class TerminalView extends View {
 
         return new BaseInputConnection(this, true) {
 
+            /** mpta: composing text already typed on the remote terminal (mirrored live, see syncTo). */
+            private String mSentComposing = "";
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: setComposingText(\"" + text + "\")");
+                super.setComposingText(text, newCursorPosition);
+                if (mEmulator != null) syncTo(text.toString());
+                return true;
+            }
+
             @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
 
                 Editable content = getEditable();
-                if (mEmulator != null) sendTextToTerminal(content);
+                if (mEmulator != null) syncTo(content.toString());
+                mSentComposing = "";
                 content.clear();
                 return true;
             }
@@ -358,12 +370,21 @@ public final class TerminalView extends View {
                 // Replaces the composing region (if any) with the committed text.
                 super.commitText(text, newCursorPosition);
 
-                if (mEmulator == null) return true;
-
                 Editable content = getEditable();
-                sendTextToTerminal(content);
+                if (mEmulator != null) syncTo(content.toString());
+                mSentComposing = "";
                 content.clear();
                 return true;
+            }
+
+            /** Edits what the remote shows from mSentComposing to target: DEL per removed code point, then the new tail. */
+            private void syncTo(String target) {
+                int del = ImeTextDecoder.backspaces(mSentComposing, target);
+                String tail = ImeTextDecoder.append(mSentComposing, target);
+                if (del > 0 || !tail.isEmpty()) stopTextSelectionMode();
+                for (int i = 0; i < del; i++) inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 127, false, false);
+                if (!tail.isEmpty()) sendTextToTerminal(tail);
+                mSentComposing = target;
             }
 
             @Override

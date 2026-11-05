@@ -16,7 +16,7 @@ data class Pairing(
  * Stores the pairing in app-private SharedPreferences (MODE_PRIVATE, android:allowBackup="false" so it is
  * not copied off the device). EncryptedSharedPreferences (androidx.security-crypto) was not used because
  * that library is deprecated; the token only grants access to this one PC and can be revoked there
- * (`mpta revoke <id>`).
+ * (`psh revoke <id>`).
  */
 class PairingStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

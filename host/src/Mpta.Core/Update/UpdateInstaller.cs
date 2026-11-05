@@ -12,7 +12,7 @@ namespace Mpta.Core.Update;
 public sealed class InstallTransaction
 {
     public const string OldSuffix = ".old";
-    public const string ManifestName = "mpta.update-files.txt";
+    public const string ManifestName = "pocketshell.update-files.txt";
     private readonly List<(string Target, bool HadOld)> _ops = new();
 
     public IReadOnlyList<string> Targets => _ops.Select(o => o.Target).ToList();

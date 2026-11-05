@@ -4,6 +4,8 @@ import android.app.Application
 import com.mpta.client.data.Pairing
 import com.mpta.client.data.PairingStore
 import com.mpta.client.net.ApiClient
+import com.mpta.client.net.HostSelector
+import com.mpta.client.net.NetworkState
 import com.mpta.client.net.PinnedHttp
 
 class MptaApp : Application() {
@@ -25,7 +27,8 @@ class MptaApp : Application() {
         val p = store.load() ?: return null
         if (p != cachedPairing || cachedApi == null) {
             cachedPairing = p
-            cachedApi = ApiClient(p.hosts, p.port, p.token, PinnedHttp.client(p.fingerprint))
+            val selector = HostSelector(p.hosts) { NetworkState.snapshot(this) }
+            cachedApi = ApiClient(selector, p.port, p.token, PinnedHttp.client(p.fingerprint))
         }
         return cachedApi
     }

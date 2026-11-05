@@ -98,6 +98,8 @@ public sealed class HostServer
     private string _exe = "";
     private string _localToken = "";
 
+    /// <summary>Set when the tray signalled the stop event (no update handoff after that).</summary>
+    private volatile bool _stopRequested;
     // Update handoff state (see RunAsync / HandoffAsync).
     private WebApplication? _app;
     private int _applyBusy;
@@ -135,7 +137,7 @@ public sealed class HostServer
         _pins = new PinPairing();
         _claimLimiter = new ClaimRateLimiter();
         _sessions = new SessionManager(_home);
-        _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine mpta.exe path");
+        _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
         _externals = new ExternalConsoles(_exe);
         var attachArgs = new List<string> { "--port", _port.ToString() };
@@ -158,9 +160,18 @@ public sealed class HostServer
         _update = new UpdateService(_home, current, feed, cfg.AutoUpdate, interval, RunningSessions);
         _update.AutoApply = () => { TryBeginApply(force: false); return Task.CompletedTask; };
 
-        Log.Info($"mpta {Version} data dir: {_home}");
+        Log.Info($"{Brand.Name} {Version} data dir: {_home}");
         Log.Info($"cert fingerprint (sha256): {fp} (short {_fpShort})");
         int exitCode = 0;
+        // The tray sees "running" while this mutex exists and asks for a graceful stop through the event.
+        using var serveMutex = new Mutex(false, Brand.ServeMutexName(_port));
+        using var stopEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Brand.StopEventName(_port));
+        var stopWait = ThreadPool.RegisterWaitForSingleObject(stopEvent, (_, _) =>
+        {
+            Log.Info("stop requested (tray)");
+            _stopRequested = true;
+            _app?.Lifetime.StopApplication();
+        }, null, Timeout.Infinite, executeOnlyOnce: true);
         try
         {
             _update.Start();
@@ -179,13 +190,14 @@ public sealed class HostServer
                     break;
                 }
                 _app = app;
+                if (_stopRequested) app.Lifetime.StopApplication(); // stop arrived while the listeners were starting
                 StartDiscovery();
-                Log.Info($"mpta {Version} serving https/wss on port {_port}: {string.Join(", ", _binds)}");
+                Log.Info($"{Brand.Name} {Version} serving https/wss on port {_port}: {string.Join(", ", _binds)}");
                 await app.WaitForShutdownAsync();
                 StopDiscovery();
                 _app = null;
                 await app.DisposeAsync();
-                if (!_handoffPending) break;
+                if (!_handoffPending || _stopRequested) break;
                 _handoffPending = false;
                 if (await HandoffAsync()) break;
                 retryBind = true; // rolled back: re-open listeners (port was just released by us)
@@ -193,6 +205,7 @@ public sealed class HostServer
         }
         finally
         {
+            stopWait.Unregister(null);
             Log.Info("shutting down: terminating running sessions");
             StopDiscovery();
             _update.Dispose();
@@ -757,6 +770,7 @@ public sealed class HostServer
             var hello = info.Clone();
             hello.Clients = b.Clients();
             await conn.SendTextAsync(ControlMessages.Hello(hello), cts.Token);
+            if (a.Size is var (sc, sr)) await conn.SendTextAsync(ControlMessages.Size(sc, sr), cts.Token);
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);

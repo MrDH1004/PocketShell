@@ -159,7 +159,7 @@ internal static class UpdateFixture
         return $"{p[0]}.{p[1]}.{int.Parse(p[2]) + 1}";
     }
 
-    public static string AssetName(string version) => $"mpta-host-win-x64-v{version}.zip";
+    public static string AssetName(string version) => $"pocketshell-host-win-x64-v{version}.zip";
 
     public static string Sha256(byte[] data) => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
 
@@ -180,12 +180,12 @@ internal static class UpdateFixture
             var (code, output) = await Util.Run("dotnet", new[] { "publish", proj, "-c", "Release", "-nologo", "-o", pub, "--artifacts-path", art, $"-p:VersionOverride={version}" },
                 c.Root, null, 280_000);
             File.WriteAllText(Path.Combine(c.OutDir, "fake-release-build.log"), output, Encoding.UTF8);
-            if (code != 0 || !File.Exists(Path.Combine(pub, "mpta.exe")))
+            if (code != 0 || !File.Exists(Path.Combine(pub, "psh.exe")))
                 throw new InvalidOperationException($"fake release publish failed (exit {code}, qa/out/fake-release-build.log): {Util.Trunc(output, 300)}");
             ev.Info($"built fake release {version} via dotnet publish in {sw.Elapsed.TotalSeconds:0.0}s");
             var good = Zip(pub, null);
             // Broken build: same files but mpta.dll is garbage, so the apphost starts and then fails to load the app.
-            var broken = Zip(pub, "mpta.dll");
+            var broken = Zip(pub, "psh.dll");
             _built = (version, good, broken, pub);
             return _built.Value;
         }
@@ -224,7 +224,7 @@ internal static class UpdateFixture
             Directory.CreateDirectory(Path.GetDirectoryName(t)!);
             File.Copy(f, t);
         }
-        return Path.Combine(toDir, "mpta.exe");
+        return Path.Combine(toDir, "psh.exe");
     }
 
     /// <summary>relative path → sha256 for every file under <paramref name="dir"/>.</summary>

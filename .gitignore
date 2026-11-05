@@ -10,3 +10,4 @@ qa/out/
 !.omc/specs/
 .kotlin/
 android/.omc/
+host/.omc/

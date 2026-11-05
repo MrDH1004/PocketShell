@@ -25,6 +25,9 @@ public sealed class ExternalConsoles : IDisposable
 
     public ExternalConsoles(string helperExe) { _helperExe = helperExe; }
 
+    /// <summary>MPTA_EXTERNAL_ALL=1 lists every top-level shell console (used by QA, whose test console has no launcher parent).</summary>
+    private static readonly bool IncludeAll = Environment.GetEnvironmentVariable("MPTA_EXTERNAL_ALL") == "1";
+
     public static List<ProcEntry> SnapshotProcesses()
     {
         var list = new List<ProcEntry>();
@@ -45,22 +48,67 @@ public sealed class ExternalConsoles : IDisposable
         return list;
     }
 
+    /// <summary>Parents that mean "a person opened this terminal": terminal apps, Explorer/Run, IDE terminals.</summary>
+    private static readonly HashSet<string> TerminalLaunchers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "WindowsTerminal.exe", "OpenConsole.exe", "explorer.exe", "Code.exe", "Cursor.exe",
+        "idea64.exe", "rider64.exe", "pycharm64.exe", "wezterm-gui.exe", "alacritty.exe", "Tabby.exe",
+    };
+
+    /// <summary>AI coding CLIs shown with a tag; a shell running one is listed whatever started it.</summary>
+    private static readonly Dictionary<string, string> AgentExes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["claude.exe"] = "claude",
+        ["codex.exe"] = "gpt",
+    };
+
+    public sealed record Candidate(ProcEntry Proc, string? Agent);
+
     /// <summary>
     /// Top-level shells (parent is not a shell), not descended from this process (host sessions, helpers), not self.
+    /// Unless <paramref name="includeAll"/>, only shells a person opened (parent is a terminal launcher) or that run an
+    /// AI CLI are kept — this drops background shells spawned by tools (MCP servers, agents' tool shells, native hosts).
     /// </summary>
-    public static List<ProcEntry> FindCandidates(IReadOnlyList<ProcEntry> procs, int selfPid)
+    public static List<Candidate> FindCandidates(IReadOnlyList<ProcEntry> procs, int selfPid, bool includeAll = false)
     {
         var byPid = new Dictionary<int, ProcEntry>();
-        foreach (var p in procs) byPid[p.Pid] = p;
-        var result = new List<ProcEntry>();
+        var children = new Dictionary<int, List<ProcEntry>>();
+        foreach (var p in procs)
+        {
+            byPid[p.Pid] = p;
+            if (!children.TryGetValue(p.ParentPid, out var l)) children[p.ParentPid] = l = new();
+            l.Add(p);
+        }
+        var result = new List<Candidate>();
         foreach (var p in procs)
         {
             if (!ShellExes.Contains(p.Exe) || p.Pid == selfPid) continue;
-            if (byPid.TryGetValue(p.ParentPid, out var parent) && ShellExes.Contains(parent.Exe)) continue;
+            byPid.TryGetValue(p.ParentPid, out var parent);
+            if (parent != null && ShellExes.Contains(parent.Exe)) continue;
             if (IsDescendantOf(p, selfPid, byPid)) continue;
-            result.Add(p);
+            var agent = FindAgent(p.Pid, children);
+            bool launchedByPerson = parent != null && TerminalLaunchers.Contains(parent.Exe);
+            if (includeAll || launchedByPerson || agent != null) result.Add(new Candidate(p, agent));
         }
         return result;
+    }
+
+    /// <summary>First AI CLI found among the descendants of <paramref name="pid"/> (breadth-first).</summary>
+    private static string? FindAgent(int pid, Dictionary<int, List<ProcEntry>> children)
+    {
+        var queue = new Queue<int>();
+        var seen = new HashSet<int> { pid };
+        queue.Enqueue(pid);
+        while (queue.Count > 0)
+        {
+            if (!children.TryGetValue(queue.Dequeue(), out var kids)) continue;
+            foreach (var k in kids)
+            {
+                if (AgentExes.TryGetValue(k.Exe, out var agent)) return agent;
+                if (seen.Add(k.Pid)) queue.Enqueue(k.Pid);
+            }
+        }
+        return null;
     }
 
     private static bool IsDescendantOf(ProcEntry p, int ancestor, Dictionary<int, ProcEntry> byPid)
@@ -92,14 +140,15 @@ public sealed class ExternalConsoles : IDisposable
             if (DateTime.UtcNow - _cacheTime < TimeSpan.FromSeconds(2)) return _cache.Select(s => WithClients(s.Clone())).ToList();
         }
         var procs = SnapshotProcesses();
-        var candidates = FindCandidates(procs, Environment.ProcessId);
-        var infos = candidates.Count == 0 ? new List<ConsoleInfo>() : QueryConsoleInfo(candidates.Select(c => c.Pid));
+        var candidates = FindCandidates(procs, Environment.ProcessId, IncludeAll);
+        var infos = candidates.Count == 0 ? new List<ConsoleInfo>() : QueryConsoleInfo(candidates.Select(c => c.Proc.Pid));
         var now = Ids.IsoNow();
         var list = new List<SessionDto>();
         foreach (var info in infos)
         {
-            var proc = candidates.FirstOrDefault(c => c.Pid == info.Pid);
-            if (proc == null) continue;
+            var cand = candidates.FirstOrDefault(c => c.Proc.Pid == info.Pid);
+            if (cand == null) continue;
+            var proc = cand.Proc;
             list.Add(new SessionDto
             {
                 Id = "ext-" + info.Pid,
@@ -113,6 +162,7 @@ public sealed class ExternalConsoles : IDisposable
                 Cols = info.Cols,
                 Rows = info.Rows,
                 Pid = info.Pid,
+                Agent = cand.Agent,
             });
         }
         lock (_cacheGate)
@@ -212,6 +262,7 @@ public sealed class ExternalBridge
     private readonly object _inputLock = new();
     private Process? _proc;
     private byte[]? _lastFrame;
+    private (int Cols, int Rows)? _size;
     private int? _exitCode;
     private int _refs;
     private bool _stopped;
@@ -280,10 +331,21 @@ public sealed class ExternalBridge
             {
                 int len = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
                 if (len < 0 || len > 16 << 20) { Log.Error($"ext-{_pid}: bad frame length {len}"); break; }
-                var frame = new byte[len];
-                if (!ReadExact(stream, frame)) break;
+                var payload = new byte[len];
+                if (!ReadExact(stream, payload)) break;
+                if (!ReaderFrame.TryDecode(payload, out int cols, out int rows, out var frame))
+                {
+                    Log.Error($"ext-{_pid}: bad frame header ({len} bytes)");
+                    break;
+                }
                 lock (_hub.SyncRoot)
                 {
+                    // Clients render at the console's size (their own size cannot resize it): announce changes before the frame.
+                    if (_size != (cols, rows))
+                    {
+                        _size = (cols, rows);
+                        _hub.PublishText(ControlMessages.Size(cols, rows));
+                    }
                     _lastFrame = frame;
                     _hub.Publish(frame);
                 }
@@ -301,7 +363,8 @@ public sealed class ExternalBridge
         Log.Info($"ext-{_pid}: helper exited with code {code}");
     }
 
-    public sealed record Attachment(byte[] Replay, Subscriber Subscriber, ClientDto Client);
+    /// <param name="Size">Console window size of <paramref name="Replay"/>; null until the first frame arrives.</param>
+    public sealed record Attachment(byte[] Replay, (int Cols, int Rows)? Size, Subscriber Subscriber, ClientDto Client);
 
     public Attachment Attach(string clientType, int cols, int rows)
     {
@@ -311,7 +374,7 @@ public sealed class ExternalBridge
             _clients.Add(client);
             var (_, sub) = _hub.Subscribe();
             if (_exitCode is int code) sub.Enqueue(OutMessage.Text(ControlMessages.Exit(code)));
-            return new Attachment(_lastFrame ?? Array.Empty<byte>(), sub, client);
+            return new Attachment(_lastFrame ?? Array.Empty<byte>(), _size, sub, client);
         }
     }
 

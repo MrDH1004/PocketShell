@@ -119,8 +119,8 @@ class AppUpdater(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_RELEASES_URL = "https://api.github.com/repos/MrDH1004/MyPCToAndroid/releases?per_page=10"
-        const val USER_AGENT = "mpta-updater"
+        const val DEFAULT_RELEASES_URL = "https://api.github.com/repos/MrDH1004/PocketShell/releases?per_page=10"
+        const val USER_AGENT = "pocketshell-updater"
         /** Must match res/xml/file_paths.xml. */
         const val UPDATE_DIR = "updates"
         private const val PREFS = "mpta_update"

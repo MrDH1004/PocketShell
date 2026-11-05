@@ -67,7 +67,8 @@ public static class ConsoleHelpers
 
     /// <summary>
     /// `mpta console-reader pid`: attaches to the target console, polls the visible window every ~200ms and writes
-    /// length-prefixed VT frames (4-byte LE length + bytes) to stdout when the screen changes. Reads length-prefixed
+    /// length-prefixed <see cref="ReaderFrame"/> payloads (4-byte LE length + cols/rows header + VT frame) to stdout
+    /// when the screen changes. Reads length-prefixed
     /// input from stdin and injects it with WriteConsoleInputW. Exits when the console goes away or stdin closes.
     /// </summary>
     public static int RunConsoleReader(int pid)
@@ -158,7 +159,7 @@ public static class ConsoleHelpers
         }
         int cx = info.dwCursorPosition.X - info.srWindow.Left;
         int cy = info.dwCursorPosition.Y - info.srWindow.Top;
-        return VtFrame.Build(chars, attrs, width, height, cx, cy);
+        return ReaderFrame.Encode(width, height, VtFrame.Build(chars, attrs, width, height, cx, cy));
     }
 
     private static void InputLoop(Stream stdin, SafeFileHandle conin)

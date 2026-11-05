@@ -90,7 +90,7 @@ internal static partial class Scenarios
     {
         var info = await c.Local.Get("/api/info", c.Token);
         ev.Check(info.Ok && Str(info.Json, "version") == c.VersionName, $"/api/info.version={Str(info.Json, "version")} == version.properties versionName {c.VersionName}");
-        var pv = ProductVersion(Path.Combine(Path.GetDirectoryName(c.Exe)!, "mpta.dll"));
+        var pv = ProductVersion(Path.Combine(Path.GetDirectoryName(c.Exe)!, "psh.dll"));
         ev.Check(pv.Split('+')[0] == c.VersionName, $"mpta.dll InformationalVersion '{pv}' from version.properties");
         var upd = info.Json?["update"];
         ev.Check(upd != null && Str(upd, "current") == c.VersionName, $"/api/info.update present: {Compact(upd, 160)}");
@@ -148,7 +148,7 @@ internal static partial class Scenarios
         ev.Check(ready != null && Str(ready, "latest") == fx.Version, $"periodic check found + staged {fx.Version}: states {string.Join("->", states)}; last={Compact(last, 200)}");
         ev.Check(Str(last, "latest") != "99.0.0" && srv.Hits("/dl/" + Uri.EscapeDataString(UpdateFixture.AssetName("99.0.0"))) == 0, "draft release 99.0.0 ignored");
         ev.Check(srv.Hits("/dl/" + Uri.EscapeDataString(asset)) >= 1, $"downloaded {asset} ({srv.Hits("/dl/" + Uri.EscapeDataString(asset))}x)");
-        ev.Check(File.Exists(Path.Combine(u.Home, "updates", fx.Version, "app", "mpta.exe")), $"staged at MPTA_HOME/updates/{fx.Version}/app");
+        ev.Check(File.Exists(Path.Combine(u.Home, "updates", fx.Version, "app", "psh.exe")), $"staged at MPTA_HOME/updates/{fx.Version}/app");
 
         var ap = await u.Api.Post("/api/update/apply", u.Token, new { });
         ev.Check(ap.Status == 409 && Int(ap.Json, "runningSessions") == 1, $"apply without force while 1 session runs -> {ap}");
@@ -175,7 +175,7 @@ internal static partial class Scenarios
         ev.Check(backAt >= 0, $"idle auto-apply: same port 127.0.0.1:{u.Host.Port} now reports {ver} after {backAt}ms (unreachable from {firstDown}ms), pinned cert unchanged");
         bool oldExited = u.Host.Proc?.WaitForExit(15000) ?? false;
         ev.Check(oldExited && u.Host.Proc!.ExitCode == 0, $"old process pid {oldPid} exited (exit={(oldExited ? u.Host.Proc!.ExitCode.ToString() : "still running")})");
-        var pv = ProductVersion(Path.Combine(u.Install, "mpta.dll"));
+        var pv = ProductVersion(Path.Combine(u.Install, "psh.dll"));
         ev.Check(pv.Split('+')[0] == fx.Version, $"install dir mpta.dll is now {pv}");
         var olds = UpdateFixture.OldFiles(u.Install);
         var cleanSw = Stopwatch.StartNew();
@@ -192,8 +192,8 @@ internal static partial class Scenarios
         if (s2.Ok) await u.Api.Delete($"/api/sessions/{Str(s2.Json, "id")}", u.Token);
 
         // Following start: plant a leftover *.old (as if the old exe had still been locked) and restart from the install dir.
-        var planted = Path.Combine(u.Install, "mpta.dll.old");
-        File.Copy(Path.Combine(u.Install, "mpta.dll"), planted, true);
+        var planted = Path.Combine(u.Install, "psh.dll.old");
+        File.Copy(Path.Combine(u.Install, "psh.dll"), planted, true);
         u.Host.Kill();
         var err = await u.Host.Start(30000);
         ev.Check(err == null, "restart from install dir" + (err == null ? "" : ": " + err));

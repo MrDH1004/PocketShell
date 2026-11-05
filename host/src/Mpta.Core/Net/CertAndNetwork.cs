@@ -9,19 +9,19 @@ namespace Mpta.Core.Net;
 
 public static class CertManager
 {
-    /// <summary>Loads cert.pfx or creates a self-signed RSA-2048 CN=mpta certificate valid for 10 years. Writes cert.sha256.</summary>
+    /// <summary>Loads cert.pfx or creates a self-signed RSA-2048 CN=PocketShell certificate valid for 10 years. Writes cert.sha256.</summary>
     public static (X509Certificate2 Cert, string Fingerprint) LoadOrCreate(string home)
     {
         var pfx = MptaPaths.CertFile(home);
         if (!File.Exists(pfx))
         {
             using var rsa = RSA.Create(2048);
-            var req = new CertificateRequest("CN=mpta", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var req = new CertificateRequest("CN=PocketShell", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
             req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, false));
             req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
             var san = new SubjectAlternativeNameBuilder();
-            san.AddDnsName("mpta");
+            san.AddDnsName("pocketshell");
             san.AddDnsName("localhost");
             san.AddIpAddress(IPAddress.Loopback);
             req.CertificateExtensions.Add(san.Build());

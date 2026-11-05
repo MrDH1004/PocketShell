@@ -141,7 +141,7 @@ try
             if (noBuild)
             {
                 var bin = Path.Combine(root, "host", "src", "Mpta", "bin", "Release");
-                hostExe = Directory.Exists(bin) ? Directory.GetFiles(bin, "mpta.exe", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault() : null;
+                hostExe = Directory.Exists(bin) ? Directory.GetFiles(bin, "psh.exe", SearchOption.AllDirectories).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault() : null;
                 if (hostExe == null) setupErr = $"--no-build: no mpta.exe under {bin}";
             }
             else
@@ -201,7 +201,7 @@ if (runSmoke)
 {
     var ev = new Ev();
     var sw = Stopwatch.StartNew();
-    var r = await Guard("ANDROID-SMOKE", "adb install + launch com.mpta.client", ev, Scenarios.AndroidSmoke(root, ev), 300, sw);
+    var r = await Guard("ANDROID-SMOKE", "adb install + launch com.pocketshell.app", ev, Scenarios.AndroidSmoke(root, ev), 300, sw);
     results.Add(r);
     PrintLine(r);
 }

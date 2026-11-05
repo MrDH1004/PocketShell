@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,9 +25,13 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.mpta.client.MptaApp
 import com.mpta.client.R
+import com.mpta.client.core.FrameCrop
+import com.mpta.client.core.FrameTail
 import com.mpta.client.core.KeyMapper
 import com.mpta.client.core.ServerMessage
 import com.mpta.client.core.SessionInfo
@@ -37,6 +43,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
 import java.io.IOException
 
 /**
@@ -70,6 +77,21 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var altButton: TextView
 
     private var fontSizeSp = 12f
+    private var textPx = 0
+
+    /**
+     * External consoles keep the PC window's size (the phone cannot resize them), so the font is shrunk until
+     * the whole console (fitCols×fitRows) fits the view. 0 = no fitting (host session, or the user zoomed manually).
+     */
+    private var fitCols = 0
+    private var fitRows = 0
+    private val frameTail = FrameTail()
+    /** External console's row count from the last size notice (0 = unknown). */
+    private var consoleRows = 0
+    /** Phone row count the current screen content was drawn for. */
+    private var drawnRows = 0
+    private var fitWidth = 0
+    private var fitHeight = 0
     private val main = Handler(Looper.getMainLooper())
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var currentNetwork: Network? = null
@@ -110,12 +132,12 @@ class TerminalActivity : AppCompatActivity() {
             }
         })
 
-        connection = TerminalConnection(apiClient.http, pairing.hosts, pairing.port, pairing.token, connectionListener) {
+        connection = TerminalConnection(apiClient.http, apiClient.hosts, pairing.port, pairing.token, connectionListener) {
             if (viewCols > 0) viewCols to viewRows else 80 to 24
         }
 
         terminalView.setTerminalViewClient(viewClient)
-        terminalView.setTextSize(spToPx(fontSizeSp))
+        applyTextSize(spToPx(fontSizeSp))
         terminalView.attachSession(session)
         terminalView.keepScreenOn = true
 
@@ -162,7 +184,65 @@ class TerminalActivity : AppCompatActivity() {
         c.connectNow()
     }
 
+    private fun applyTextSize(px: Int) {
+        textPx = px
+        terminalView.setTextSize(px) // re-measures synchronously → onViewResized if the cell grid changed
+    }
+
+    /**
+     * Largest font (up to the user's size) at which the whole [cols]×[rows] console fits the view, measured the
+     * same way as TerminalView/TerminalRenderer (columns = floor(width / "X" width), rows = floor((height -
+     * (lineSpacing + ascent)) / lineSpacing)). Applied in one step so the frame that follows the size notice is
+     * drawn at the final grid.
+     */
+    private fun fitToConsole(cols: Int, rows: Int) {
+        val width = terminalView.width
+        val height = terminalView.height
+        if (cols <= 0 || rows <= 0 || width <= 0 || height <= 0) return
+        fitCols = cols
+        fitRows = rows
+        fitWidth = width
+        fitHeight = height
+        // Keyboard up: fit the width only and show the bottom part (FrameCrop) instead of a tiny whole console.
+        val widthOnly = ViewCompat.getRootWindowInsets(terminalView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        val paint = Paint().apply { typeface = Typeface.MONOSPACE; isAntiAlias = true }
+        var px = spToPx(fontSizeSp)
+        while (px > MIN_FIT_TEXT_PX) {
+            paint.textSize = px.toFloat()
+            val lineSpacing = ceil(paint.fontSpacing).toInt()
+            val viewCols = (width / paint.measureText("X")).toInt()
+            val viewRows = (height - (lineSpacing + ceil(paint.ascent()).toInt())) / lineSpacing
+            if (viewCols >= cols && (widthOnly || viewRows >= rows)) break
+            px--
+        }
+        if (px != textPx) {
+            applyTextSize(px)
+            drawnRows = -1 // the grid changed (columns too): always redraw
+        }
+        redrawIfRowsChanged()
+    }
+
+    /** External frames are absolute-positioned for the PC's row count: cut to the phone's rows when fewer. */
+    private fun display(frame: ByteArray): ByteArray =
+        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleRows > viewRows) FrameCrop.crop(frame, viewRows) else frame
+
+    /** The PC sends a frame only when its console changes: redraw the last one after the phone's grid changed. */
+    private fun redrawIfRowsChanged() {
+        if (viewRows == drawnRows) return
+        drawnRows = viewRows
+        val frame = frameTail.snapshot()
+        if (frame.isEmpty()) return
+        val shown = display(frame)
+        session.appendRemoteOutput(shown, 0, shown.size)
+    }
+
     private fun onViewResized(cols: Int, rows: Int) {
+        // View size changed (keyboard shown/hidden, rotation): refit the console to the new area.
+        if (fitCols > 0 && (terminalView.width != fitWidth || terminalView.height != fitHeight)) {
+            main.post { if (fitCols > 0) fitToConsole(fitCols, fitRows) }
+        } else if (sessionKind == SessionInfo.KIND_EXTERNAL) {
+            main.post { redrawIfRowsChanged() }
+        }
         val first = viewCols == 0
         viewCols = cols
         viewRows = rows
@@ -173,6 +253,7 @@ class TerminalActivity : AppCompatActivity() {
         override fun onConnected(host: String) {
             // The server replays the whole output.vt after hello: start from a blank emulator.
             session.resetForReplay()
+            frameTail.clear()
             terminalView.onScreenUpdated()
             setStatus("연결됨 · $host · 재생 중…")
             // The size in the URL may be stale if the view changed while connecting.
@@ -180,7 +261,12 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         override fun onOutput(bytes: ByteArray) {
-            session.appendRemoteOutput(bytes, 0, bytes.size)
+            if (sessionKind == SessionInfo.KIND_EXTERNAL) {
+                frameTail.append(bytes)
+                drawnRows = viewRows
+            }
+            val shown = display(bytes)
+            session.appendRemoteOutput(shown, 0, shown.size)
         }
 
         override fun onControl(message: ServerMessage) {
@@ -188,7 +274,13 @@ class TerminalActivity : AppCompatActivity() {
                 is ServerMessage.Hello -> message.session?.let { s ->
                     titleView.text = s.title.ifBlank { s.id }
                 }
-                is ServerMessage.Size -> setStatus("연결됨 · PTY ${message.cols}×${message.rows} · 화면 ${viewCols}×${viewRows}")
+                is ServerMessage.Size -> {
+                    if (sessionKind == SessionInfo.KIND_EXTERNAL) {
+                        consoleRows = message.rows
+                        fitToConsole(message.cols, message.rows)
+                    }
+                    setStatus("연결됨 · PC ${message.cols}×${message.rows} · 화면 ${viewCols}×${viewRows}")
+                }
                 is ServerMessage.ReplayEnd -> setStatus("연결됨 · 화면 ${viewCols}×${viewRows}")
                 is ServerMessage.Exit -> {
                     connection?.autoReconnect = false
@@ -384,8 +476,10 @@ class TerminalActivity : AppCompatActivity() {
     private val viewClient = object : TerminalViewClient {
         override fun onScale(scale: Float): Float {
             if (scale < 0.9f || scale > 1.1f) {
-                fontSizeSp = (fontSizeSp * (if (scale > 1f) 1.1f else 0.9f)).coerceIn(6f, 32f)
-                terminalView.setTextSize(spToPx(fontSizeSp))
+                // Manual zoom wins over fit-to-columns (an external console may then be cut off on the right).
+                fitCols = 0
+                fontSizeSp = (fontSizeSp * (if (scale > 1f) 1.1f else 0.9f)).coerceIn(6f, MAX_FONT_SP)
+                applyTextSize(spToPx(fontSizeSp))
                 return 1.0f
             }
             return scale
@@ -440,6 +534,9 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
+        private const val MAX_FONT_SP = 32f
+        /** Below this the text is unreadable; a wider console is then cut off instead. */
+        private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"
         private const val EXTRA_KIND = "kind"
         private const val EXTRA_PID = "pid"
