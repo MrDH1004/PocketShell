@@ -73,6 +73,27 @@ class ConsoleHistoryTest {
     }
 
     @Test
+    fun pcScrollbackReplacesPhoneHistory() {
+        val h = ConsoleHistory()
+        h.replaceHistory(listOf("old1", "old2"))
+        h.accept(frame(screen1, 9 to 3))
+        assertEquals(listOf("old1", "old2") + screen1, shown(h.render(12, 0)))
+        assertEquals(
+            listOf("a", "b"),
+            (com.mpta.client.core.ServerMessage.parse("""{"type":"history","lines":["a","b"]}""") as com.mpta.client.core.ServerMessage.History).lines,
+        )
+    }
+
+    @Test
+    fun linesBackOnScreenAreDroppedFromHistory() {
+        val h = ConsoleHistory()
+        h.replaceHistory(listOf("old", "l1", "l2"))
+        h.accept(frame(screen1, 9 to 3)) // l1, l2 are the window's top again
+        assertEquals(1, h.historySize)
+        assertEquals(0, ConsoleHistory.overlapWithTop(listOf("a", ""), listOf("a", "", "z")))
+    }
+
+    @Test
     fun redrawWithNothingInCommonIsNotAScroll() {
         assertEquals(0, ConsoleHistory.scrollShift(screen1, listOf("x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10")))
         assertEquals(0, ConsoleHistory.scrollShift(List(10) { "" }, List(10) { "" }))

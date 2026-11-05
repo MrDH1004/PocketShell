@@ -259,6 +259,47 @@ public class VtFrameTests
         Assert.Equal(7, ExternalConsoles.FindCandidates(procs, selfPid: 99999, includeAll: true).Count);
     }
 
+    private static byte[] Frame(params string[] rows)
+    {
+        var chars = new char[10 * rows.Length];
+        var attrs = new ushort[chars.Length];
+        for (int y = 0; y < rows.Length; y++)
+            for (int x = 0; x < 10; x++)
+            {
+                chars[y * 10 + x] = x < rows[y].Length ? rows[y][x] : ' ';
+                attrs[y * 10 + x] = 0x07;
+            }
+        return VtFrame.Build(chars, attrs, 10, rows.Length, 0, rows.Length - 2);
+    }
+
+    [Fact]
+    public void ScrollbackKeepsLinesThatLeftTheWindow()
+    {
+        var sb = new ConsoleScrollback(maxLines: 3);
+        Assert.Equal(0, sb.Accept(Frame("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "> in", "status")));
+        Assert.Equal(2, sb.Accept(Frame("l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "> in", "status")));
+        Assert.Equal(0, sb.Accept(Frame("l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "> inx", "status"))); // bottom repaint
+        Assert.Equal(2, sb.Accept(Frame("l5", "l6", "l7", "l8", "l9", "l10", "l11", "l12", "> in", "status")));
+        var lines = sb.Snapshot();
+        Assert.Equal(3, lines.Count); // capped, oldest dropped
+        Assert.EndsWith("l4", lines[2]);
+        Assert.EndsWith("l2", lines[0]);
+        Assert.Equal(-1, sb.Accept(System.Text.Encoding.UTF8.GetBytes("plain")));
+        Assert.Contains("\"type\":\"history\"", ControlMessages.History(lines));
+    }
+
+    [Fact]
+    public void ScrollbackDropsLinesThatCameBackOnScreen()
+    {
+        var sb = new ConsoleScrollback();
+        sb.Accept(Frame("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "> in", "status"));
+        Assert.Equal(3, sb.Accept(Frame("l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "> in", "status")));
+        // Redraw puts l2, l3 back at the top: they are on screen again, not history.
+        sb.Accept(Frame("l2", "l3", "x4", "x5", "x6", "x7", "x8", "x9", "> in", "status"));
+        Assert.Single(sb.Snapshot());
+        Assert.Equal(0, ConsoleScrollback.OverlapWithTop(new[] { "a", "" }, new[] { "a", "", "z" })); // needs 2 non-blank
+    }
+
     [Fact]
     public void ReaderFrameCarriesConsoleSize()
     {

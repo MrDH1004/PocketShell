@@ -32,10 +32,18 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         for ((y, body) in rows) next[y - 1] = body
         val shifted = if (window.size == height) scrollShift(window, next.asList()) else 0
         for (i in 0 until shifted) history.addLast(window[i])
+        // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
+        repeat(overlapWithTop(history.takeLast(40), next.asList())) { history.removeLast() }
         while (history.size > maxLines) history.removeFirst()
         window = next.asList()
         cursor = CURSOR.find(text)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
         return shifted
+    }
+
+    /** The PC's scrollback for this console (sent on connect) replaces what the phone collected itself. */
+    fun replaceHistory(lines: List<String>) {
+        history.clear()
+        lines.takeLast(maxLines).forEach { history.addLast(it) }
     }
 
     fun clear() {
@@ -84,6 +92,15 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         private const val START = "\u001b[?25l\u001b[H"
         private val ROW = Regex("\u001b\\[(\\d+);1H(.*?)\u001b\\[0m\u001b\\[K")
         private val CURSOR = Regex("\u001b\\[(\\d+);(\\d+)H\u001b\\[\\?25h$")
+
+        /** Largest m (≥ 2, ≥ 2 non-blank) where the last m lines of [tail] equal the first m rows of [window]; else 0. */
+        fun overlapWithTop(tail: List<String>, window: List<String>): Int {
+            for (m in minOf(tail.size, window.size) downTo 2) {
+                val part = tail.subList(tail.size - m, tail.size)
+                if (part == window.subList(0, m) && part.count { it.isNotEmpty() } >= 2) return m
+            }
+            return 0
+        }
 
         /**
          * How many lines [next] scrolled up relative to [prev]: the smallest k whose top run `next[i] == prev[i + k]`

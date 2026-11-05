@@ -19,6 +19,8 @@ public sealed class ExternalConsoles : IDisposable
 
     private readonly string _helperExe;
     private readonly ConcurrentDictionary<int, ExternalBridge> _bridges = new();
+    /// <summary>Per console pid; outlives bridges so a phone reopening a console gets the earlier lines.</summary>
+    private readonly ConcurrentDictionary<int, ConsoleScrollback> _scrollbacks = new();
     private readonly object _cacheGate = new();
     private DateTime _cacheTime = DateTime.MinValue;
     private List<SessionDto> _cache = new();
@@ -170,8 +172,28 @@ public sealed class ExternalConsoles : IDisposable
             _cache = list;
             _cacheTime = DateTime.UtcNow;
         }
+        WatchAgents(list);
         return list.Select(s => WithClients(s.Clone())).ToList();
     }
+
+    /// <summary>
+    /// Consoles running Claude/GPT are read even with no client attached so their scrollback (ConsoleScrollback) is
+    /// complete when a phone opens them; scrollbacks of consoles that are gone are dropped.
+    /// </summary>
+    private void WatchAgents(List<SessionDto> list)
+    {
+        var alive = list.Where(s => s.Pid != null).Select(s => s.Pid!.Value).ToHashSet();
+        foreach (var pid in _scrollbacks.Keys)
+            if (!alive.Contains(pid)) _scrollbacks.TryRemove(pid, out _);
+        foreach (var s in list)
+        {
+            if (s.Agent == null || s.Pid is not int pid) continue;
+            _bridges.GetOrAdd(pid, p => NewBridge(p, s)).Watch();
+        }
+    }
+
+    private ExternalBridge NewBridge(int pid, SessionDto info) =>
+        new(_helperExe, pid, info, _scrollbacks.GetOrAdd(pid, _ => new ConsoleScrollback()), () => _bridges.TryRemove(pid, out _));
 
     public SessionDto? Get(int pid)
     {
@@ -239,7 +261,7 @@ public sealed class ExternalConsoles : IDisposable
     {
         while (true)
         {
-            var b = _bridges.GetOrAdd(pid, p => new ExternalBridge(_helperExe, p, info, () => _bridges.TryRemove(p, out _)));
+            var b = _bridges.GetOrAdd(pid, p => NewBridge(p, info));
             if (b.TryAcquire()) return b;
             _bridges.TryRemove(new KeyValuePair<int, ExternalBridge>(pid, b)); // stopping; create a fresh one
         }
@@ -266,15 +288,30 @@ public sealed class ExternalBridge
     private int? _exitCode;
     private int _refs;
     private bool _stopped;
+    /// <summary>Keep reading with no client (agent consoles, for the scrollback); stops only when the helper exits.</summary>
+    private bool _keepAlive;
+    private readonly ConsoleScrollback _scrollback;
 
     public SessionDto Info { get; }
 
-    public ExternalBridge(string helperExe, int pid, SessionDto info, Action onStopped)
+    public ExternalBridge(string helperExe, int pid, SessionDto info, ConsoleScrollback scrollback, Action onStopped)
     {
         _helperExe = helperExe;
         _pid = pid;
         Info = info;
+        _scrollback = scrollback;
         _onStopped = onStopped;
+    }
+
+    /// <summary>Starts reading without a client and keeps the helper running after the last client leaves.</summary>
+    internal void Watch()
+    {
+        lock (_hub.SyncRoot)
+        {
+            if (_stopped || _keepAlive) return;
+            _keepAlive = true;
+            if (_proc == null && _exitCode == null) StartHelper();
+        }
     }
 
     internal bool TryAcquire()
@@ -338,6 +375,7 @@ public sealed class ExternalBridge
                     Log.Error($"ext-{_pid}: bad frame header ({len} bytes)");
                     break;
                 }
+                _scrollback.Accept(frame);
                 lock (_hub.SyncRoot)
                 {
                     // Clients render at the console's size (their own size cannot resize it): announce changes before the frame.
@@ -355,16 +393,20 @@ public sealed class ExternalBridge
         int code = -1;
         try { proc.WaitForExit(3000); if (proc.HasExited) code = proc.ExitCode; }
         catch (InvalidOperationException) { }
+        bool unused;
         lock (_hub.SyncRoot)
         {
             _exitCode = code;
             _hub.PublishText(ControlMessages.Exit(code));
+            unused = _refs <= 0;
         }
         Log.Info($"ext-{_pid}: helper exited with code {code}");
+        if (unused) Stop(); // a watched console went away: drop the bridge so a later attach starts fresh
     }
 
     /// <param name="Size">Console window size of <paramref name="Replay"/>; null until the first frame arrives.</param>
-    public sealed record Attachment(byte[] Replay, (int Cols, int Rows)? Size, Subscriber Subscriber, ClientDto Client);
+    /// <param name="History">Lines that scrolled off the window so far (oldest first), sent before the replay.</param>
+    public sealed record Attachment(byte[] Replay, (int Cols, int Rows)? Size, List<string> History, Subscriber Subscriber, ClientDto Client);
 
     public Attachment Attach(string clientType, int cols, int rows)
     {
@@ -374,7 +416,7 @@ public sealed class ExternalBridge
             _clients.Add(client);
             var (_, sub) = _hub.Subscribe();
             if (_exitCode is int code) sub.Enqueue(OutMessage.Text(ControlMessages.Exit(code)));
-            return new Attachment(_lastFrame ?? Array.Empty<byte>(), _size, sub, client);
+            return new Attachment(_lastFrame ?? Array.Empty<byte>(), _size, _scrollback.Snapshot(), sub, client);
         }
     }
 
@@ -391,7 +433,7 @@ public sealed class ExternalBridge
             _hub.Unsubscribe(a.Subscriber);
             _clients.Remove(a.Client);
             _refs--;
-            stop = _refs <= 0;
+            stop = _refs <= 0 && (!_keepAlive || _exitCode != null);
         }
         if (stop) Stop();
     }

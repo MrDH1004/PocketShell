@@ -771,6 +771,7 @@ public sealed class HostServer
             hello.Clients = b.Clients();
             await conn.SendTextAsync(ControlMessages.Hello(hello), cts.Token);
             if (a.Size is var (sc, sr)) await conn.SendTextAsync(ControlMessages.Size(sc, sr), cts.Token);
+            if (a.History.Count > 0) await conn.SendTextAsync(ControlMessages.History(a.History), cts.Token);
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);

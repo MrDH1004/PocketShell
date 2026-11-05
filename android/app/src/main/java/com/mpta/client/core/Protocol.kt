@@ -77,6 +77,8 @@ sealed class ServerMessage {
     data class Size(val cols: Int, val rows: Int) : ServerMessage()
     data class Exit(val code: Int) : ServerMessage()
     data object ReplayEnd : ServerMessage()
+    /** External consoles: lines that scrolled off the PC window before this connection (oldest first). */
+    data class History(val lines: List<String>) : ServerMessage()
     data class Unknown(val type: String) : ServerMessage()
 
     companion object {
@@ -94,6 +96,7 @@ sealed class ServerMessage {
                 "size" -> Size(o.optInt("cols", 0), o.optInt("rows", 0))
                 "exit" -> Exit(o.optInt("code", 0))
                 "replay-end" -> ReplayEnd
+                "history" -> History(o.optJSONArray("lines")?.let { a -> (0 until a.length()).map { a.optString(it, "") } } ?: emptyList())
                 else -> Unknown(type)
             }
         }

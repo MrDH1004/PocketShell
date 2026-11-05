@@ -313,6 +313,11 @@ class TerminalActivity : AppCompatActivity() {
                     }
                     setStatus("연결됨 · PC ${message.cols}×${message.rows} · 화면 ${viewCols}×${viewRows}")
                 }
+                is ServerMessage.History -> {
+                    history.replaceHistory(message.lines)
+                    drawnRows = -1
+                    redrawIfRowsChanged()
+                }
                 is ServerMessage.ReplayEnd -> setStatus("연결됨 · 화면 ${viewCols}×${viewRows}")
                 is ServerMessage.Exit -> {
                     connection?.autoReconnect = false

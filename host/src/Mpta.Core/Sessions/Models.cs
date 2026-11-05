@@ -49,6 +49,9 @@ public static class ControlMessages
 {
     public static string Size(int cols, int rows) => $"{{\"type\":\"size\",\"cols\":{cols},\"rows\":{rows}}}";
     public static string Exit(int code) => $"{{\"type\":\"exit\",\"code\":{code}}}";
+    /// <summary>External consoles: lines that scrolled off the window before this client attached (oldest first, VtFrame row bodies).</summary>
+    public static string History(IReadOnlyList<string> lines) =>
+        System.Text.Json.JsonSerializer.Serialize(new { type = "history", lines });
     public const string ReplayEnd = "{\"type\":\"replay-end\"}";
     public static string Hello(SessionDto s) =>
         "{\"type\":\"hello\",\"session\":" + System.Text.Json.JsonSerializer.Serialize(s, Util.Json.Options) + "}";
