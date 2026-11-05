@@ -76,7 +76,7 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var ctrlButton: TextView
     private lateinit var altButton: TextView
 
-    private var fontSizeSp = 12f
+    private var fontSizeSp = DEFAULT_FONT_SP
     private var textPx = 0
 
     /**
@@ -144,6 +144,7 @@ class TerminalActivity : AppCompatActivity() {
 
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<Button>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
+        findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
         adoptButton.setOnClickListener { adopt() }
         adoptButton.visibility = if (sessionKind == SessionInfo.KIND_EXTERNAL) View.VISIBLE else View.GONE
 
@@ -220,6 +221,19 @@ class TerminalActivity : AppCompatActivity() {
             applyTextSize(px)
             drawnRows = -1 // the grid changed (columns too): always redraw
         }
+        redrawIfRowsChanged()
+    }
+
+    /** Top-bar button: undo pinch zoom — default font, and for an external console fit it to the PC size again. */
+    private fun resetSize() {
+        fontSizeSp = DEFAULT_FONT_SP
+        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleCols > 0 && consoleRows > 0) {
+            fitWidth = 0 // force the measurement even if the view size is unchanged
+            fitToConsole(consoleCols, consoleRows)
+        } else {
+            applyTextSize(spToPx(fontSizeSp))
+        }
+        drawnRows = -1
         redrawIfRowsChanged()
     }
 
@@ -546,6 +560,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_FONT_SP = 32f
+        private const val DEFAULT_FONT_SP = 12f
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"
