@@ -579,6 +579,18 @@ public sealed class HostServer
             return _sessions.Delete(id) ? Results.NoContent() : Error(404, "session not found");
         });
 
+        // Phone → PC clipboard image; the phone then sends Alt+V (ESC v) on the session so Claude Code attaches it.
+        app.MapPost("/api/clipboard/image", async (HttpContext ctx) =>
+        {
+            var image = await ClipboardImage.ReadBodyAsync(ctx.Request.Body, ctx.RequestAborted);
+            if (image == null) return Error(413, $"image larger than {ClipboardImage.MaxBytes >> 20} MB");
+            if (image.Length == 0) return Error(400, "empty body");
+            var err = await Task.Run(() => ClipboardImage.Set(image));
+            if (err != null) return Error(err.StartsWith("not a supported", StringComparison.Ordinal) ? 400 : 503, err);
+            Log.Info($"clipboard: image set ({image.Length} bytes) by {AuthOf(ctx).DeviceId ?? "local"}");
+            return Json(new { ok = true, bytes = image.Length });
+        });
+
         app.MapPost("/api/external/{pid:int}/adopt", (int pid) =>
         {
             var ext = _externals.Get(pid);

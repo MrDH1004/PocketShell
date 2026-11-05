@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
@@ -51,7 +52,13 @@ class ApiClient(
     constructor(hosts: List<String>, port: Int, token: String?, http: OkHttpClient) :
         this(HostSelector.fixed(hosts), port, token, http)
 
-    suspend fun request(method: String, path: String, body: JSONObject? = null, auth: Boolean = true): String =
+    suspend fun request(
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        auth: Boolean = true,
+        rawBody: RequestBody? = null,
+    ): String =
         withContext(Dispatchers.IO) {
             val failures = ArrayList<String>()
             var lastError: IOException? = null
@@ -59,6 +66,7 @@ class ApiClient(
                 val builder = Request.Builder().url(ClientProtocol.baseUrl(host, port) + path)
                 if (auth && token != null) builder.header("Authorization", "Bearer $token")
                 val reqBody = when {
+                    rawBody != null -> rawBody
                     body != null -> body.toString().toRequestBody(JSON)
                     method == "POST" -> "{}".toRequestBody(JSON)
                     else -> null
@@ -132,6 +140,11 @@ class ApiClient(
         request("POST", "/api/update/apply", JSONObject().put("force", force))
     }
 
+    /** `POST /api/clipboard/image` (PNG body): the PC puts it on its clipboard for an Alt+V paste. */
+    suspend fun postClipboardImage(png: ByteArray) {
+        request("POST", "/api/clipboard/image", rawBody = png.toRequestBody(PNG))
+    }
+
     private fun httpErrorMessage(code: Int, body: String): String = when (code) {
         401 -> "인증 실패 (401) — 기기 등록이 취소되었거나 코드가 만료되었습니다"
         404 -> "찾을 수 없음 (404)"
@@ -143,5 +156,6 @@ class ApiClient(
     private companion object {
         const val TAG = "ApiClient"
         val JSON = "application/json; charset=utf-8".toMediaType()
+        val PNG = "image/png".toMediaType()
     }
 }

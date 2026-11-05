@@ -195,7 +195,7 @@ public static class ConsoleHelpers
         if (r == -1) return k;
         byte vk = (byte)(r & 0xFF);
         byte shift = (byte)((r >> 8) & 0xFF);
-        uint state = 0;
+        uint state = k.ControlKeyState; // keep Alt from an ESC-prefixed key
         if ((shift & 1) != 0) state |= Win32.SHIFT_PRESSED;
         if ((shift & 6) != 0) return k; // needs Ctrl/Alt (AltGr layouts): send as plain unicode
         return new KeyPress(vk, k.UnicodeChar, state);

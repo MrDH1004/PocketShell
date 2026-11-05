@@ -47,6 +47,7 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
   - Windows Terminal 안의 콘솔은 지난 내용을 콘솔에 남기지 않음. 그래서 PC 서버가 Claude/GPT 콘솔을 백그라운드로 계속 읽어 밀려난 줄을 모아둠(콘솔당 최대 3000줄).
   - 기록은 PC 서버가 실행 중인 동안만 쌓임. 일반 셸은 폰이 열고 있을 때만 쌓임.
 - 한글 입력은 조합 중인 글자도 바로 PC에 보임.
+- 상단 바 이미지 아이콘: 폰 사진·스크린샷을 골라 Claude Code에 첨부. PC 클립보드에 이미지를 넣고 Alt+V를 보내는 방식이라 PC에서 Alt+V를 누른 것과 같음(`[Image #N]`). PC 클립보드 내용은 그 이미지로 바뀜. 긴 변 2560px 넘는 사진은 줄여서 보냄.
 - 아래 키 바(좌우로 밀기): ESC, TAB, ENTER, CTRL, 방향키, HOME/END, PGUP/PGDN 등.
 
 **접속**

@@ -388,6 +388,16 @@ public class VtInputTranslatorTests
     }
 
     [Fact]
+    public void EscPrintableIsAltKey()
+    {
+        var k = T("\x1bv");
+        var kp = Assert.Single(k);
+        Assert.Equal('v', kp.UnicodeChar);
+        Assert.Equal(Win32.LEFT_ALT_PRESSED, kp.ControlKeyState);
+        Assert.Equal(2, T("\x1b\r").Count); // ESC then Enter stays two keys
+    }
+
+    [Fact]
     public void CtrlLetters()
     {
         var k = T("\x03\x1a");

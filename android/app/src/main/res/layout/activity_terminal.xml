@@ -44,6 +44,15 @@
         </LinearLayout>
 
         <ImageButton
+            android:id="@+id/pasteImageButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/paste_image"
+            android:src="@drawable/ic_image"
+            android:tint="@color/keybar_text" />
+
+        <ImageButton
             android:id="@+id/fitButton"
             android:layout_width="48dp"
             android:layout_height="48dp"

@@ -46,6 +46,13 @@ public sealed class VtInputTranslator
                     i = j + 1;
                     continue;
                 }
+                if (n > ' ' && n < '\x7f')
+                {
+                    // ESC + printable = Alt+key ("meta sends escape"), e.g. ESC v = Alt+V (paste image in Claude Code).
+                    keys.Add(new(0, n, Win32.LEFT_ALT_PRESSED));
+                    i += 2;
+                    continue;
+                }
                 keys.Add(new(VK_ESCAPE, '\x1b', 0));
                 i++;
                 continue;

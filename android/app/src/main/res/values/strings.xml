@@ -29,6 +29,7 @@
     <string name="status_connecting">연결 중…</string>
     <string name="keyboard">키보드</string>
     <string name="fit_screen">원래 크기로 맞춤</string>
+    <string name="paste_image">이미지 붙여넣기 (PC 클립보드 + Alt+V)</string>
     <string name="new_terminal_here">이 폴더에서 새 터미널 열기</string>
     <string name="shell_pwsh">pwsh (PowerShell 7)</string>
     <string name="shell_powershell">powershell (Windows PowerShell)</string>

@@ -6,8 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,12 +26,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.mpta.client.MptaApp
 import com.mpta.client.R
 import com.mpta.client.core.ConsoleHistory
+import com.mpta.client.core.ImageSizing
 import com.mpta.client.core.KeyMapper
 import com.mpta.client.core.ServerMessage
 import com.mpta.client.core.SessionInfo
@@ -39,8 +45,11 @@ import com.termux.terminal.RemoteTerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.ceil
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 
 /**
@@ -94,6 +103,10 @@ class TerminalActivity : AppCompatActivity() {
     private var fitHeight = 0
     private val main = Handler(Looper.getMainLooper())
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var pastingImage = false
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) pasteImage(uri)
+    }
     private var currentNetwork: Network? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -147,6 +160,9 @@ class TerminalActivity : AppCompatActivity() {
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
+        findViewById<View>(R.id.pasteImageButton).setOnClickListener {
+            if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
 
         if (sessionKind == SessionInfo.KIND_HISTORY) resumeHistory() else connection?.sessionId = sessionId
     }
@@ -388,6 +404,54 @@ class TerminalActivity : AppCompatActivity() {
         titleView.text = s.title.ifBlank { s.id }
         val c = connection ?: return
         if (resumed && viewCols > 0) c.switchSession(s.id) else c.sessionId = s.id
+    }
+
+    /**
+     * Sends the picked image to the PC clipboard, then Alt+V (ESC v) on this session: Claude Code attaches the
+     * clipboard image as [Image #N], the same as pressing Alt+V at the PC.
+     */
+    private fun pasteImage(uri: Uri) {
+        val a = api ?: return
+        pastingImage = true
+        Toast.makeText(this, "이미지를 PC로 보내는 중…", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                val png = withContext(Dispatchers.IO) { encodePng(uri) }
+                a.postClipboardImage(png)
+                val c = connection
+                if (c == null) {
+                    Toast.makeText(this@TerminalActivity, "PC 클립보드에 넣었습니다 (세션 연결 없음: PC에서 Alt+V)", Toast.LENGTH_LONG).show()
+                } else {
+                    c.sendInput(KeyMapper.encodeCodePoint('v'.code, ctrl = false, alt = true))
+                    Toast.makeText(this@TerminalActivity, "이미지를 붙였습니다 (${png.size / 1024} KB)", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "image paste failed", e)
+                Toast.makeText(this@TerminalActivity, "이미지 붙여넣기 실패: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                pastingImage = false
+            }
+        }
+    }
+
+    /** Decodes any image the picker returns (incl. HEIC/WebP) and re-encodes it as PNG, longest side ≤ MAX_SIDE. */
+    private fun encodePng(uri: Uri): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            ?: throw IOException("이미지를 열 수 없습니다")
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("지원하지 않는 이미지 형식입니다")
+        val opts = BitmapFactory.Options().apply { inSampleSize = ImageSizing.sampleSize(bounds.outWidth, bounds.outHeight) }
+        val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+            ?: throw IOException("이미지를 읽을 수 없습니다")
+        val (w, h) = ImageSizing.fit(decoded.width, decoded.height)
+        val bitmap = if (w != decoded.width || h != decoded.height) {
+            Bitmap.createScaledBitmap(decoded, w, h, true).also { decoded.recycle() }
+        } else decoded
+        return ByteArrayOutputStream().use { out ->
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) throw IOException("PNG 변환 실패")
+            bitmap.recycle()
+            out.toByteArray()
+        }
     }
 
     private fun setStatus(text: String) {

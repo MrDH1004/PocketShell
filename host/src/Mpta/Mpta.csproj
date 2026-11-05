@@ -7,7 +7,14 @@
     <Product>PocketShell</Product>
     <RootNamespace>Mpta</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Clipboard image for the phone's Alt+V paste (Server/ClipboardImage.cs). -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Keep WinForms/Drawing out of the implicit usings (names like Timer/Application would clash). -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
