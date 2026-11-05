@@ -44,6 +44,12 @@ class KeyMapperTest {
     }
 
     @Test
+    fun enterKey() {
+        assertArrayEquals(bytes("\r"), key(SpecialKey.ENTER))
+        assertArrayEquals(bytes("\u001b\r"), key(SpecialKey.ENTER, alt = true))
+    }
+
+    @Test
     fun pageKeys() {
         assertArrayEquals(bytes("\u001b[5~"), key(SpecialKey.PGUP))
         assertArrayEquals(bytes("\u001b[6~"), key(SpecialKey.PGDN))

@@ -4,6 +4,7 @@ package com.mpta.client.core
 enum class SpecialKey(val label: String) {
     ESC("ESC"),
     TAB("TAB"),
+    ENTER("ENTER"),
     LEFT("←"),
     UP("↑"),
     DOWN("↓"),
@@ -34,6 +35,7 @@ object KeyMapper {
         val seq: String = when (key) {
             SpecialKey.ESC -> withAlt(ESC, alt)
             SpecialKey.TAB -> withAlt("\t", alt) // CTRL+TAB has no standard VT encoding
+            SpecialKey.ENTER -> withAlt("\r", alt) // what a terminal's Enter key sends
             SpecialKey.UP -> cursorKey('A', ctrl, alt, applicationCursor)
             SpecialKey.DOWN -> cursorKey('B', ctrl, alt, applicationCursor)
             SpecialKey.RIGHT -> cursorKey('C', ctrl, alt, applicationCursor)
