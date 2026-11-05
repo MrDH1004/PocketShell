@@ -41,7 +41,7 @@ class SessionListActivity : AppCompatActivity() {
     private lateinit var hostUpdateBar: View
     private lateinit var hostUpdateText: TextView
     private lateinit var hostUpdateApply: Button
-    private val adapter = SessionAdapter(::openSession, ::confirmDelete)
+    private val adapter = SessionAdapter(::openSession, ::confirmDelete, ::newTerminalHere)
     private val appUpdate = AppUpdateController(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -194,6 +194,25 @@ class SessionListActivity : AppCompatActivity() {
         startActivity(TerminalActivity.intent(this, s))
     }
 
+    /** POST /api/external/{pid}/adopt: a new host session in the console's folder (the running program stays put). */
+    private fun newTerminalHere(s: SessionInfo) {
+        val api = (application as MptaApp).api() ?: return
+        val pid = s.pid ?: s.id.removePrefix("ext-").toIntOrNull()
+        if (pid == null) {
+            showMessage("외부 세션 PID를 알 수 없습니다")
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                openSession(api.newTerminalHere(pid))
+            } catch (e: IOException) {
+                showMessage("새 터미널 열기 실패: ${e.message}")
+            } catch (e: org.json.JSONException) {
+                showMessage("새 터미널 열기 실패: 서버 응답 형식 오류 (${e.message})")
+            }
+        }
+    }
+
     private fun showNewSessionDialog() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_new_session, null)
         val group = view.findViewById<RadioGroup>(R.id.shellGroup)
@@ -279,6 +298,8 @@ private sealed class Row {
 private class SessionAdapter(
     private val onClick: (SessionInfo) -> Unit,
     private val onLongClick: (SessionInfo) -> Unit,
+    /** External row icon: new PocketShell terminal with the same shell, folder and size. */
+    private val onNewHere: (SessionInfo) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var rows: List<Row> = emptyList()
@@ -329,6 +350,9 @@ private class SessionAdapter(
                 val time = v.findViewById<TextView>(R.id.time)
                 time.text = if (s.isExternal) "" else formatTime(s.lastActivity)
                 time.visibility = if (s.isExternal) View.GONE else View.VISIBLE
+                val newHere = v.findViewById<View>(R.id.newHere)
+                newHere.visibility = if (s.isExternal) View.VISIBLE else View.GONE
+                newHere.setOnClickListener { onNewHere(s) }
                 v.setOnClickListener { onClick(s) }
                 v.setOnLongClickListener { onLongClick(s); true }
             }

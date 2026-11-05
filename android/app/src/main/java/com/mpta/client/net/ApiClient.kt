@@ -96,6 +96,10 @@ class ApiClient(
         SessionInfo.fromJson(JSONObject(request("POST", "/api/sessions/${historyId}/resume")))
 
 
+    /** New host session with an external console's shell, folder and size (`POST /api/external/{pid}/adopt`). */
+    suspend fun newTerminalHere(pid: Int): SessionInfo =
+        SessionInfo.fromJson(JSONObject(request("POST", "/api/external/$pid/adopt")))
+
     suspend fun delete(id: String) {
         request("DELETE", "/api/sessions/$id")
     }
