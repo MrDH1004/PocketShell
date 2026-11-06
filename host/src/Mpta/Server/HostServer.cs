@@ -139,7 +139,7 @@ public sealed class HostServer
         _sessions = new SessionManager(_home);
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
-        _externals = new ExternalConsoles(_exe);
+        _externals = new ExternalConsoles(_exe) { TabNames = TerminalTabs.Read };
         var attachArgs = new List<string> { "--port", _port.ToString() };
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MPTA_HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);

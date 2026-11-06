@@ -27,6 +27,9 @@ public sealed class ExternalConsoles : IDisposable
 
     public ExternalConsoles(string helperExe) { _helperExe = helperExe; }
 
+    /// <summary>Tab names per Windows Terminal window handle (set by the server; reading WT's UI needs UI Automation).</summary>
+    public Func<IReadOnlyDictionary<long, IReadOnlyList<string>>>? TabNames { get; set; }
+
     /// <summary>MPTA_EXTERNAL_ALL=1 lists every top-level shell console (used by QA, whose test console has no launcher parent).</summary>
     private static readonly bool IncludeAll = Environment.GetEnvironmentVariable("MPTA_EXTERNAL_ALL") == "1";
 
@@ -134,6 +137,13 @@ public sealed class ExternalConsoles : IDisposable
         _ => Path.GetFileNameWithoutExtension(exe),
     };
 
+    private Dictionary<int, string> TabTitlesFor(List<ConsoleInfo> infos)
+    {
+        var source = TabNames;
+        if (source == null || !infos.Any(i => i.OwnerWindow != 0)) return new Dictionary<int, string>();
+        return TerminalTabTitles.Assign(infos, source());
+    }
+
     /// <summary>External sessions (kind=external, id=ext-pid). Cached for 2 seconds.</summary>
     public List<SessionDto> List()
     {
@@ -145,6 +155,7 @@ public sealed class ExternalConsoles : IDisposable
         var candidates = FindCandidates(procs, Environment.ProcessId, IncludeAll);
         var infos = candidates.Count == 0 ? new List<ConsoleInfo>() : QueryConsoleInfo(candidates.Select(c => c.Proc.Pid));
         var now = Ids.IsoNow();
+        var tabTitles = TabTitlesFor(infos);
         var list = new List<SessionDto>();
         foreach (var info in infos)
         {
@@ -155,7 +166,7 @@ public sealed class ExternalConsoles : IDisposable
             {
                 Id = "ext-" + info.Pid,
                 Kind = "external",
-                Title = info.Title,
+                Title = tabTitles.TryGetValue(info.Pid, out var tab) && !string.IsNullOrWhiteSpace(tab) ? tab : info.Title,
                 Shell = ShellKind(proc.Exe),
                 Cwd = ProcessCwd.TryGet(info.Pid) ?? "",
                 State = "running",

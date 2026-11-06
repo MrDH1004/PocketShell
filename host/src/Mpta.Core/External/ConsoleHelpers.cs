@@ -14,6 +14,8 @@ public sealed class ConsoleInfo
     public string Title { get; set; } = "";
     public int Cols { get; set; }
     public int Rows { get; set; }
+    /// <summary>Top-level window that owns the console window (Windows Terminal's window for a WT tab), 0 if none.</summary>
+    public long OwnerWindow { get; set; }
 }
 
 /// <summary>
@@ -46,9 +48,12 @@ public static class ConsoleHelpers
                 }
                 var sb = new StringBuilder(1024);
                 uint n = Win32.GetConsoleTitle(sb, (uint)sb.Capacity);
+                var conWnd = Win32.GetConsoleWindow();
+                var owner = conWnd == IntPtr.Zero ? IntPtr.Zero : Win32.GetAncestor(conWnd, Win32.GA_ROOTOWNER);
                 results.Add(new ConsoleInfo
                 {
                     Pid = pid,
+                    OwnerWindow = owner.ToInt64(),
                     Title = n > 0 ? sb.ToString() : "",
                     Cols = info.srWindow.Right - info.srWindow.Left + 1,
                     Rows = info.srWindow.Bottom - info.srWindow.Top + 1,
