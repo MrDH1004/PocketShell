@@ -44,6 +44,31 @@ public class SemVerTests
         Assert.True(SemVer.Parse("0.1.1-alpha").IsPrerelease);
     }
 
+    [Fact]
+    public void OperatorsMatchCompareToAndAreNullSafe()
+    {
+        var a = SemVer.Parse("1.2.3-rc.1");
+        var b = SemVer.Parse("1.2.3");
+        var b2 = SemVer.Parse("v1.2.3+build.9");
+        SemVer? none = null;
+
+        Assert.True(a < b);
+        Assert.True(a <= b);
+        Assert.True(b > a);
+        Assert.True(b >= a);
+        Assert.True(b == b2);
+        Assert.False(b != b2);
+        Assert.True(a != b);
+        Assert.True(b <= b2 && b >= b2);
+        Assert.Equal(b.GetHashCode(), b2.GetHashCode());
+
+        Assert.True(none == null);
+        Assert.False(a == none);
+        Assert.True(a != none);
+        Assert.True(none < a);
+        Assert.True(a > none);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("1.2")]

@@ -839,9 +839,10 @@ public sealed class HostServer : IDisposable
             await conn.SendTextAsync(ControlMessages.Size(c, r), cts.Token);
 
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
-            await ReceiveLoop(conn, cts.Token,
+            await ReceiveLoop(conn,
                 data => s.WriteInput(data),
-                (nc, nr) => s.ResizeClient(a.Client, nc, nr));
+                (nc, nr) => s.ResizeClient(a.Client, nc, nr),
+                cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
         }
@@ -865,7 +866,7 @@ public sealed class HostServer : IDisposable
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
-            await ReceiveLoop(conn, cts.Token, data => b.WriteInput(data), (_, _) => { /* size policy not applied to external consoles */ });
+            await ReceiveLoop(conn, data => b.WriteInput(data), (_, _) => { /* size policy not applied to external consoles */ }, cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
         }
@@ -890,7 +891,7 @@ public sealed class HostServer : IDisposable
     /// <summary>MPTA_LOG_INPUT=1 logs every inbound input frame (hex + text) — for diagnosing client input problems only.</summary>
     private static readonly bool LogInput = Environment.GetEnvironmentVariable("MPTA_LOG_INPUT") == "1";
 
-    private static async Task ReceiveLoop(WsConn conn, CancellationToken ct, Action<byte[]> onInput, Action<int, int> onResize)
+    private static async Task ReceiveLoop(WsConn conn, Action<byte[]> onInput, Action<int, int> onResize, CancellationToken ct)
     {
         var buf = new byte[64 * 1024];
         using var msg = new MemoryStream();
