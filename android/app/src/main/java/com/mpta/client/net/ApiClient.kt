@@ -5,7 +5,9 @@ import com.mpta.client.core.ClaimResult
 import com.mpta.client.core.ClientProtocol
 import com.mpta.client.core.FingerprintHostnameVerifier
 import com.mpta.client.core.FingerprintTrustManager
+import com.mpta.client.core.ProjectOptions
 import com.mpta.client.core.SessionInfo
+import com.mpta.client.core.serverErrorText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -100,6 +102,15 @@ class ApiClient(
         return SessionInfo.fromJson(JSONObject(request("POST", "/api/sessions", body)))
     }
 
+    /** `GET /api/projects`; hosts older than 0.2.9 answer 404. */
+    suspend fun projectOptions(): ProjectOptions = ProjectOptions.parse(request("GET", "/api/projects"))
+
+    /** `POST /api/projects`: `<root>\<name>` (created if missing) + a session there running the agent CLI. */
+    suspend fun createProject(root: String, name: String, agent: String): SessionInfo {
+        val body = JSONObject().put("root", root).put("name", name).put("agent", agent)
+        return SessionInfo.fromJson(JSONObject(request("POST", "/api/projects", body)))
+    }
+
     suspend fun resume(historyId: String): SessionInfo =
         SessionInfo.fromJson(JSONObject(request("POST", "/api/sessions/${historyId}/resume")))
 
@@ -150,6 +161,7 @@ class ApiClient(
         404 -> "찾을 수 없음 (404)"
         409 -> "요청 충돌 (409) ${body.take(200)}"
         429 -> "시도 횟수 초과 (429) — 잠시 후 다시 시도하세요"
+        400 -> serverErrorText(body) ?: "잘못된 요청 (400) ${body.take(200)}"
         else -> "서버 오류 ($code) ${body.take(200)}"
     }
 

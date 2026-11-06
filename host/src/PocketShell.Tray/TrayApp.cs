@@ -57,7 +57,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.AddRange(new ToolStripItem[]
         {
             _status, new ToolStripSeparator(),
-            pair, _start, _stop, new ToolStripSeparator(),
+            pair, new ToolStripMenuItem("프로젝트 폴더…", null, (_, _) => ShowProjects()), _start, _stop, new ToolStripSeparator(),
             new ToolStripMenuItem("데이터 폴더 열기", null, (_, _) => OpenFolder(_home)),
             new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(MptaPaths.LogsDir(_home))),
             _autoStart, new ToolStripSeparator(),
@@ -195,6 +195,21 @@ internal sealed class TrayApp : ApplicationContext
         _pinForm.Activate();
     }
 
+    private ProjectsForm? _projectsForm;
+
+    private void ShowProjects()
+    {
+        if (_projectsForm is { IsDisposed: false })
+        {
+            _projectsForm.Activate();
+            return;
+        }
+        _projectsForm = new ProjectsForm(_home);
+        _projectsForm.FormClosed += (_, _) => _projectsForm = null;
+        _projectsForm.Show();
+        _projectsForm.Activate();
+    }
+
     private void ToggleAutoStart()
     {
         try { AutoStart.Set(!AutoStart.IsEnabled); }
@@ -271,6 +286,7 @@ internal sealed class TrayApp : ApplicationContext
         _icon.Visible = false;
         _icon.Dispose();
         _pinForm?.Close();
+        _projectsForm?.Close();
         _restartEvent.Dispose();
         ExitThread();
     }
@@ -283,6 +299,7 @@ internal sealed class TrayApp : ApplicationContext
         _icon.Visible = false;
         _icon.Dispose();
         _pinForm?.Close();
+        _projectsForm?.Close();
         ExitThread();
     }
 }

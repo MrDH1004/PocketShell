@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using Mpta.Core.Auth;
 using Mpta.Core.External;
 using Mpta.Core.Net;
+using Mpta.Core.Projects;
 using Mpta.Core.Sessions;
 using Mpta.Core.Update;
 using Mpta.Core.Util;
@@ -556,6 +557,48 @@ public sealed class HostServer
             catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
             {
                 Log.Error($"create session failed: {ex.Message}");
+                return Error(400, ex.Message);
+            }
+        });
+
+        app.MapGet("/api/projects", () =>
+        {
+            var settings = ProjectStore.Load(_home);
+            return Json(new
+            {
+                roots = settings.Roots,
+                agents = ProjectStore.DetectAgents().Select(a => new { id = a.Id, name = a.Name }),
+            });
+        });
+
+        // New project: <root>\<name> folder (created if missing) + a host session there running the chosen AI CLI.
+        app.MapPost("/api/projects", async (HttpContext ctx) =>
+        {
+            var req = await ReadBody<CreateProjectRequest>(ctx) ?? new CreateProjectRequest();
+            var settings = ProjectStore.Load(_home);
+            if (settings.Roots.Count == 0) return Error(400, "PC 앱(트레이)에서 프로젝트 폴더를 먼저 추가하세요");
+            var root = ProjectStore.FindRoot(settings, req.Root);
+            if (root == null) return Error(400, "등록된 프로젝트 폴더가 아닙니다");
+            if (!Directory.Exists(root)) return Error(400, $"프로젝트 폴더가 없습니다: {root}");
+            var name = req.Name ?? "";
+            var invalid = ProjectStore.ValidateName(name);
+            if (invalid != null) return Error(400, invalid);
+            var agent = ProjectStore.DetectAgents().FirstOrDefault(a => string.Equals(a.Id, req.Agent, StringComparison.OrdinalIgnoreCase));
+            if (agent == null) return Error(400, "PC에서 선택한 AI CLI를 찾을 수 없습니다");
+
+            var dir = Path.Combine(root, name);
+            bool existed = Directory.Exists(dir);
+            try
+            {
+                Directory.CreateDirectory(dir);
+                var s = _sessions.Create(new CreateSessionRequest { Cwd = dir, Title = name, Cols = req.Cols, Rows = req.Rows });
+                s.WriteInput(Encoding.UTF8.GetBytes(agent.Command + "\r"));
+                Log.Info($"project: {(existed ? "opened" : "created")} {dir} with {agent.Id} (session {s.Id}) by {AuthOf(ctx).DeviceId ?? "local"}");
+                return Json(s.Snapshot());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                Log.Error($"project create failed ({dir}): {ex.Message}");
                 return Error(400, ex.Message);
             }
         });

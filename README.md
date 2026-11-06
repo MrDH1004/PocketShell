@@ -23,7 +23,8 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 4. 폰: `pocketshell-android-*.apk` 설치 → PIN 연결에서 이 PC 선택(또는 IP 입력) → PIN 입력 → 지문 확인
 5. 폰에서 세션 목록 선택 또는 새 세션 생성 → PC에는 Windows Terminal 탭이 자동으로 열림
 
-트레이 메뉴: 서버 시작/중지, 휴대폰 연결 (PIN), 데이터·로그 폴더 열기, Windows 시작 시 자동 실행, 종료(서버도 중지).
+트레이 메뉴: 서버 시작/중지, 휴대폰 연결 (PIN), 프로젝트 폴더, 데이터·로그 폴더 열기, Windows 시작 시 자동 실행, 종료(서버도 중지).
+**프로젝트 폴더…**: 폰에서 새 프로젝트를 만들 상위 폴더를 추가·삭제(여러 개 가능, `%APPDATA%\PocketShell\projects.json`). 이 PC에서 찾은 AI CLI(claude, codex)도 표시됨.
 서버가 예기치 않게 꺼지면 트레이가 다시 띄움(5분에 최대 3회).
 
 PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair --pin`, `psh devices`, `psh revoke <id>`, `psh update [--check]`
@@ -35,7 +36,8 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 - **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴.
 - **최근**: 끝난 세션 기록. 누르면 같은 폴더·셸로 다시 시작.
 - 외부 항목 오른쪽 아이콘(화면+플러스): 그 콘솔의 폴더에서 새 터미널 열기 (실행 중인 프로그램을 옮기지는 않음).
-- `+` 버튼: 새 세션(pwsh/powershell/cmd/bash). 길게 누르면 세션 삭제.
+- `+` 버튼 → **새 프로젝트**: 프로젝트 폴더(PC 트레이에서 지정)·이름·AI(Claude / GPT(Codex), PC에 설치된 것만)를 고르면 `<폴더>\<이름>`을 만들고(이미 있으면 그대로 사용) 그 폴더에서 claude/codex를 실행한 세션이 열림.
+- `+` 버튼 → **새 터미널**: 새 세션(pwsh/powershell/cmd/bash). 세션을 길게 누르면 삭제.
 
 **터미널 화면**
 - 상단 바 아이콘: 원래 크기로 맞춤(네 모서리) · 키보드 열기/닫기.

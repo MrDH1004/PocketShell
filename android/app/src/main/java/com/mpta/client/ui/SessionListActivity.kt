@@ -5,10 +5,15 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.Spinner
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -22,6 +27,7 @@ import com.mpta.client.BuildConfig
 import com.mpta.client.MptaApp
 import com.mpta.client.R
 import com.mpta.client.core.HostUpdateStatus
+import com.mpta.client.core.ProjectOptions
 import com.mpta.client.core.SessionInfo
 import com.mpta.client.core.SessionSections
 import com.mpta.client.net.ApiException
@@ -78,7 +84,7 @@ class SessionListActivity : AppCompatActivity() {
         val list = findViewById<RecyclerView>(R.id.list)
         list.layoutManager = LinearLayoutManager(this)
         list.adapter = adapter
-        findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { showNewSessionDialog() }
+        findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { showNewChooser() }
 
         hostUpdateBar = findViewById(R.id.hostUpdateBar)
         hostUpdateText = findViewById(R.id.hostUpdateText)
@@ -209,6 +215,91 @@ class SessionListActivity : AppCompatActivity() {
                 showMessage("새 터미널 열기 실패: ${e.message}")
             } catch (e: org.json.JSONException) {
                 showMessage("새 터미널 열기 실패: 서버 응답 형식 오류 (${e.message})")
+            }
+        }
+    }
+
+    private fun showNewChooser() {
+        AlertDialog.Builder(this)
+            .setItems(arrayOf(getString(R.string.new_project), getString(R.string.new_terminal))) { _, which ->
+                if (which == 0) loadProjectOptions() else showNewSessionDialog()
+            }
+            .show()
+    }
+
+    private fun loadProjectOptions() {
+        val api = (application as MptaApp).api() ?: return
+        lifecycleScope.launch {
+            val options = try {
+                api.projectOptions()
+            } catch (e: ApiException) {
+                showMessage(if (e.code == 404) getString(R.string.project_host_old) else "새 프로젝트: ${e.message}")
+                return@launch
+            } catch (e: IOException) {
+                showMessage("새 프로젝트: PC에 연결할 수 없습니다 (${e.message})")
+                return@launch
+            } catch (e: org.json.JSONException) {
+                showMessage("새 프로젝트: 서버 응답 형식 오류 (${e.message})")
+                return@launch
+            }
+            when {
+                options.roots.isEmpty() -> showInfo(getString(R.string.project_no_roots))
+                options.agents.isEmpty() -> showInfo(getString(R.string.project_no_agents))
+                else -> showNewProjectDialog(options)
+            }
+        }
+    }
+
+    private fun showInfo(text: String) {
+        if (isFinishing) return
+        AlertDialog.Builder(this).setTitle(R.string.new_project).setMessage(text).setPositiveButton(R.string.confirm, null).show()
+    }
+
+    private fun showNewProjectDialog(options: ProjectOptions) {
+        if (isFinishing) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_new_project, null)
+        val rootSpinner = view.findViewById<Spinner>(R.id.rootSpinner)
+        rootSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, options.roots)
+        val nameInput = view.findViewById<EditText>(R.id.nameInput)
+        val preview = view.findViewById<TextView>(R.id.pathPreview)
+        val agentGroup = view.findViewById<RadioGroup>(R.id.agentGroup)
+        options.agents.forEachIndexed { i, a ->
+            agentGroup.addView(RadioButton(this).apply { id = View.generateViewId(); text = a.name; tag = a.id; isChecked = i == 0 })
+        }
+        fun selectedRoot(): String = options.roots[rootSpinner.selectedItemPosition.coerceIn(0, options.roots.size - 1)]
+        fun updatePreview() {
+            val name = nameInput.text?.toString()?.trim().orEmpty()
+            preview.text = getString(R.string.project_path_preview, selectedRoot().trimEnd('\\') + "\\" + name.ifEmpty { "…" })
+        }
+        nameInput.doAfterTextChanged { updatePreview() }
+        rootSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, v: View?, position: Int, id: Long) = updatePreview()
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        updatePreview()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.new_project)
+            .setView(view)
+            .setPositiveButton(R.string.create) { _, _ ->
+                val agent = agentGroup.findViewById<RadioButton>(agentGroup.checkedRadioButtonId)?.tag as? String
+                    ?: options.agents[0].id
+                createProject(selectedRoot(), nameInput.text?.toString()?.trim().orEmpty(), agent)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun createProject(root: String, name: String, agent: String) {
+        val api = (application as MptaApp).api() ?: return
+        lifecycleScope.launch {
+            try {
+                openSession(api.createProject(root, name, agent))
+            } catch (e: ApiException) {
+                showInfo(e.message ?: "새 프로젝트를 만들지 못했습니다")
+            } catch (e: IOException) {
+                showMessage("새 프로젝트 생성 실패: ${e.message}")
+            } catch (e: org.json.JSONException) {
+                showMessage("새 프로젝트 생성 실패: 서버 응답 형식 오류 (${e.message})")
             }
         }
     }

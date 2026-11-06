@@ -16,6 +16,15 @@
     <string name="sessions_empty">세션이 없습니다. 오른쪽 아래 + 로 새 세션을 만드세요.</string>
     <string name="new_session">새 세션</string>
     <string name="new_session_title_hint">제목 (선택)</string>
+    <string name="new_terminal">새 터미널</string>
+    <string name="new_project">새 프로젝트</string>
+    <string name="project_root">프로젝트 폴더</string>
+    <string name="project_name_hint">프로젝트 이름</string>
+    <string name="project_agent">AI</string>
+    <string name="project_path_preview">PC 경로: %1$s</string>
+    <string name="project_no_roots">PC 트레이 아이콘 메뉴 &gt; 프로젝트 폴더에서 폴더를 먼저 추가하세요.</string>
+    <string name="project_no_agents">PC에서 claude 또는 codex를 찾지 못했습니다.</string>
+    <string name="project_host_old">PC 호스트가 새 프로젝트를 지원하지 않습니다. PC 호스트를 업데이트하세요.</string>
     <string name="create">만들기</string>
     <string name="cancel">취소</string>
     <string name="refresh">새로고침</string>
