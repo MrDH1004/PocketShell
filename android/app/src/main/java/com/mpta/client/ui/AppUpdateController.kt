@@ -13,6 +13,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.mpta.client.R
 import com.mpta.client.core.IntegrityException
+import com.mpta.client.core.ReleaseNotes
 import com.mpta.client.net.AppUpdater
 import com.mpta.client.net.VerifiedUpdate
 import kotlinx.coroutines.Job
@@ -73,11 +74,11 @@ class AppUpdateController(private val activity: AppCompatActivity) {
     private fun showUpdateDialog(update: VerifiedUpdate) {
         if (activity.isFinishing) return
         val c = update.candidate
-        val notes = c.notes.trim().ifEmpty { activity.getString(R.string.update_no_notes) }
+        val notes = ReleaseNotes.clean(c.notes).ifEmpty { activity.getString(R.string.update_no_notes) }
         AlertDialog.Builder(activity)
-            .setTitle(activity.getString(R.string.update_available_title, c.version.toString()))
+            .setTitle(R.string.update_available_title)
             .setMessage(activity.getString(R.string.update_available_message, updater.currentVersion, c.version.toString(), notes))
-            .setPositiveButton(R.string.update_download) { _, _ -> download(update) }
+            .setPositiveButton(activity.getString(R.string.update_download, c.version.toString())) { _, _ -> download(update) }
             .setNegativeButton(R.string.update_later, null)
             .show()
     }

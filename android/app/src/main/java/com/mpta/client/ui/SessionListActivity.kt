@@ -47,6 +47,7 @@ class SessionListActivity : AppCompatActivity() {
     private lateinit var hostUpdateBar: View
     private lateinit var hostUpdateText: TextView
     private lateinit var hostUpdateApply: Button
+    private var hostUpdateStatus: HostUpdateStatus? = null
     private val adapter = SessionAdapter(::openSession, ::confirmDelete, ::newTerminalHere)
     private val appUpdate = AppUpdateController(this)
 
@@ -141,6 +142,7 @@ class SessionListActivity : AppCompatActivity() {
             HostUpdateStatus.STATE_ERROR -> getString(R.string.host_update_state_error, status.error ?: "")
             else -> status.state
         }
+        hostUpdateStatus = status
         hostUpdateText.text = getString(R.string.host_update_status, status.current, status.latest.ifBlank { "?" }, stateText)
         hostUpdateApply.visibility = if (status.canApply) View.VISIBLE else View.GONE
         hostUpdateBar.visibility = View.VISIBLE
@@ -149,7 +151,7 @@ class SessionListActivity : AppCompatActivity() {
     private fun confirmHostUpdate() {
         AlertDialog.Builder(this)
             .setTitle(R.string.host_update_apply)
-            .setMessage(R.string.host_update_apply_confirm)
+            .setMessage(getString(R.string.host_update_apply_confirm, hostUpdateStatus?.current ?: "?", hostUpdateStatus?.latest?.ifBlank { "?" } ?: "?"))
             .setPositiveButton(R.string.confirm) { _, _ -> applyHostUpdate(force = false) }
             .setNegativeButton(R.string.cancel, null)
             .show()

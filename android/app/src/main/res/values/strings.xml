@@ -47,12 +47,12 @@
     <!-- App self-update (DESIGN.md §11.4) -->
     <string name="update_title">앱 업데이트</string>
     <string name="update_check">업데이트 확인</string>
-    <string name="update_latest">최신 버전입니다 (%1$s)</string>
+    <string name="update_latest">최신 버전 사용 중 (%1$s)</string>
     <string name="update_check_failed">업데이트 확인 실패: %1$s</string>
-    <string name="update_available_title">새 버전 %1$s</string>
-    <string name="update_available_message">현재 버전: %1$s\n새 버전: %2$s\n\n%3$s</string>
-    <string name="update_no_notes">(릴리스 노트 없음)</string>
-    <string name="update_download">다운로드 및 설치</string>
+    <string name="update_available_title">앱 업데이트 있음</string>
+    <string name="update_available_message">지금 설치됨: %1$s\n업데이트 후: %2$s\n\n변경 내용\n%3$s</string>
+    <string name="update_no_notes">(변경 내용 설명 없음)</string>
+    <string name="update_download">%1$s 설치</string>
     <string name="update_later">나중에</string>
     <string name="update_downloading">업데이트 다운로드 중</string>
     <string name="update_progress">%1$d%%</string>
@@ -69,14 +69,14 @@
     <string name="update_debug_url_help">릴리스 목록 JSON URL. 비워 두면 GitHub 기본값을 사용합니다. 디버그 빌드에서만 적용됩니다.</string>
     <string name="update_debug_url_reset">기본값</string>
     <!-- PC host update (DESIGN.md §11.3/§11.4) -->
-    <string name="host_update_status">PC 호스트 %1$s → %2$s · %3$s</string>
+    <string name="host_update_status">PC 호스트: 지금 %1$s → 새 버전 %2$s · %3$s</string>
     <string name="host_update_state_available">새 버전 있음</string>
     <string name="host_update_state_downloading">다운로드 중</string>
     <string name="host_update_state_ready">적용 준비됨</string>
     <string name="host_update_state_applying">적용 중</string>
     <string name="host_update_state_error">오류: %1$s</string>
     <string name="host_update_apply">PC 업데이트 적용</string>
-    <string name="host_update_apply_confirm">PC 호스트를 새 버전으로 업데이트하고 재시작할까요?</string>
+    <string name="host_update_apply_confirm">PC 호스트를 %1$s → %2$s(으)로 업데이트하고 재시작할까요?</string>
     <string name="host_update_applying_message">PC 호스트가 업데이트 후 재시작됩니다. 잠시 후 다시 연결합니다.</string>
     <string name="host_update_failed">PC 업데이트 적용 실패: %1$s</string>
     <string name="host_update_running_title">실행 중인 세션이 있습니다</string>
