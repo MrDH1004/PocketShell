@@ -13,7 +13,7 @@ public class TerminalTabTitlesTests
     public void SingleTabWindowUsesTheTabName()
     {
         var r = TerminalTabTitles.Assign(new[] { C(1, 100, "◑ Flowdesk 깃 연동"), C(2, 200, "✳ QA") },
-            Tabs((100, new[] { "✳ flowdesk" }), (200, new[] { "kaia" })));
+            Tabs((100, ["✳ flowdesk"]), (200, ["kaia"])));
         Assert.Equal("✳ flowdesk", r[1]);
         Assert.Equal("kaia", r[2]);
     }
@@ -23,7 +23,7 @@ public class TerminalTabTitlesTests
     {
         // Tab 1 not renamed (spinner glyph differs between reads), tab 2 renamed by the user.
         var r = TerminalTabTitles.Assign(new[] { C(1, 100, "◐ Claude Code"), C(2, 100, "✳ Some task") },
-            Tabs((100, new[] { "◑ Claude Code", "my renamed tab" })));
+            Tabs((100, ["◑ Claude Code", "my renamed tab"])));
         Assert.Equal("◑ Claude Code", r[1]);
         Assert.Equal("my renamed tab", r[2]);
     }
@@ -32,16 +32,16 @@ public class TerminalTabTitlesTests
     public void UnknownWhenTabsAndConsolesDoNotLineUp()
     {
         // Window has a tab whose console is not in our list: no guessing.
-        var r = TerminalTabTitles.Assign(new[] { C(1, 100, "a") }, Tabs((100, new[] { "x", "y" })));
+        var r = TerminalTabTitles.Assign(new[] { C(1, 100, "a") }, Tabs((100, ["x", "y"])));
         Assert.Empty(r);
         // No owner window / window not found.
-        Assert.Empty(TerminalTabTitles.Assign(new[] { C(1, 0, "a"), C(2, 300, "b") }, Tabs((100, new[] { "x" }))));
+        Assert.Empty(TerminalTabTitles.Assign(new[] { C(1, 0, "a"), C(2, 300, "b") }, Tabs((100, ["x"]))));
     }
 
     [Fact]
     public void TwoRenamedTabsInOneWindowStayUnknown()
     {
-        var r = TerminalTabTitles.Assign(new[] { C(1, 100, "a"), C(2, 100, "b") }, Tabs((100, new[] { "x", "y" })));
+        var r = TerminalTabTitles.Assign(new[] { C(1, 100, "a"), C(2, 100, "b") }, Tabs((100, ["x", "y"])));
         Assert.Empty(r);
     }
 }
