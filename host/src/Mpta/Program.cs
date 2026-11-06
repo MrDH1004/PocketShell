@@ -109,7 +109,7 @@ public static class Program
                 string Next() => i + 1 < args.Count ? args[++i] : throw new FormatException($"missing value for {args[i]}");
                 switch (args[i])
                 {
-                    case "--port": o.Port = int.Parse(Next()); break;
+                    case "--port": o.Port = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     case "--home": o.Home = Path.GetFullPath(Next()); break;
                     case "--bind": o.Binds.Add(Next()); break;
                     case "--shell": o.Shell = Next(); break;
@@ -120,7 +120,7 @@ public static class Program
                     case "--pin": o.Pin = true; break;
                     case "--check": o.Check = true; break;
                     case "--force": o.Force = true; break;
-                    case "--discovery-port": o.DiscoveryPort = int.Parse(Next()); break;
+                    case "--discovery-port": o.DiscoveryPort = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     default:
                         if (args[i].StartsWith("--", StringComparison.Ordinal)) throw new FormatException($"unknown option {args[i]}");
                         o.Positional.Add(args[i]);
@@ -159,7 +159,7 @@ public static class Program
         foreach (var s in res.GetProperty("sessions").EnumerateArray())
         {
             var last = Str(s, "lastActivity");
-            if (DateTimeOffset.TryParse(last, out var t)) last = t.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+            if (DateTimeOffset.TryParse(last, out var t)) last = t.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
             rows.Add(new[] { Str(s, "kind"), Str(s, "id"), Str(s, "title"), Str(s, "shell"), Str(s, "cwd"), Str(s, "state"), last });
         }
         PrintTable(rows);
