@@ -90,8 +90,13 @@ public sealed class SemVer : IComparable<SemVer>, IEquatable<SemVer>
     /// <summary>Normalized "M.m.p[-pre]" (build metadata omitted) — the form used in tags and asset names.</summary>
     public override string ToString() => IsPrerelease ? $"{Major}.{Minor}.{Patch}-{string.Join('.', Prerelease)}" : $"{Major}.{Minor}.{Patch}";
 
-    public static bool operator <(SemVer a, SemVer b) => a.CompareTo(b) < 0;
-    public static bool operator >(SemVer a, SemVer b) => a.CompareTo(b) > 0;
-    public static bool operator <=(SemVer a, SemVer b) => a.CompareTo(b) <= 0;
-    public static bool operator >=(SemVer a, SemVer b) => a.CompareTo(b) >= 0;
+    // null sorts below any version (consistent with CompareTo(null) == 1).
+    private static int Compare(SemVer? a, SemVer? b) => a is null ? (b is null ? 0 : -1) : a.CompareTo(b);
+
+    public static bool operator ==(SemVer? a, SemVer? b) => Compare(a, b) == 0;
+    public static bool operator !=(SemVer? a, SemVer? b) => Compare(a, b) != 0;
+    public static bool operator <(SemVer? a, SemVer? b) => Compare(a, b) < 0;
+    public static bool operator >(SemVer? a, SemVer? b) => Compare(a, b) > 0;
+    public static bool operator <=(SemVer? a, SemVer? b) => Compare(a, b) <= 0;
+    public static bool operator >=(SemVer? a, SemVer? b) => Compare(a, b) >= 0;
 }
