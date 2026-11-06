@@ -46,15 +46,17 @@ public static class ConsoleHelpers
                     Console.Error.WriteLine(Win32.LastError("GetConsoleScreenBufferInfo").Message);
                     continue;
                 }
-                var sb = new StringBuilder(1024);
-                uint n = Win32.GetConsoleTitle(sb, (uint)sb.Capacity);
+                var titleBuf = new char[1024];
+                uint n = Win32.GetConsoleTitle(titleBuf, (uint)titleBuf.Length);
+                // The title is NUL-terminated in the buffer; take everything up to the terminator.
+                int titleEnd = Array.IndexOf(titleBuf, '\0');
                 var conWnd = Win32.GetConsoleWindow();
                 var owner = conWnd == IntPtr.Zero ? IntPtr.Zero : Win32.GetAncestor(conWnd, Win32.GA_ROOTOWNER);
                 results.Add(new ConsoleInfo
                 {
                     Pid = pid,
                     OwnerWindow = owner.ToInt64(),
-                    Title = n > 0 ? sb.ToString() : "",
+                    Title = n > 0 ? new string(titleBuf, 0, titleEnd < 0 ? titleBuf.Length : titleEnd) : "",
                     Cols = info.srWindow.Right - info.srWindow.Left + 1,
                     Rows = info.srWindow.Bottom - info.srWindow.Top + 1,
                 });

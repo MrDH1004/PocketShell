@@ -71,7 +71,7 @@ internal sealed class WsConn
     }
 }
 
-public sealed class HostServer
+public sealed class HostServer : IDisposable
 {
     /// <summary>Set by the updating (old) process on the new `mpta serve` it launches (DESIGN §11.3 handoff).</summary>
     public const string UpdateParentPidEnv = "MPTA_UPDATE_PARENT_PID";
@@ -107,6 +107,7 @@ public sealed class HostServer
     private volatile bool _handoffPending;
     private string? _handoffStaging;
     private bool _handoffForce;
+    private bool _disposed;
 
     /// <param name="serveArgs">Arguments after `serve`, replayed verbatim to the new process on update.</param>
     public HostServer(string home, int port, List<IPAddress> binds, IReadOnlyList<string> serveArgs, int discoveryPort)
@@ -141,7 +142,7 @@ public sealed class HostServer
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
         _externals = new ExternalConsoles(_exe) { TabNames = TerminalTabs.Read };
-        var attachArgs = new List<string> { "--port", _port.ToString() };
+        var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MPTA_HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
 
@@ -208,12 +209,21 @@ public sealed class HostServer
         {
             stopWait.Unregister(null);
             Log.Info("shutting down: terminating running sessions");
-            StopDiscovery();
-            _update.Dispose();
-            _externals.Dispose();
-            _sessions.Dispose();
+            Dispose();
         }
         return exitCode;
+    }
+
+    /// <summary>Stops discovery and releases the update service, external consoles and sessions. Idempotent.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        StopDiscovery();
+        // Null when RunAsync never got far enough to create them.
+        _update?.Dispose();
+        _externals?.Dispose();
+        _sessions?.Dispose();
     }
 
     private WebApplication BuildApp()
@@ -416,7 +426,7 @@ public sealed class HostServer
                 var psi = new ProcessStartInfo(_exe) { UseShellExecute = false, WorkingDirectory = Environment.CurrentDirectory };
                 psi.ArgumentList.Add("serve");
                 foreach (var a in _serveArgs) psi.ArgumentList.Add(a);
-                psi.Environment[UpdateParentPidEnv] = Environment.ProcessId.ToString();
+                psi.Environment[UpdateParentPidEnv] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 child = Process.Start(psi);
                 err = child == null ? "Process.Start returned null" : await WaitForNewHost(child, expected, TimeSpan.FromSeconds(30));
             }
@@ -827,9 +837,10 @@ public sealed class HostServer
             await conn.SendTextAsync(ControlMessages.Size(c, r), cts.Token);
 
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
-            await ReceiveLoop(conn, cts.Token,
+            await ReceiveLoop(conn,
                 data => s.WriteInput(data),
-                (nc, nr) => s.ResizeClient(a.Client, nc, nr));
+                (nc, nr) => s.ResizeClient(a.Client, nc, nr),
+                cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
         }
@@ -840,7 +851,7 @@ public sealed class HostServer
         }
     }
 
-    private async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, CancellationTokenSource cts)
+    private static async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, CancellationTokenSource cts)
     {
         var a = b.Attach(clientType, cols, rows);
         try
@@ -853,7 +864,7 @@ public sealed class HostServer
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
-            await ReceiveLoop(conn, cts.Token, data => b.WriteInput(data), (_, _) => { /* size policy not applied to external consoles */ });
+            await ReceiveLoop(conn, data => b.WriteInput(data), (_, _) => { /* size policy not applied to external consoles */ }, cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
         }
@@ -878,7 +889,7 @@ public sealed class HostServer
     /// <summary>MPTA_LOG_INPUT=1 logs every inbound input frame (hex + text) — for diagnosing client input problems only.</summary>
     private static readonly bool LogInput = Environment.GetEnvironmentVariable("MPTA_LOG_INPUT") == "1";
 
-    private static async Task ReceiveLoop(WsConn conn, CancellationToken ct, Action<byte[]> onInput, Action<int, int> onResize)
+    private static async Task ReceiveLoop(WsConn conn, Action<byte[]> onInput, Action<int, int> onResize, CancellationToken ct)
     {
         var buf = new byte[64 * 1024];
         using var msg = new MemoryStream();

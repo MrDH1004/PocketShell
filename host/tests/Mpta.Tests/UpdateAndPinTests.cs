@@ -44,6 +44,31 @@ public class SemVerTests
         Assert.True(SemVer.Parse("0.1.1-alpha").IsPrerelease);
     }
 
+    [Fact]
+    public void OperatorsMatchCompareToAndAreNullSafe()
+    {
+        var a = SemVer.Parse("1.2.3-rc.1");
+        var b = SemVer.Parse("1.2.3");
+        var b2 = SemVer.Parse("v1.2.3+build.9");
+        SemVer? none = null;
+
+        Assert.True(a < b);
+        Assert.True(a <= b);
+        Assert.True(b > a);
+        Assert.True(b >= a);
+        Assert.True(b == b2);
+        Assert.False(b != b2);
+        Assert.True(a != b);
+        Assert.True(b <= b2 && b >= b2);
+        Assert.Equal(b.GetHashCode(), b2.GetHashCode());
+
+        Assert.True(none == null);
+        Assert.False(a == none);
+        Assert.True(a != none);
+        Assert.True(none < a);
+        Assert.True(a > none);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("1.2")]
@@ -74,11 +99,13 @@ public class ReleaseFeedTests
         ]
         """;
 
+    private static readonly string[] ExpectedFeedVersions = { "0.2.0-beta", "0.3.0", "0.1.1" };
+
     [Fact]
     public void DraftsAndNonSemverTagsAreDropped()
     {
         var list = ReleaseFeed.Parse(Feed());
-        Assert.Equal(new[] { "0.2.0-beta", "0.3.0", "0.1.1" }, list.Select(r => r.Version.ToString()));
+        Assert.Equal(ExpectedFeedVersions, list.Select(r => r.Version.ToString()));
     }
 
     [Fact]
@@ -316,10 +343,10 @@ public class UpdateStagingTests
                     var st = c.GetStream();
                     var head = new StringBuilder();
                     var b = new byte[1];
-                    while (!head.ToString().EndsWith("\r\n\r\n") && await st.ReadAsync(b) == 1) head.Append((char)b[0]);
+                    while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await st.ReadAsync(b) == 1) head.Append((char)b[0]);
                     var path = head.ToString().Split(' ')[1];
-                    byte[] body = path.StartsWith("/dl/") ? _zip : Encoding.UTF8.GetBytes(_feed);
-                    if (path.StartsWith("/dl/")) Interlocked.Increment(ref ZipHits);
+                    byte[] body = path.StartsWith("/dl/", StringComparison.Ordinal) ? _zip : Encoding.UTF8.GetBytes(_feed);
+                    if (path.StartsWith("/dl/", StringComparison.Ordinal)) Interlocked.Increment(ref ZipHits);
                     await st.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"));
                     await st.WriteAsync(body);
                 }
@@ -487,10 +514,13 @@ public class PinPairingTests
 
 public class DiscoveryTests
 {
+    private static readonly string[] CandidateAddresses = { "127.0.0.1", "192.168.1.5", "10.1.2.3", "172.20.0.1", "100.80.1.2", "8.8.8.8", "::1" };
+    private static readonly string[] ExpectedPickedAddresses = { "127.0.0.1", "192.168.1.5", "10.1.2.3", "172.20.0.1" };
+
     [Fact]
     public void ReplyHasFieldsAndNoSecrets()
     {
-        var json = Encoding.UTF8.GetString(DiscoveryResponder.BuildReply("PC", new[] { "192.168.0.2" }, 7380, "AAAA-BBBB-CCCC-DDDD"));
+        var json = Encoding.UTF8.GetString(DiscoveryResponder.BuildReply("PC", ["192.168.0.2"],7380, "AAAA-BBBB-CCCC-DDDD"));
         Assert.Equal("""{"v":1,"name":"PC","hosts":["192.168.0.2"],"port":7380,"fpShort":"AAAA-BBBB-CCCC-DDDD"}""", json);
         Assert.DoesNotContain("token", json, StringComparison.OrdinalIgnoreCase);
     }
@@ -498,9 +528,9 @@ public class DiscoveryTests
     [Fact]
     public void BindsOnlyPrivateLanAndLoopback()
     {
-        var picked = DiscoveryResponder.SelectAddresses(new[] { "127.0.0.1", "192.168.1.5", "10.1.2.3", "172.20.0.1", "100.80.1.2", "8.8.8.8", "::1" }
+        var picked = DiscoveryResponder.SelectAddresses(CandidateAddresses
             .Select(System.Net.IPAddress.Parse)).Select(a => a.ToString());
-        Assert.Equal(new[] { "127.0.0.1", "192.168.1.5", "10.1.2.3", "172.20.0.1" }, picked);
+        Assert.Equal(ExpectedPickedAddresses, picked);
         Assert.True(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("MPTA?1")));
         Assert.False(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("MPTA?2")));
     }

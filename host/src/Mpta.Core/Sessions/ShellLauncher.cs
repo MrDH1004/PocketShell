@@ -1,3 +1,4 @@
+using System.Buffers;
 using Mpta.Core.Util;
 
 namespace Mpta.Core.Sessions;
@@ -104,9 +105,11 @@ public static class ShellLauncher
         }
     }
 
+    private static readonly SearchValues<char> QuoteTriggers = SearchValues.Create(" \t\"");
+
     public static string Quote(string arg)
     {
-        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '"' }) < 0) return arg;
+        if (arg.Length > 0 && arg.AsSpan().IndexOfAny(QuoteTriggers) < 0) return arg;
         var sb = new System.Text.StringBuilder("\"");
         int backslashes = 0;
         foreach (var ch in arg)

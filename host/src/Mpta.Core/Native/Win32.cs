@@ -215,7 +215,7 @@ public static class Win32
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "CreateProcessW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool CreateProcess(string? lpApplicationName, System.Text.StringBuilder lpCommandLine, IntPtr lpProcessAttributes, IntPtr lpThreadAttributes,
+    public static extern bool CreateProcess(string? lpApplicationName, [In, Out] char[] lpCommandLine, IntPtr lpProcessAttributes, IntPtr lpThreadAttributes,
         [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles, uint dwCreationFlags, IntPtr lpEnvironment, string? lpCurrentDirectory,
         ref STARTUPINFOEX lpStartupInfo, out PROCESS_INFORMATION lpProcessInformation);
 
@@ -266,7 +266,7 @@ public static class Win32
     public static extern bool ReadConsoleInput(IntPtr hConsoleInput, [Out] INPUT_RECORD[] lpBuffer, uint nLength, out uint lpNumberOfEventsRead);
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "GetConsoleTitleW")]
-    public static extern uint GetConsoleTitle(System.Text.StringBuilder lpConsoleTitle, uint nSize);
+    public static extern uint GetConsoleTitle([Out] char[] lpConsoleTitle, uint nSize);
 
     [DllImport("kernel32.dll")]
     public static extern IntPtr GetConsoleWindow();

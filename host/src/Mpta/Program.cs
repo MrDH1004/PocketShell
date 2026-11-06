@@ -109,7 +109,7 @@ public static class Program
                 string Next() => i + 1 < args.Count ? args[++i] : throw new FormatException($"missing value for {args[i]}");
                 switch (args[i])
                 {
-                    case "--port": o.Port = int.Parse(Next()); break;
+                    case "--port": o.Port = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     case "--home": o.Home = Path.GetFullPath(Next()); break;
                     case "--bind": o.Binds.Add(Next()); break;
                     case "--shell": o.Shell = Next(); break;
@@ -120,7 +120,7 @@ public static class Program
                     case "--pin": o.Pin = true; break;
                     case "--check": o.Check = true; break;
                     case "--force": o.Force = true; break;
-                    case "--discovery-port": o.DiscoveryPort = int.Parse(Next()); break;
+                    case "--discovery-port": o.DiscoveryPort = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     default:
                         if (args[i].StartsWith("--", StringComparison.Ordinal)) throw new FormatException($"unknown option {args[i]}");
                         o.Positional.Add(args[i]);
@@ -143,20 +143,24 @@ public static class Program
         try { binds = HostAddresses.ResolveBindAddresses(opts.Binds); }
         catch (ArgumentException ex) { Console.Error.WriteLine("psh: " + ex.Message); return 2; }
         int discoveryPort = opts.DiscoveryPort ?? cfg.DiscoveryPort;
-        return await new HostServer(home, port, binds, args, discoveryPort).RunAsync();
+        using var server = new HostServer(home, port, binds, args, discoveryPort);
+        return await server.RunAsync();
     }
 
     private static string Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
+    private static readonly string[] ListHeader = { "KIND", "ID", "TITLE", "SHELL", "CWD", "STATE", "LAST ACTIVITY" };
+    private static readonly string[] DevicesHeader = { "ID", "NAME", "CREATED", "REVOKED" };
+
     private static async Task<int> ListCmd(ApiClient api)
     {
         var res = await api.SendAsync(HttpMethod.Get, "api/sessions");
-        var rows = new List<string[]> { new[] { "KIND", "ID", "TITLE", "SHELL", "CWD", "STATE", "LAST ACTIVITY" } };
+        var rows = new List<string[]> { ListHeader };
         foreach (var s in res.GetProperty("sessions").EnumerateArray())
         {
             var last = Str(s, "lastActivity");
-            if (DateTimeOffset.TryParse(last, out var t)) last = t.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+            if (DateTimeOffset.TryParse(last, out var t)) last = t.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.CurrentCulture);
             rows.Add(new[] { Str(s, "kind"), Str(s, "id"), Str(s, "title"), Str(s, "shell"), Str(s, "cwd"), Str(s, "state"), last });
         }
         PrintTable(rows);
@@ -276,7 +280,7 @@ public static class Program
     private static async Task<int> DevicesCmd(ApiClient api)
     {
         var r = await api.SendAsync(HttpMethod.Get, "api/devices");
-        var rows = new List<string[]> { new[] { "ID", "NAME", "CREATED", "REVOKED" } };
+        var rows = new List<string[]> { DevicesHeader };
         foreach (var d in r.GetProperty("devices").EnumerateArray())
             rows.Add(new[] { Str(d, "id"), Str(d, "name"), Str(d, "createdAt"), d.GetProperty("revoked").GetBoolean() ? "yes" : "no" });
         PrintTable(rows);

@@ -244,7 +244,7 @@ public sealed class ExternalConsoles : IDisposable
             StandardOutputEncoding = Encoding.UTF8,
         };
         psi.ArgumentList.Add("console-info");
-        foreach (var pid in pids) psi.ArgumentList.Add(pid.ToString());
+        foreach (var pid in pids) psi.ArgumentList.Add(pid.ToString(System.Globalization.CultureInfo.InvariantCulture));
         try
         {
             using var p = Process.Start(psi) ?? throw new InvalidOperationException("console-info helper failed to start");
@@ -347,7 +347,7 @@ public sealed class ExternalBridge
             RedirectStandardError = true,
         };
         psi.ArgumentList.Add("console-reader");
-        psi.ArgumentList.Add(_pid.ToString());
+        psi.ArgumentList.Add(_pid.ToString(System.Globalization.CultureInfo.InvariantCulture));
         try
         {
             _proc = Process.Start(psi) ?? throw new InvalidOperationException("console-reader failed to start");
@@ -523,11 +523,11 @@ public static class ProcessCwd
             if (status != 0 || pbi.PebBaseAddress == IntPtr.Zero) return null;
             var ptr = new byte[8];
             if (!Win32.ReadProcessMemory(h, pbi.PebBaseAddress + 0x20, ptr, 8, out _)) return null;
-            var paramsAddr = (IntPtr)BitConverter.ToInt64(ptr, 0);
+            var paramsAddr = new IntPtr(BitConverter.ToInt64(ptr, 0));
             var us = new byte[16];
             if (!Win32.ReadProcessMemory(h, paramsAddr + 0x38, us, 16, out _)) return null;
             int len = BitConverter.ToUInt16(us, 0);
-            var buf = (IntPtr)BitConverter.ToInt64(us, 8);
+            var buf = new IntPtr(BitConverter.ToInt64(us, 8));
             if (len == 0 || len > 4096 || buf == IntPtr.Zero) return null;
             var str = new byte[len];
             if (!Win32.ReadProcessMemory(h, buf, str, len, out _)) return null;

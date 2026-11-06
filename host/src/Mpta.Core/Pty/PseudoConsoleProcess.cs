@@ -82,7 +82,8 @@ public sealed class PseudoConsoleProcess : IDisposable
             si.lpAttributeList = attrList;
 
             envBlock = BuildEnvironmentBlock(envOverrides);
-            var cmd = new StringBuilder(commandLine);
+            // CreateProcessW may modify lpCommandLine in place, so it needs a writable NUL-terminated buffer.
+            var cmd = (commandLine + "\0").ToCharArray();
             string? cwd = string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory) ? null : workingDirectory;
             if (!Win32.CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, false,
                     Win32.EXTENDED_STARTUPINFO_PRESENT | Win32.CREATE_UNICODE_ENVIRONMENT, envBlock, cwd, ref si, out var pi))

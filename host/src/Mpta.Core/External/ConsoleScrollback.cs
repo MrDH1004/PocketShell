@@ -49,7 +49,7 @@ public sealed partial class ConsoleScrollback
     {
         if (!vt.StartsWith("\x1b[?25l\x1b[H", StringComparison.Ordinal)) return null;
         var found = new List<(int Y, string Body)>();
-        foreach (Match m in RowRegex().Matches(vt)) found.Add((int.Parse(m.Groups[1].Value), m.Groups[2].Value));
+        foreach (Match m in RowRegex().Matches(vt)) found.Add((int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), m.Groups[2].Value));
         if (found.Count == 0) return null;
         var rows = Enumerable.Repeat("", found.Max(f => f.Y)).ToList();
         foreach (var (y, body) in found) rows[y - 1] = body;
