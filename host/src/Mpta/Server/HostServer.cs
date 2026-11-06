@@ -24,7 +24,7 @@ using Mpta.Core.Util;
 namespace Mpta.Server;
 
 /// <summary>A WebSocket connection with serialized sends; tracked so device revocation can close it with 4401.</summary>
-internal sealed class WsConn
+internal sealed class WsConn : IDisposable
 {
     private readonly SemaphoreSlim _send = new(1, 1);
     public WebSocket Ws { get; }
@@ -69,9 +69,11 @@ internal sealed class WsConn
         }
         catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException or OperationCanceledException) { }
     }
+
+    public void Dispose() => _send.Dispose();
 }
 
-public sealed class HostServer
+public sealed class HostServer : IDisposable
 {
     /// <summary>Set by the updating (old) process on the new `mpta serve` it launches (DESIGN §11.3 handoff).</summary>
     public const string UpdateParentPidEnv = "MPTA_UPDATE_PARENT_PID";
@@ -107,6 +109,7 @@ public sealed class HostServer
     private volatile bool _handoffPending;
     private string? _handoffStaging;
     private bool _handoffForce;
+    private bool _disposed;
 
     /// <param name="serveArgs">Arguments after `serve`, replayed verbatim to the new process on update.</param>
     public HostServer(string home, int port, List<IPAddress> binds, IReadOnlyList<string> serveArgs, int discoveryPort)
@@ -208,12 +211,21 @@ public sealed class HostServer
         {
             stopWait.Unregister(null);
             Log.Info("shutting down: terminating running sessions");
-            StopDiscovery();
-            _update.Dispose();
-            _externals.Dispose();
-            _sessions.Dispose();
+            Dispose();
         }
         return exitCode;
+    }
+
+    /// <summary>Stops discovery and releases the update service, external consoles and sessions. Idempotent.</summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        StopDiscovery();
+        // Null when RunAsync never got far enough to create them.
+        _update?.Dispose();
+        _externals?.Dispose();
+        _sessions?.Dispose();
     }
 
     private WebApplication BuildApp()
@@ -779,7 +791,7 @@ public sealed class HostServer
         }
 
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-        var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
+        using var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
         _conns[conn] = 0;
         // Revoke may have happened between AuthMiddleware and registration; the revoke endpoint only closes
         // connections already in _conns, so re-check now that this one is registered.

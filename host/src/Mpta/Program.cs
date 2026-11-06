@@ -143,7 +143,8 @@ public static class Program
         try { binds = HostAddresses.ResolveBindAddresses(opts.Binds); }
         catch (ArgumentException ex) { Console.Error.WriteLine("psh: " + ex.Message); return 2; }
         int discoveryPort = opts.DiscoveryPort ?? cfg.DiscoveryPort;
-        return await new HostServer(home, port, binds, args, discoveryPort).RunAsync();
+        using var server = new HostServer(home, port, binds, args, discoveryPort);
+        return await server.RunAsync();
     }
 
     private static string Str(JsonElement e, string name) =>
