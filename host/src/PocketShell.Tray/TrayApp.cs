@@ -270,7 +270,7 @@ internal sealed class TrayApp : ApplicationContext
         var exe = Path.Combine(AppContext.BaseDirectory, Brand.TrayExe);
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
         psi.ArgumentList.Add(Program.WaitPidArg);
-        psi.ArgumentList.Add(Environment.ProcessId.ToString());
+        psi.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         try
         {
             using var p = Process.Start(psi);

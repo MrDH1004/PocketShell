@@ -318,10 +318,10 @@ public class UpdateStagingTests
                     var st = c.GetStream();
                     var head = new StringBuilder();
                     var b = new byte[1];
-                    while (!head.ToString().EndsWith("\r\n\r\n") && await st.ReadAsync(b) == 1) head.Append((char)b[0]);
+                    while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await st.ReadAsync(b) == 1) head.Append((char)b[0]);
                     var path = head.ToString().Split(' ')[1];
-                    byte[] body = path.StartsWith("/dl/") ? _zip : Encoding.UTF8.GetBytes(_feed);
-                    if (path.StartsWith("/dl/")) Interlocked.Increment(ref ZipHits);
+                    byte[] body = path.StartsWith("/dl/", StringComparison.Ordinal) ? _zip : Encoding.UTF8.GetBytes(_feed);
+                    if (path.StartsWith("/dl/", StringComparison.Ordinal)) Interlocked.Increment(ref ZipHits);
                     await st.WriteAsync(Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"));
                     await st.WriteAsync(body);
                 }

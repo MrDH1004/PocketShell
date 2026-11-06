@@ -508,7 +508,7 @@ public class PairingTests
     [Fact]
     public void CodeExpiresAfterFiveMinutes()
     {
-        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         var p = new PairingManager(() => now);
         var (code, exp) = p.Start();
         Assert.Equal(now.AddMinutes(5), exp);
@@ -519,7 +519,7 @@ public class PairingTests
     [Fact]
     public void CodeValidBeforeExpiry()
     {
-        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         var p = new PairingManager(() => now);
         var (code, _) = p.Start();
         now = now.AddMinutes(4).AddSeconds(59);

@@ -141,7 +141,7 @@ public sealed class HostServer
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
         _externals = new ExternalConsoles(_exe) { TabNames = TerminalTabs.Read };
-        var attachArgs = new List<string> { "--port", _port.ToString() };
+        var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MPTA_HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
 
@@ -416,7 +416,7 @@ public sealed class HostServer
                 var psi = new ProcessStartInfo(_exe) { UseShellExecute = false, WorkingDirectory = Environment.CurrentDirectory };
                 psi.ArgumentList.Add("serve");
                 foreach (var a in _serveArgs) psi.ArgumentList.Add(a);
-                psi.Environment[UpdateParentPidEnv] = Environment.ProcessId.ToString();
+                psi.Environment[UpdateParentPidEnv] = Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 child = Process.Start(psi);
                 err = child == null ? "Process.Start returned null" : await WaitForNewHost(child, expected, TimeSpan.FromSeconds(30));
             }
