@@ -24,7 +24,7 @@ using Mpta.Core.Util;
 namespace Mpta.Server;
 
 /// <summary>A WebSocket connection with serialized sends; tracked so device revocation can close it with 4401.</summary>
-internal sealed class WsConn : IDisposable
+internal sealed class WsConn
 {
     private readonly SemaphoreSlim _send = new(1, 1);
     public WebSocket Ws { get; }
@@ -69,8 +69,6 @@ internal sealed class WsConn : IDisposable
         }
         catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException or OperationCanceledException) { }
     }
-
-    public void Dispose() => _send.Dispose();
 }
 
 public sealed class HostServer : IDisposable
@@ -791,7 +789,7 @@ public sealed class HostServer : IDisposable
         }
 
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-        using var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
+        var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
         _conns[conn] = 0;
         // Revoke may have happened between AuthMiddleware and registration; the revoke endpoint only closes
         // connections already in _conns, so re-check now that this one is registered.
