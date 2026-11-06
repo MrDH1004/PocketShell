@@ -40,7 +40,6 @@ public static class MptaPaths
     public static string DevicesFile(string home) => Path.Combine(home, "devices.json");
     public static string SessionsDir(string home) => Path.Combine(home, "sessions");
     public static string LogsDir(string home) => Path.Combine(home, "logs");
-    public static string PairQrPng(string home) => Path.Combine(home, "pair-qr.png");
 }
 
 public sealed class MptaConfig

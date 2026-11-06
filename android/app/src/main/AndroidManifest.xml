@@ -3,14 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CAMERA" />
     <!-- Self-update install (DESIGN.md §11.4) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- LAN discovery broadcast replies (DESIGN.md §12.2) -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".MptaApp"
@@ -51,7 +48,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
-        <!-- ML Kit: barcode model is bundled (com.google.mlkit:barcode-scanning), no download needed. -->
     </application>
 </manifest>

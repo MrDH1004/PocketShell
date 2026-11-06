@@ -14,7 +14,7 @@ docs/
 ```
 
 ## 1. 호스트 런타임
-- 언어: C# / .NET 8 (`net8.0-windows`), ASP.NET Core Kestrel (minimal API + WebSockets). 패키지: `QRCoder`.
+- 언어: C# / .NET 8 (`net8.0-windows`), ASP.NET Core Kestrel (minimal API + WebSockets).
 - 데이터 디렉터리: `MPTA_HOME` 환경변수, 없으면 `%APPDATA%\PocketShell`. 구조:
   - `config.json` `{ "port": 7380 }`
   - `cert.pfx` 자체서명 인증서(최초 실행 시 생성, RSA 2048, CN=PocketShell, 10년). SHA-256 지문(DER, 소문자 hex, 구분자 없음)을 `cert.sha256`에 기록.
@@ -29,8 +29,8 @@ docs/
 - 모든 `/api/*`(pair/claim 제외)와 `/ws/*`는 `Authorization: Bearer <token>` 필요. WebSocket은 헤더 대신 `?token=` 쿼리도 허용(하위 호환; Android 앱은 헤더만 사용 — URL에 토큰을 싣지 않음).
 - 토큰 종류: (a) local.token — **루프백(127.0.0.1) 접속에서만** 유효, (b) 기기 토큰 — devices.json에 해시가 있고 revoked=false.
 - 실패 시 HTTP 401. revoke 즉시 해당 기기의 열린 WS 연결도 종료(close code 4401).
-- 페어링: `POST /api/pair/start` (local 토큰 필요) → `{code, expiresAt, qrPayload, qrAscii, qrPngPath}`. code: 일회용, 32바이트 base64url, 5분 만료.
-  - qrPayload(JSON 문자열): `{"v":1,"name":"<PC 이름>","hosts":["192.168.x.x","100.x.x.x"],"port":7380,"fp":"<sha256hex>","code":"<code>"}`
+- 페어링: 휴대폰은 PIN 방식만 사용(12.1절). QR 페어링은 제거됨.
+  - code 모드(로컬 도구·QA 전용): `POST /api/pair/start` (local 토큰 필요, 본문 생략 또는 `mode`≠`"pin"`) → `{code, expiresAt}`. code: 일회용, 32바이트 base64url, 5분 만료.
   - `POST /api/pair/claim` (인증 없음) body `{code, deviceName}` → `{deviceId, token}`. 코드 재사용·만료 시 401.
 - `GET /api/devices`, `DELETE /api/devices/{id}` (revoke) — local 토큰만 허용.
 - 클라이언트(Android/CLI)는 서버 인증서를 **fp 지문으로 핀닝**(CA 검증 대신 지문 일치 검사).
@@ -96,7 +96,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - `psh list` 세션 표(종류/ID/제목/셸/폴더/상태/최근활동)
 - `psh new [--shell pwsh] [--cwd D] [--title T] [--attach]` (기본: 생성 후 현재 콘솔에서 attach)
 - `psh attach <id>` 현재 콘솔을 VT 입력/출력 모드로 전환(`ENABLE_VIRTUAL_TERMINAL_PROCESSING`, `ENABLE_VIRTUAL_TERMINAL_INPUT`, raw 입력), 콘솔 크기 보고(창 크기 변경 시 resize 전송), 출력 바이트 그대로 stdout에 쓰기. `client=cli`. 분리 단축키: `Ctrl+]` 후 `d`. 세션 exit 시 메시지 출력 후 종료.
-- `psh pair` → pair/start 호출, 콘솔에 ASCII QR + payload 출력, PNG 열기. `psh pair --pin` → 12.1절.
+- `psh pair` → PIN 발급(12.1절). `--pin`은 호환용으로 허용(효과 없음).
 - `psh update [--check] [--force]` → 11.3절.
 - `psh devices`, `psh revoke <id>`
 - CLI는 `local.token`과 `cert.sha256`을 읽어 `wss://127.0.0.1:<port>`로 접속(핀닝).
@@ -107,7 +107,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - Kotlin, minSdk 26, targetSdk/compileSdk 35, 패키지 `com.pocketshell.app`.
 - 터미널: Termux `terminal-emulator`/`terminal-view` 소스 vendoring(Apache-2.0, JNI pty 코드 제거). `TerminalSession`을 원격 백엔드(`RemoteTerminalSession`)로 대체: 입력 → WS binary, WS binary → `emulator.append()` + 화면 갱신. truecolor, CJK 폭은 Termux 엔진 그대로.
 - 네트워크: OkHttp WebSocket + 지문 핀닝 TrustManager. hosts 시도 순서는 접속 시점의 폰 네트워크로 정함(HostSelector): 폰에 Tailscale VPN(100.64/10 주소)이 켜져 있으면 Tailscale 주소 → 폰 Wi-Fi/이더넷과 같은 서브넷의 LAN 주소 → 나머지, 꺼져 있으면 같은 LAN → 나머지 → Tailscale. 네트워크가 그대로인 동안은 마지막으로 성공한 주소를 먼저 시도함.
-- 화면: (1) 페어링 — QR 스캔(CameraX + ML Kit barcode) 또는 payload 붙여넣기, (2) 세션 목록 — 실행 중 / 외부 / 최근 섹션, 새 세션(셸 선택), 당겨서 새로고침, (3) 터미널 — 특수키 줄(ESC, CTRL(토글), ALT(토글), TAB, ←↑↓→, HOME, END, PGUP, PGDN, `|`, `~`, `/`, `-`), 외부 세션이면 "호스트로 인수" 버튼, history면 열 때 resume 호출.
+- 화면: (1) 페어링 — LAN 검색/주소 입력 + PIN + 지문 확인(12.1절), (2) 세션 목록 — 실행 중 / 외부 / 최근 섹션, 새 세션(셸 선택), 당겨서 새로고침, (3) 터미널 — 특수키 줄(ESC, CTRL(토글), ALT(토글), TAB, ←↑↓→, HOME, END, PGUP, PGDN, `|`, `~`, `/`, `-`), 외부 세션이면 "호스트로 인수" 버튼, history면 열 때 resume 호출.
 - 재연결(AC-18): 연결 끊김 시 지수 백오프(1,2,4..최대 10초) 재연결, `onResume`·네트워크 변경 시 즉시 재연결. 재연결 시 emulator reset 후 서버 재생을 받음.
 - 한글 IME(AC-17): `TerminalView.onCreateInputConnection`에서 `commitText`/조합 텍스트를 UTF-8로 전송, 조합 중 텍스트는 확정 시 전송.
 - 크기: TerminalView의 cols/rows를 연결 쿼리와 `resize` 메시지로 보고.
@@ -124,7 +124,6 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - WS(host 세션) 순서: `hello` → 재생 binary 프레임(64KB 단위) → `replay-end` → `{"type":"size"}`(현재 PTY 크기, 항상) → 실시간. exited/history 세션에 붙으면 재생 후 `exit`이 온다. `client` 값이 android/cli/qa가 아니면 qa로 취급. cols/rows 미지정(0) 클라이언트는 크기 계산에서 제외.
 - WS(external): `hello` → 마지막 프레임(있으면) → `replay-end` → 변경 시 프레임. 헬퍼 종료 시 `{"type":"exit","code":N}`.
 - 외부 콘솔 목록은 2초 캐시. `console-info`가 정보를 못 얻는 프로세스(콘솔 없음)는 제외. external `cwd`는 PEB에서 best-effort(실패 시 빈 문자열).
-- 페어링 PNG 경로: `<MPTA_HOME>/pair-qr.png`.
 - 서버 정상 종료 시 실행 중 host 세션 셸을 종료하고 history로 남긴다. 강제 종료/재부팅 후에는 시작 시 state=running인 meta를 exited(history)로 변환.
 - attach CLI 분리 키 감지는 원시 `0x1d` 외에 win32-input-mode 시퀀스(`ESC[Vk;Sc;Uc;Kd;Cs;Rc_`, ConPTY가 `?9001h`를 요청하면 콘솔이 보냄)도 인식한다. 입력은 가공 없이 전달.
 
@@ -166,14 +165,14 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - `scripts/release.ps1 -Version <x.y.z[-pre]>`: version.properties 갱신(versionCode+1) → host publish(win-x64, framework-dependent) zip → APK 빌드(같은 서명 키) → SHA256SUMS.txt → 커밋·태그·푸시 → `gh release create`(prerelease 여부는 버전에 `-`가 있으면 true).
 
 ## 12. PIN 페어링 + LAN 검색
-### 12.1 PIN 페어링 (QR 대안)
-- `POST /api/pair/start {mode:"pin"}` (local 토큰) 또는 `psh pair --pin` → `{pin:"123456", expiresAt, fpShort, hosts, port}`. PIN: 암호학적 난수 6자리, 5분 만료, 일회용. 동시에 유효한 PIN은 1개(새로 발급하면 이전 PIN 폐기).
+### 12.1 PIN 페어링
+- `POST /api/pair/start {mode:"pin"}` (local 토큰) 또는 `psh pair` → `{pin:"123456", expiresAt, fpShort, hosts, port}`. PIN: 암호학적 난수 6자리, 5분 만료, 일회용. 동시에 유효한 PIN은 1개(새로 발급하면 이전 PIN 폐기).
 - `fpShort`: 인증서 SHA-256 앞 8바이트를 `XXXX-XXXX-XXXX-XXXX`(대문자 hex) 형식으로 표시. PC 콘솔에 PIN과 함께 크게 출력.
-- 폰: 호스트 주소(LAN 검색 결과 선택 또는 IP 직접 입력) + PIN 입력 → TLS 연결해 서버 인증서 지문을 받아(TOFU) `fpShort`를 화면에 표시하고 PC 화면과 같은지 사용자 확인 → `POST /api/pair/claim {pin, deviceName}` (인증 없음) → `{deviceId, token, fp}`. 이후에는 저장된 fp로 핀닝(QR 경로와 동일).
+- 폰: 호스트 주소(LAN 검색 결과 선택 또는 IP 직접 입력) + PIN 입력 → TLS 연결해 서버 인증서 지문을 받아(TOFU) `fpShort`를 화면에 표시하고 PC 화면과 같은지 사용자 확인 → `POST /api/pair/claim {pin, deviceName}` (인증 없음) → `{deviceId, token, fp}`. 이후에는 저장된 fp로 핀닝.
 - 무차별 대입 방지: PIN 실패 5회면 해당 PIN 즉시 폐기(새로 발급해야 함). 원격 IP별 claim 실패 10회/10분 초과 시 429. 실패는 로그에 기록.
 - 한계(문서화): 6자리 PIN은 능동 MITM에 대해 PAKE 수준의 보호를 주지 못함 → fpShort 육안 비교로 보완, LAN/Tailscale 전용.
-- QR 경로(`code`)는 그대로 유지. claim body는 `code` 또는 `pin` 중 하나.
-- 구현 확정 사항(host): claim 응답은 code/pin 모두 `{deviceId, token, fp}`. IP별 실패 한도(10회/10분 → 429)는 code·pin claim 실패를 합산하며, 한도 초과 중에는 올바른 PIN/code도 429. 틀린 PIN·만료·폐기 = 401. `pair/start` 본문 생략 또는 `mode`≠`"pin"`이면 기존 QR 응답.
+- code 모드(2절, 로컬 도구·QA 전용)는 유지. claim body는 `code` 또는 `pin` 중 하나.
+- 구현 확정 사항(host): claim 응답은 code/pin 모두 `{deviceId, token, fp}`. IP별 실패 한도(10회/10분 → 429)는 code·pin claim 실패를 합산하며, 한도 초과 중에는 올바른 PIN/code도 429. 틀린 PIN·만료·폐기 = 401. `pair/start` 본문 생략 또는 `mode`≠`"pin"`이면 code 모드 응답 `{code, expiresAt}`.
 
 ### 12.2 LAN 검색
 - 호스트가 UDP 7381(설정 가능)에서 대기, 사설 IPv4 인터페이스에만 바인딩. 요청 데이터그램 `MPTA?1` → 응답 JSON `{"v":1,"name","hosts":[...],"port":7380,"fpShort"}` (토큰·민감정보 없음).

@@ -27,7 +27,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 **프로젝트 폴더…**: 폰에서 새 프로젝트를 만들 상위 폴더를 추가·삭제(여러 개 가능, `%APPDATA%\PocketShell\projects.json`). 이 PC에서 찾은 AI CLI(claude, codex)도 표시됨.
 서버가 예기치 않게 꺼지면 트레이가 다시 띄움(5분에 최대 3회).
 
-PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair --pin`, `psh devices`, `psh revoke <id>`, `psh update [--check]`
+PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh update [--check]`
 
 ## 폰 앱 사용법
 
@@ -69,6 +69,6 @@ powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releas
 
 ## 보안
 - 원격 셸이므로 같은 LAN 또는 Tailscale 안에서만 사용. 0.0.0.0 바인딩 없음.
-- 페어링: 일회용 PIN(5분, 5회 실패 시 무효) 또는 QR → 기기 토큰(서버에는 SHA-256만 저장), PC에서 `psh revoke`로 취소.
+- 페어링: 일회용 PIN(5분, 5회 실패 시 무효) + 인증서 지문 확인 → 기기 토큰(서버에는 SHA-256만 저장), PC에서 `psh revoke`로 취소.
 - 클라이언트는 서버 자체서명 인증서를 SHA-256 지문으로 핀닝.
 - 데이터: `%APPDATA%\PocketShell` (인증서, 토큰, 세션 기록, 로그).

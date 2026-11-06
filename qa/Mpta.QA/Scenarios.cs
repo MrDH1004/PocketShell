@@ -250,12 +250,6 @@ internal static partial class Scenarios
         var ps = await c.Local.Post("/api/pair/start", c.Token);
         if (!ev.Check(ps.Ok, $"pair/start -> {ps}")) return Outcome.FAIL;
         var code = Str(ps.Json, "code");
-        JsonNode? qp = null;
-        try { qp = JsonNode.Parse(Str(ps.Json, "qrPayload") ?? ""); }
-        catch (System.Text.Json.JsonException) { qp = null; }
-        ev.Check(qp != null && Str(qp, "v") == "1" && string.Equals(Str(qp, "fp"), c.Fp, StringComparison.OrdinalIgnoreCase)
-                 && Int(qp, "port") == c.Port && Str(qp, "code") == code,
-            $"qrPayload v/fp/port/code consistent: {Compact(qp, 200)}");
         var devName = "qa-device-" + Ctx.R();
         var cl = await c.Local.Post("/api/pair/claim", null, new { code, deviceName = devName });
         var devId = Str(cl.Json, "deviceId");
@@ -745,8 +739,8 @@ internal static partial class Scenarios
         var (dc, dout) = await Run(c.Exe, new[] { "devices" }, c.Home, env, 20000);
         ev.Check(dc == 0, $"`mpta devices` exit={dc}: {Trunc(dout, 120)}");
         var (pc, po) = await Run(c.Exe, new[] { "pair" }, c.Home, env, 20000);
-        bool payload = po.Contains(c.Fp, StringComparison.OrdinalIgnoreCase) && po.Contains("\"code\"");
-        ev.Check((pc == 0 || pc == -999) && payload, $"`mpta pair` exit={(pc == -999 ? "timeout(killed)" : pc.ToString())}, prints qrPayload with fp+code={payload}");
+        bool pinOut = System.Text.RegularExpressions.Regex.IsMatch(po, @"PIN:\s+\d{6}") && po.Contains("fingerprint:", StringComparison.Ordinal);
+        ev.Check((pc == 0 || pc == -999) && pinOut, $"`mpta pair` exit={(pc == -999 ? "timeout(killed)" : pc.ToString())}, prints PIN + fingerprint={pinOut}");
         // `mpta revoke <deviceId>`: pair a device over REST, revoke it via the CLI, its token must then get 401.
         var ps = await c.Local.Post("/api/pair/start", c.Token);
         var cl = await c.Local.Post("/api/pair/claim", null, new { code = Str(ps.Json, "code"), deviceName = "qa-ac22-rev-" + Ctx.R() });

@@ -123,13 +123,6 @@ class ApiClient(
         request("DELETE", "/api/sessions/$id")
     }
 
-    /** `POST /api/pair/claim` → (deviceId, token). */
-    suspend fun claim(code: String, deviceName: String): Pair<String, String> {
-        val text = request("POST", "/api/pair/claim", JSONObject().put("code", code).put("deviceName", deviceName), auth = false)
-        val o = JSONObject(text)
-        return o.getString("deviceId") to o.getString("token")
-    }
-
     /**
      * PIN claim (DESIGN.md §12.1): `{pin, deviceName}` → `{deviceId, token, fp}`. This client must already be
      * pinned to the fingerprint the user confirmed; the caller also checks the returned fp against it.

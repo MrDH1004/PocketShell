@@ -677,13 +677,10 @@ public sealed class HostServer : IDisposable
                 Log.Info($"pairing PIN issued (fp {_fpShort}), expires {Ids.IsoUtc(pexp)}");
                 return Json(new { pin, expiresAt = Ids.IsoUtc(pexp), fpShort = _fpShort, hosts = PublicHosts(), port = _port });
             }
+            // Code mode: no UI uses it any more (phones pair by PIN), but local tooling (QA E2E) mints device tokens with it.
             var (code, exp) = _pairing.Start();
-            var payload = new QrPayload { Name = Environment.MachineName, Hosts = PublicHosts(), Port = _port, Fp = _fp, Code = code }.ToJson();
-            var (ascii, png) = PairingQr.Render(payload);
-            var pngPath = MptaPaths.PairQrPng(_home);
-            File.WriteAllBytes(pngPath, png);
             Log.Info($"pairing code issued, expires {Ids.IsoUtc(exp)}");
-            return Json(new { code, expiresAt = Ids.IsoUtc(exp), qrPayload = payload, qrAscii = ascii, qrPngPath = pngPath });
+            return Json(new { code, expiresAt = Ids.IsoUtc(exp) });
         });
 
         app.MapPost("/api/pair/claim", async (HttpContext ctx) =>

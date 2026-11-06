@@ -20,7 +20,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. `local.properties`(sdk.dir)는
 ## 모듈
 - `terminal-emulator`, `terminal-view`: Termux(Apache-2.0)에서 vendoring. 변경 내역은 각 모듈의 `NOTICE`.
   JNI/pty 제거, `RemoteTerminalSession`(네트워크 백엔드)으로 대체. truecolor·WcWidth는 Termux 코드 그대로.
-- `app`: 페어링(CameraX + ML Kit, payload 붙여넣기), 세션 목록(실행 중/외부/최근), 터미널 화면(특수키 줄).
+- `app`: 페어링(LAN 검색/주소 입력 + 6자리 PIN + 인증서 지문 확인), 세션 목록(실행 중/외부/최근), 터미널 화면(특수키 줄).
 
 ## 한글 IME
 Termux 기본 `InputType.TYPE_NULL`에서는 Gboard 등 한글 IME가 조합을 하지 못한다(자모 단위 키 이벤트로 떨어짐).

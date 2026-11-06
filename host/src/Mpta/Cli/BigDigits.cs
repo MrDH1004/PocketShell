@@ -1,6 +1,6 @@
 namespace Mpta.Cli;
 
-/// <summary>5-row ASCII block font for digits (ASCII so it survives any console code page) so `mpta pair --pin` shows the PIN large (DESIGN §12.1).</summary>
+/// <summary>5-row ASCII block font for digits (ASCII so it survives any console code page) so `psh pair` shows the PIN large (DESIGN §12.1).</summary>
 internal static class BigDigits
 {
     private static readonly string[][] Glyphs =

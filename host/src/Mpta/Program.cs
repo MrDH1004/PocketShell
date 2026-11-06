@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Mpta.Cli;
@@ -19,7 +18,7 @@ public static class Program
           psh list
           psh new [--shell pwsh|powershell|cmd|bash|wsl|<exe>] [--cwd D] [--title T] [--attach|--no-attach]
           psh attach <id>
-          psh pair [--pin]
+          psh pair                       (one-time PIN for phone pairing; --pin is accepted as a no-op)
           psh devices
           psh revoke <deviceId>
           psh update [--check] [--force]
@@ -62,7 +61,7 @@ public static class Program
                 case "attach":
                     if (opts.Positional.Count != 1) throw new CliException("usage: psh attach <id>");
                     return await AttachCommand.RunAsync(api, opts.Positional[0]);
-                case "pair": return opts.Pin ? await PairPinCmd(api) : await PairCmd(api);
+                case "pair": return await PairPinCmd(api); // --pin kept as a no-op for compatibility
                 case "update": return await UpdateCmd(api, opts);
                 case "devices": return await DevicesCmd(api);
                 case "revoke":
@@ -96,7 +95,7 @@ public static class Program
         public string? Home;
         public string? Shell, Cwd, Title;
         public bool NoAttach;
-        public bool Pin, Check, Force;
+        public bool Check, Force;
         public int? DiscoveryPort;
         public List<string> Binds = new();
         public List<string> Positional = new();
@@ -117,7 +116,7 @@ public static class Program
                     case "--title": o.Title = Next(); break;
                     case "--attach": o.NoAttach = false; break;
                     case "--no-attach": o.NoAttach = true; break;
-                    case "--pin": o.Pin = true; break;
+                    case "--pin": break; // pair is always PIN; accepted for compatibility
                     case "--check": o.Check = true; break;
                     case "--force": o.Force = true; break;
                     case "--discovery-port": o.DiscoveryPort = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
@@ -195,22 +194,6 @@ public static class Program
             return 0;
         }
         return await AttachCommand.RunAsync(api, id);
-    }
-
-    private static async Task<int> PairCmd(ApiClient api)
-    {
-        var r = await api.SendAsync(HttpMethod.Post, "api/pair/start");
-        Console.WriteLine(Str(r, "qrAscii"));
-        Console.WriteLine("payload: " + Str(r, "qrPayload"));
-        Console.WriteLine("expires: " + Str(r, "expiresAt"));
-        var png = Str(r, "qrPngPath");
-        Console.WriteLine("png:     " + png);
-        if (File.Exists(png))
-        {
-            try { Process.Start(new ProcessStartInfo(png) { UseShellExecute = true })?.Dispose(); }
-            catch (System.ComponentModel.Win32Exception ex) { Console.Error.WriteLine($"could not open PNG: {ex.Message}"); }
-        }
-        return 0;
     }
 
     private static async Task<int> PairPinCmd(ApiClient api)

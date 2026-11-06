@@ -2,13 +2,8 @@
 <resources>
     <string name="app_name">PocketShell</string>
     <string name="pairing_title">PC 페어링</string>
-    <string name="pairing_help">PC에서 <b>psh pair</b> 를 실행하고 표시된 QR 코드를 비추세요.</string>
     <string name="pairing_device_name">이 기기 이름</string>
-    <string name="pairing_paste_hint">QR을 쓸 수 없으면 payload JSON을 붙여넣으세요</string>
-    <string name="pairing_paste_button">붙여넣은 정보로 페어링</string>
-    <string name="pairing_camera_denied">카메라 권한이 없어 QR 스캔을 할 수 없습니다. 아래에 payload를 붙여넣으세요.</string>
     <string name="pairing_in_progress">페어링 중…</string>
-    <string name="pairing_scanning">QR 코드를 찾는 중…</string>
     <string name="sessions_title">세션</string>
     <string name="section_running">실행 중</string>
     <string name="section_external">외부</string>
@@ -29,7 +24,7 @@
     <string name="cancel">취소</string>
     <string name="refresh">새로고침</string>
     <string name="unpair">페어링 해제</string>
-    <string name="unpair_confirm">이 PC와의 페어링 정보를 삭제할까요? 다시 쓰려면 QR 페어링이 필요합니다.</string>
+    <string name="unpair_confirm">이 PC와의 페어링 정보를 삭제할까요? 다시 쓰려면 PIN 페어링이 필요합니다.</string>
     <string name="delete_session">세션 삭제/종료</string>
     <string name="delete_running_confirm">실행 중인 셸을 종료할까요?</string>
     <string name="delete_history_confirm">이 기록을 삭제할까요?</string>
@@ -84,7 +79,7 @@
     <string name="host_update_running">PC에서 실행 중인 세션이 있습니다. 업데이트하면 세션들의 셸이 모두 종료됩니다. 그래도 적용할까요?</string>
     <string name="host_update_force">강제 적용</string>
     <!-- PIN pairing + LAN discovery (DESIGN.md §12) -->
-    <string name="pin_section_title">PIN으로 페어링 (QR 없이)</string>
+    <string name="pin_section_title">PIN으로 페어링</string>
     <string name="pin_help">PC 트레이의 <b>PocketShell</b> 아이콘 → <b>휴대폰 연결 (PIN)</b> 을 누르면 6자리 PIN과 인증서 지문이 표시됩니다.</string>
     <string name="pin_discover">LAN에서 PC 찾기</string>
     <string name="pin_discovering">LAN에서 PC를 찾는 중…</string>
