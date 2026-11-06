@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.Selection;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.ActionMode;
@@ -339,14 +340,22 @@ public final class TerminalView extends View {
 
         return new BaseInputConnection(this, true) {
 
-            /** mpta: composing text already typed on the remote terminal (mirrored live, see syncTo). */
-            private String mSentComposing = "";
+            /*
+             * mpta: the Editable mirrors the current input line as the IME believes it is, and mSent is what the
+             * remote terminal has received of it. Every IME edit is applied to the Editable first, then the remote
+             * is brought to the same text (syncTo: DEL per removed code point + the new tail).
+             * The Editable is NOT cleared after a commit: IMEs re-compose the word before the cursor (e.g. after a
+             * backspace into "안녕하", or a Hangul jamo typed right after "1234") with setComposingRegion +
+             * setComposingText("안녕하ㅅ"). With an empty Editable that text looked new and was typed again
+             * ("안녕하안녕하세요", "12341234"). It is reset only at Enter.
+             */
+            private String mSent = "";
 
             @Override
             public boolean setComposingText(CharSequence text, int newCursorPosition) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: setComposingText(\"" + text + "\")");
                 super.setComposingText(text, newCursorPosition);
-                if (mEmulator != null) syncTo(text.toString());
+                syncEditable();
                 return true;
             }
 
@@ -354,11 +363,7 @@ public final class TerminalView extends View {
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
                 super.finishComposingText();
-
-                Editable content = getEditable();
-                if (mEmulator != null) syncTo(content.toString());
-                mSentComposing = "";
-                content.clear();
+                syncEditable();
                 return true;
             }
 
@@ -369,22 +374,63 @@ public final class TerminalView extends View {
                 }
                 // Replaces the composing region (if any) with the committed text.
                 super.commitText(text, newCursorPosition);
-
-                Editable content = getEditable();
-                if (mEmulator != null) syncTo(content.toString());
-                mSentComposing = "";
-                content.clear();
+                syncEditable();
                 return true;
             }
 
-            /** Edits what the remote shows from mSentComposing to target: DEL per removed code point, then the new tail. */
+            /** Brings the remote to the Editable's text; a line break ends the line, so the mirror starts over. */
+            private void syncEditable() {
+                Editable content = getEditable();
+                String target = content.toString();
+                if (mEmulator != null) syncTo(target);
+                if (target.indexOf('\n') >= 0 || target.indexOf('\r') >= 0) resetMirror();
+            }
+
+            /** Edits what the remote shows from mSent to target: DEL per removed code point, then the new tail. */
             private void syncTo(String target) {
-                int del = ImeTextDecoder.backspaces(mSentComposing, target);
-                String tail = ImeTextDecoder.append(mSentComposing, target);
+                int del = ImeTextDecoder.backspaces(mSent, target);
+                String tail = ImeTextDecoder.append(mSent, target);
                 if (del > 0 || !tail.isEmpty()) stopTextSelectionMode();
                 for (int i = 0; i < del; i++) inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 127, false, false);
                 if (!tail.isEmpty()) sendTextToTerminal(tail);
-                mSentComposing = target;
+                mSent = target;
+            }
+
+            private void resetMirror() {
+                mSent = "";
+                getEditable().clear();
+            }
+
+            @Override
+            public boolean sendKeyEvent(KeyEvent event) {
+                // The key itself reaches the terminal through onKeyDown; keep the mirror equal to what the IME
+                // now believes the line is, without sending anything here.
+                boolean handled = super.sendKeyEvent(event);
+                if (event.getAction() == KeyEvent.ACTION_DOWN) mirrorKey(event);
+                return handled;
+            }
+
+            private void mirrorKey(KeyEvent event) {
+                Editable content = getEditable();
+                int keyCode = event.getKeyCode();
+                if (keyCode == KeyEvent.KEYCODE_DEL) {
+                    int end = Selection.getSelectionEnd(content);
+                    if (end > 0) {
+                        int start = Character.offsetByCodePoints(content, end, -1);
+                        content.delete(start, end);
+                    }
+                    mSent = content.toString();
+                    return;
+                }
+                int unicode = event.isCtrlPressed() ? 0 : event.getUnicodeChar(event.getMetaState());
+                if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER || unicode <= 0) {
+                    // Enter ends the line; other keys (arrows, Ctrl+x, ...) move or edit it in ways not mirrored.
+                    resetMirror();
+                    return;
+                }
+                int at = Math.max(Selection.getSelectionEnd(content), 0);
+                content.insert(at, new String(Character.toChars(unicode)));
+                mSent = content.toString();
             }
 
             @Override
@@ -392,6 +438,7 @@ public final class TerminalView extends View {
                 // Some IMEs still report Enter as an editor action: commit pending text, then send Enter.
                 finishComposingText();
                 if (mEmulator != null) inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, '\r', false, false);
+                resetMirror();
                 return true;
             }
 
@@ -401,9 +448,16 @@ public final class TerminalView extends View {
                     mClient.logInfo(LOG_TAG, "IME: deleteSurroundingText(" + leftLength + ", " + rightLength + ")");
                 }
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
-                KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
-                for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
-                return super.deleteSurroundingText(leftLength, rightLength);
+                Editable content = getEditable();
+                int cursor = Math.max(Selection.getSelectionStart(content), 0);
+                int mirrored = Math.min(leftLength, cursor);
+                boolean result = super.deleteSurroundingText(leftLength, rightLength);
+                syncEditable();
+                // Text before the mirror (typed before it was last reset) is still deleted on the remote.
+                if (mEmulator != null) {
+                    for (int i = mirrored; i < leftLength; i++) inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 127, false, false);
+                }
+                return result;
             }
 
             void sendTextToTerminal(CharSequence text) {

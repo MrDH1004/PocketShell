@@ -832,6 +832,9 @@ public sealed class HostServer
     /// <summary>Largest accepted inbound WS message; larger ones close the socket with 1009 (message too big).</summary>
     internal const int MaxInboundMessageBytes = 1024 * 1024;
 
+    /// <summary>MPTA_LOG_INPUT=1 logs every inbound input frame (hex + text) — for diagnosing client input problems only.</summary>
+    private static readonly bool LogInput = Environment.GetEnvironmentVariable("MPTA_LOG_INPUT") == "1";
+
     private static async Task ReceiveLoop(WsConn conn, CancellationToken ct, Action<byte[]> onInput, Action<int, int> onResize)
     {
         var buf = new byte[64 * 1024];
@@ -856,6 +859,8 @@ public sealed class HostServer
             msg.SetLength(0);
             if (res.MessageType == WebSocketMessageType.Binary)
             {
+                if (LogInput && data.Length > 0)
+                    Log.Info($"input ({conn.DeviceId ?? "local"}): {Convert.ToHexString(data)} {System.Text.Json.JsonSerializer.Serialize(Encoding.UTF8.GetString(data))}");
                 if (data.Length > 0) onInput(data);
                 continue;
             }
