@@ -52,6 +52,21 @@ class ProtocolTest {
     }
 
     @Test
+    fun recentMergesClosedConsolesNewestFirstAndIsLimited() {
+        val text = """{"sessions":[
+            {"id":"bbbbbbbbbbbb","kind":"history","title":"b","shell":"cmd","cwd":"D:\\","state":"exited","lastActivity":"2026-11-03T10:00:00.000Z"},
+            {"id":"rec-111111111111","kind":"recent","title":"proj","shell":"cmd","cwd":"E:\\proj","state":"exited","lastActivity":"2026-11-05T10:00:00.000Z","agent":"claude"},
+            {"id":"rec-222222222222","kind":"recent","title":"old","shell":"cmd","cwd":"E:\\old","state":"exited","lastActivity":"2026-11-01T10:00:00.000Z"}
+        ]}"""
+        val all = SessionInfo.listFromJson(text)
+        assertTrue(all.all { it.isHistory })
+        assertEquals(listOf("rec-111111111111", "bbbbbbbbbbbb", "rec-222222222222"), SessionSections.of(all, 10).recent.map { it.id })
+        assertEquals(listOf("rec-111111111111", "bbbbbbbbbbbb"), SessionSections.of(all, 2).recent.map { it.id })
+        assertTrue(SessionSections.of(all, 0).recent.isEmpty())
+        assertEquals("claude", all[1].agent)
+    }
+
+    @Test
     fun resizeMessageAndUrl() {
         val o = JSONObject(ClientProtocol.resizeMessage(90, 33))
         assertEquals("resize", o.getString("type"))

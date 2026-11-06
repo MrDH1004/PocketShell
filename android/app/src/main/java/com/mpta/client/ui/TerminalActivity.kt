@@ -1,5 +1,7 @@
 package com.mpta.client.ui
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -14,6 +16,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.RecognizerIntent
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -51,6 +54,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.Locale
 
 /**
  * Terminal screen (AC-15..18): Termux TerminalView backed by [RemoteTerminalSession] over a WebSocket.
@@ -108,6 +112,12 @@ class TerminalActivity : AppCompatActivity() {
         if (uri != null) pasteImage(uri)
     }
     private var currentNetwork: Network? = null
+    /** System speech recognizer (no RECORD_AUDIO needed here): the result is typed into the terminal, no Enter. */
+    private val voiceInput = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        val text = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
+        if (text.isNotEmpty()) insertText(text)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -160,6 +170,7 @@ class TerminalActivity : AppCompatActivity() {
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
+        findViewById<View>(R.id.voiceButton).setOnClickListener { startVoiceInput() }
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
             if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
@@ -452,6 +463,28 @@ class TerminalActivity : AppCompatActivity() {
             bitmap.recycle()
             out.toByteArray()
         }
+    }
+
+    private fun startVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, getString(R.string.voice_prompt))
+        try {
+            voiceInput.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.voice_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Same path as a clipboard paste (bracketed paste when the app asked for it), so nothing is executed. */
+    private fun insertText(text: String) {
+        val emulator = terminalView.mEmulator
+        if (emulator == null || connection?.sessionId.isNullOrEmpty()) {
+            Toast.makeText(this, R.string.voice_not_connected, Toast.LENGTH_SHORT).show()
+            return
+        }
+        emulator.paste(text)
     }
 
     private fun setStatus(text: String) {

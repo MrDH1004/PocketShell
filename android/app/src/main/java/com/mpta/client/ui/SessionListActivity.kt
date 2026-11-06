@@ -30,6 +30,7 @@ import com.mpta.client.core.HostUpdateStatus
 import com.mpta.client.core.ProjectOptions
 import com.mpta.client.core.SessionInfo
 import com.mpta.client.core.SessionSections
+import com.mpta.client.data.UiPrefs
 import com.mpta.client.net.ApiException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,12 +68,14 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.subtitle = app.pairing()?.pcName
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
-        toolbar.menu.add(0, MENU_UNPAIR, 2, R.string.unpair)
-        if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 3, R.string.update_debug_url)
+        toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
+        toolbar.menu.add(0, MENU_UNPAIR, 3, R.string.unpair)
+        if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 4, R.string.update_debug_url)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
+                MENU_RECENT_LIMIT -> showRecentLimitDialog()
                 MENU_UNPAIR -> confirmUnpair()
                 MENU_DEBUG_UPDATE_URL -> appUpdate.showDebugUrlDialog()
             }
@@ -105,7 +108,7 @@ class SessionListActivity : AppCompatActivity() {
         swipe.isRefreshing = true
         lifecycleScope.launch {
             try {
-                val sections = SessionSections.of(api.sessions())
+                val sections = SessionSections.of(api.sessions(), UiPrefs(this@SessionListActivity).recentLimit)
                 adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
                 showMessage(if (adapter.itemCount == 0) getString(R.string.sessions_empty) else null)
                 refreshHostUpdate()
@@ -361,6 +364,21 @@ class SessionListActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showRecentLimitDialog() {
+        val prefs = UiPrefs(this)
+        val choices = UiPrefs.RECENT_LIMIT_CHOICES
+        val labels = choices.map { if (it == 0) getString(R.string.recent_limit_off) else getString(R.string.recent_limit_n, it) }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.recent_limit_menu)
+            .setSingleChoiceItems(labels, choices.indexOf(prefs.recentLimit)) { dialog, which ->
+                prefs.recentLimit = choices[which]
+                dialog.dismiss()
+                refresh()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun confirmUnpair() {
         AlertDialog.Builder(this)
             .setTitle(R.string.unpair)
@@ -379,6 +397,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_UNPAIR = 2
         const val MENU_CHECK_UPDATE = 3
         const val MENU_DEBUG_UPDATE_URL = 4
+        const val MENU_RECENT_LIMIT = 5
         const val HOST_RESTART_WAIT_MS = 5000L
     }
 }

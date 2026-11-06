@@ -44,6 +44,15 @@
         </LinearLayout>
 
         <ImageButton
+            android:id="@+id/voiceButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/voice_input"
+            android:src="@drawable/ic_mic"
+            android:tint="@color/keybar_text" />
+
+        <ImageButton
             android:id="@+id/pasteImageButton"
             android:layout_width="48dp"
             android:layout_height="48dp"

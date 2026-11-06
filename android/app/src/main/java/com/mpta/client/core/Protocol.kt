@@ -22,13 +22,16 @@ data class SessionInfo(
     val agent: String? = null,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
-    val isHistory: Boolean get() = kind == KIND_HISTORY || (kind == KIND_HOST && state == STATE_EXITED)
+    /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
+    val isHistory: Boolean get() = kind == KIND_HISTORY || kind == KIND_RECENT || (kind == KIND_HOST && state == STATE_EXITED)
     val isRunningHost: Boolean get() = kind == KIND_HOST && state == STATE_RUNNING
 
     companion object {
         const val KIND_HOST = "host"
         const val KIND_EXTERNAL = "external"
         const val KIND_HISTORY = "history"
+        /** A PC console that was closed (host ≥ 0.2.13). */
+        const val KIND_RECENT = "recent"
         const val STATE_RUNNING = "running"
         const val STATE_EXITED = "exited"
 
@@ -63,10 +66,13 @@ data class SessionSections(
     val recent: List<SessionInfo>,
 ) {
     companion object {
-        fun of(sessions: List<SessionInfo>): SessionSections = SessionSections(
+        const val DEFAULT_RECENT_LIMIT = 8
+
+        /** [recentLimit]: newest N entries under 최근 (0 hides the section). */
+        fun of(sessions: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections = SessionSections(
             running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity },
             external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE },
-            recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity },
+            recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }.take(recentLimit.coerceAtLeast(0)),
         )
     }
 }

@@ -144,6 +144,24 @@ public sealed class ExternalConsoles : IDisposable
         return TerminalTabTitles.Assign(infos, source());
     }
 
+    /// <summary>
+    /// Light snapshot for <see cref="RecentExternals"/>: candidate consoles with folder, shell and AI CLI only. No
+    /// console-info helper and no bridges, so it is cheap to poll; titles are empty.
+    /// </summary>
+    public static List<SessionDto> Peek()
+    {
+        var candidates = FindCandidates(SnapshotProcesses(), Environment.ProcessId, IncludeAll);
+        return candidates.Select(c => new SessionDto
+        {
+            Id = "ext-" + c.Proc.Pid,
+            Kind = "external",
+            Shell = ShellKind(c.Proc.Exe),
+            Cwd = ProcessCwd.TryGet(c.Proc.Pid) ?? "",
+            Pid = c.Proc.Pid,
+            Agent = c.Agent,
+        }).ToList();
+    }
+
     /// <summary>External sessions (kind=external, id=ext-pid). Cached for 2 seconds.</summary>
     public List<SessionDto> List()
     {

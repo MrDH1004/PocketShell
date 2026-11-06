@@ -85,6 +85,8 @@ public sealed class HostServer : IDisposable
 
     private SessionManager _sessions = null!;
     private ExternalConsoles _externals = null!;
+    private RecentExternals _recent = null!;
+    private readonly CancellationTokenSource _bgCts = new();
     private TokenAuthenticator _auth = null!;
     private PairingManager _pairing = null!;
     private PinPairing _pins = null!;
@@ -142,6 +144,8 @@ public sealed class HostServer : IDisposable
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
         _externals = new ExternalConsoles(_exe) { TabNames = TerminalTabs.Read };
+        _recent = new RecentExternals(RecentExternals.FileIn(_home));
+        _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
         var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MPTA_HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
@@ -220,10 +224,58 @@ public sealed class HostServer : IDisposable
         if (_disposed) return;
         _disposed = true;
         StopDiscovery();
+        _bgCts.Cancel();
+        _bgCts.Dispose();
         // Null when RunAsync never got far enough to create them.
+        _recent?.Flush();
         _update?.Dispose();
         _externals?.Dispose();
         _sessions?.Dispose();
+    }
+
+    /// <summary>Keeps the 최근 list current while no phone is polling: a light console snapshot every 20 s.</summary>
+    private async Task WatchRecentAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+        try
+        {
+            do
+            {
+                try { _recent.Observe(ExternalConsoles.Peek()); }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+                {
+                    Log.Error($"recent consoles: {ex.Message}");
+                }
+            }
+            while (await timer.WaitForNextTickAsync(ct));
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+    }
+
+    /// <summary>최근 PC console → new host session in its folder, continuing the AI conversation it ran.</summary>
+    private IResult ResumeRecent(string id)
+    {
+        var e = _recent.Get(id);
+        if (e == null) return Error(404, "session not found");
+        if (!Directory.Exists(e.Cwd))
+        {
+            _recent.Remove(id);
+            return Error(400, $"폴더가 없습니다: {e.Cwd}");
+        }
+        try
+        {
+            var s = _sessions.Create(new CreateSessionRequest { Shell = e.Shell.Length > 0 ? e.Shell : null, Cwd = e.Cwd, Title = e.Title });
+            var cmd = RecentExternals.ResumeCommand(e.Agent);
+            if (cmd != null) s.WriteInput(Encoding.UTF8.GetBytes(cmd + "\r"));
+            _recent.Remove(id);
+            Log.Info($"recent: reopened {e.Cwd} ({e.Agent ?? "shell"}) as session {s.Id}");
+            return Json(s.Snapshot());
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Log.Error($"reopen {id} failed: {ex.Message}");
+            return Error(400, ex.Message);
+        }
     }
 
     private WebApplication BuildApp()
@@ -545,7 +597,10 @@ public sealed class HostServer : IDisposable
             var list = _sessions.All.Select(s => s.Snapshot())
                 .OrderByDescending(s => s.State == "running").ThenByDescending(s => s.LastActivity, StringComparer.Ordinal)
                 .ToList();
-            list.AddRange(_externals.List());
+            var externals = _externals.List();
+            _recent.Observe(externals);
+            list.AddRange(externals);
+            list.AddRange(_recent.Closed());
             return Json(new { sessions = list });
         });
 
@@ -615,6 +670,7 @@ public sealed class HostServer : IDisposable
 
         app.MapPost("/api/sessions/{id}/resume", (string id) =>
         {
+            if (id.StartsWith(RecentExternals.IdPrefix, StringComparison.Ordinal)) return ResumeRecent(id);
             var s = _sessions.Get(id);
             if (s == null) return Error(404, "session not found");
             if (s.IsRunning) return Error(409, "session is running; only history sessions can be resumed");
@@ -629,6 +685,8 @@ public sealed class HostServer : IDisposable
         app.MapDelete("/api/sessions/{id}", (string id) =>
         {
             if (TryExtPid(id, out _)) return Error(400, "external sessions cannot be deleted");
+            if (id.StartsWith(RecentExternals.IdPrefix, StringComparison.Ordinal))
+                return _recent.Remove(id) ? Results.NoContent() : Error(404, "session not found");
             return _sessions.Delete(id) ? Results.NoContent() : Error(404, "session not found");
         });
 

@@ -37,7 +37,7 @@ docs/
 
 ## 3. 세션 모델
 ```
-Session { id: string(12 hex), kind: "host"|"external"|"history",
+Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
           title, shell: "cmd"|"pwsh"|"powershell"|"bash"|"wsl"|<exe>, cwd,
           state: "running"|"exited", createdAt, lastActivity (ISO8601 UTC),
           cols, rows, clients: [{id, type:"android"|"cli"|"qa", cols, rows}],
@@ -46,6 +46,11 @@ Session { id: string(12 hex), kind: "host"|"external"|"history",
 - `host`: 호스트가 ConPTY(`CreatePseudoConsole`)로 띄운 세션. 클라이언트가 0명이어도 셸 종료 전까지 유지(AC-1).
 - `history`: state=exited인 host 세션. 목록에 `kind:"history"`로 나옴. meta는 디스크에 남아 재부팅 후에도 유지(AC-4/11). 최근 50개 보관.
 - `external`: 앱 밖 콘솔. id = `ext-<pid>`.
+- `recent`: 닫힌 external 콘솔(폴더 + AI CLI 단위, 최근 50개, `recent-externals.json`). id = `rec-<12 hex>`, state=exited.
+  호스트가 20초마다 가벼운 프로세스 스냅샷(`ExternalConsoles.Peek`)으로, 그리고 `GET /api/sessions` 때마다 관찰한다.
+  `POST /api/sessions/rec-…/resume` → 그 폴더·셸로 새 host 세션을 만들고 AI가 있었으면 `claude --continue` /
+  `codex resume --last` 입력(Enter 포함) 후 항목 삭제. `DELETE`는 항목만 삭제.
+- 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
 - 셸 실행 명령:
   - cmd: `cmd.exe` + 환경변수 `PROMPT=$E]9;9;$P$E\$P$G` (OSC 9;9로 cwd 보고)
   - pwsh/powershell: `pwsh.exe -NoLogo -NoExit -Command <prompt 래핑 스크립트>` — 기존 prompt 함수 결과 앞에 `` `e]9;9;$PWD`e\ `` 를 출력
