@@ -840,7 +840,7 @@ public sealed class HostServer
         }
     }
 
-    private async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, CancellationTokenSource cts)
+    private static async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, CancellationTokenSource cts)
     {
         var a = b.Attach(clientType, cols, rows);
         try

@@ -274,6 +274,8 @@ public class VtFrameTests
         Assert.All(attrs, a => Assert.Equal(0x07, a));
     }
 
+    private static readonly int[] ExpectedCandidatePids = { 300, 800, 9804, 35456 };
+
     [Fact]
     public void ExternalFilterKeepsPersonOpenedAndAgentShells()
     {
@@ -291,7 +293,7 @@ public class VtFrameTests
             new(700, 1, "Mpta.QA.exe"), new(800, 700, "cmd.exe"), new(801, 800, "node.exe"), new(802, 801, "codex.exe"),
         };
         var got = ExternalConsoles.FindCandidates(procs, selfPid: 99999).ToDictionary(c => c.Proc.Pid, c => c.Agent);
-        Assert.Equal(new[] { 300, 800, 9804, 35456 }, got.Keys.Order().ToArray());
+        Assert.Equal(ExpectedCandidatePids, got.Keys.Order().ToArray());
         Assert.Equal("claude", got[9804]);
         Assert.Equal("gpt", got[800]);
         Assert.Null(got[35456]);
@@ -336,7 +338,7 @@ public class VtFrameTests
         // Redraw puts l2, l3 back at the top: they are on screen again, not history.
         sb.Accept(Frame("l2", "l3", "x4", "x5", "x6", "x7", "x8", "x9", "> in", "status"));
         Assert.Single(sb.Snapshot());
-        Assert.Equal(0, ConsoleScrollback.OverlapWithTop(new[] { "a", "" }, new[] { "a", "", "z" })); // needs 2 non-blank
+        Assert.Equal(0, ConsoleScrollback.OverlapWithTop(["a", ""], ["a", "", "z"])); // needs 2 non-blank
     }
 
     [Fact]
@@ -539,19 +541,21 @@ public class PairingTests
 
 public class WtTabLauncherTests
 {
+    private static readonly string[] ExpectedFirstLaunch = { "-w", "0", "nt", "--title", "t\\;x", @"C:\x\mpta.exe", "attach", "s1", "--port", "7380" };
+
     [Fact]
     public void NoDuplicateWhilePendingAndNotWhenCliPresent()
     {
         var now = DateTime.UtcNow;
         var launched = new List<IReadOnlyList<string>>();
-        var l = new WtTabLauncher(@"C:\x\mpta.exe", new[] { "--port", "7380" }, () => now, (_, a) => launched.Add(a));
+        var l = new WtTabLauncher(@"C:\x\mpta.exe", ["--port", "7380"],() => now, (_, a) => launched.Add(a));
         Assert.False(l.MaybeOpen("s1", "t", hasCliClient: true));
         Assert.True(l.MaybeOpen("s1", "t;x", hasCliClient: false));
         Assert.False(l.MaybeOpen("s1", "t", hasCliClient: false));
         now = now.AddSeconds(16);
         Assert.True(l.MaybeOpen("s1", "t", hasCliClient: false));
         Assert.Equal(2, launched.Count);
-        Assert.Equal(new[] { "-w", "0", "nt", "--title", "t\\;x", @"C:\x\mpta.exe", "attach", "s1", "--port", "7380" }, launched[0]);
+        Assert.Equal(ExpectedFirstLaunch, launched[0]);
     }
 }
 

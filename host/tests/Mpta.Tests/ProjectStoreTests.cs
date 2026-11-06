@@ -35,6 +35,8 @@ public class ProjectStoreTests
         Assert.Equal(@"D:\Work", ProjectStore.FindRoot(new ProjectSettings { Roots = { @"D:\Work" } }, null));
     }
 
+    private static readonly string[] ExpectedDedupedRoots = { @"E:\AIWork\RNDAIProjects" };
+
     [Fact]
     public void SaveAndLoadRoundTrip()
     {
@@ -42,7 +44,7 @@ public class ProjectStoreTests
         try
         {
             ProjectStore.Save(home, new ProjectSettings { Roots = { @"E:\AIWork\RNDAIProjects", @"e:\aiwork\rndaiprojects", " " } });
-            Assert.Equal(new[] { @"E:\AIWork\RNDAIProjects" }, ProjectStore.Load(home).Roots);
+            Assert.Equal(ExpectedDedupedRoots, ProjectStore.Load(home).Roots);
             Assert.Empty(ProjectStore.Load(Path.Combine(home, "missing")).Roots);
         }
         finally

@@ -149,10 +149,13 @@ public static class Program
     private static string Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
+    private static readonly string[] ListHeader = { "KIND", "ID", "TITLE", "SHELL", "CWD", "STATE", "LAST ACTIVITY" };
+    private static readonly string[] DevicesHeader = { "ID", "NAME", "CREATED", "REVOKED" };
+
     private static async Task<int> ListCmd(ApiClient api)
     {
         var res = await api.SendAsync(HttpMethod.Get, "api/sessions");
-        var rows = new List<string[]> { new[] { "KIND", "ID", "TITLE", "SHELL", "CWD", "STATE", "LAST ACTIVITY" } };
+        var rows = new List<string[]> { ListHeader };
         foreach (var s in res.GetProperty("sessions").EnumerateArray())
         {
             var last = Str(s, "lastActivity");
@@ -276,7 +279,7 @@ public static class Program
     private static async Task<int> DevicesCmd(ApiClient api)
     {
         var r = await api.SendAsync(HttpMethod.Get, "api/devices");
-        var rows = new List<string[]> { new[] { "ID", "NAME", "CREATED", "REVOKED" } };
+        var rows = new List<string[]> { DevicesHeader };
         foreach (var d in r.GetProperty("devices").EnumerateArray())
             rows.Add(new[] { Str(d, "id"), Str(d, "name"), Str(d, "createdAt"), d.GetProperty("revoked").GetBoolean() ? "yes" : "no" });
         PrintTable(rows);

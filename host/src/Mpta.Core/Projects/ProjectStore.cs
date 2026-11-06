@@ -64,8 +64,10 @@ public static class ProjectStore
         return list;
     }
 
+    private static readonly string[] ExecutableExtensions = { ".exe", ".cmd", ".bat" };
+
     private static bool OnPath(string name) =>
-        new[] { ".exe", ".cmd", ".bat" }.Any(ext => ShellLauncher.FindOnPath(name + ext) != null);
+        ExecutableExtensions.Any(ext => ShellLauncher.FindOnPath(name + ext) != null);
 
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
