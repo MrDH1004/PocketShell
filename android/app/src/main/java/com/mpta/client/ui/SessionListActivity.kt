@@ -69,13 +69,15 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
-        toolbar.menu.add(0, MENU_UNPAIR, 3, R.string.unpair)
-        if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 4, R.string.update_debug_url)
+        toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
+        toolbar.menu.add(0, MENU_UNPAIR, 4, R.string.unpair)
+        if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
+                MENU_VIEW_SETTINGS -> ViewSettingsDialog.show(this)
                 MENU_UNPAIR -> confirmUnpair()
                 MENU_DEBUG_UPDATE_URL -> appUpdate.showDebugUrlDialog()
             }
@@ -398,6 +400,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_CHECK_UPDATE = 3
         const val MENU_DEBUG_UPDATE_URL = 4
         const val MENU_RECENT_LIMIT = 5
+        const val MENU_VIEW_SETTINGS = 6
         const val HOST_RESTART_WAIT_MS = 5000L
     }
 }

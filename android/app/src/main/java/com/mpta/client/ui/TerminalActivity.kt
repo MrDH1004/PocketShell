@@ -42,6 +42,7 @@ import com.mpta.client.core.KeyMapper
 import com.mpta.client.core.ServerMessage
 import com.mpta.client.core.SessionInfo
 import com.mpta.client.core.SpecialKey
+import com.mpta.client.data.UiPrefs
 import com.mpta.client.net.ApiClient
 import com.mpta.client.net.TerminalConnection
 import com.termux.terminal.RemoteTerminalSession
@@ -85,7 +86,9 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var ctrlButton: TextView
     private lateinit var altButton: TextView
 
-    private var fontSizeSp = DEFAULT_FONT_SP
+    private lateinit var uiPrefs: UiPrefs
+    private var fontSizeSp = UiPrefs.DEFAULT_FONT_SP
+    private var typeface: Typeface = Typeface.MONOSPACE
     private var textPx = 0
 
     /**
@@ -163,13 +166,18 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         terminalView.setTerminalViewClient(viewClient)
+        uiPrefs = UiPrefs(this)
+        fontSizeSp = uiPrefs.fontSizeSp
+        typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
         applyTextSize(spToPx(fontSizeSp))
+        terminalView.setTypeface(typeface)
         terminalView.attachSession(session)
         terminalView.keepScreenOn = true
 
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
+        findViewById<View>(R.id.viewSettingsButton).setOnClickListener { ViewSettingsDialog.show(this) { applyViewSettings() } }
         findViewById<View>(R.id.voiceButton).setOnClickListener { startVoiceInput() }
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
             if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -238,7 +246,8 @@ class TerminalActivity : AppCompatActivity() {
         val root = findViewById<View>(R.id.root)
         val widthOnly = root.height > 0 && root.paddingBottom > root.height / 5
         Log.i(TAG, "fit ${cols}x$rows view=${width}x$height rootPadBottom=${root.paddingBottom}/${root.height} widthOnly=$widthOnly")
-        val paint = Paint().apply { typeface = Typeface.MONOSPACE; isAntiAlias = true }
+        val face = typeface
+        val paint = Paint().apply { typeface = face; isAntiAlias = true }
         var px = spToPx(fontSizeSp)
         while (px > MIN_FIT_TEXT_PX) {
             paint.textSize = px.toFloat()
@@ -257,7 +266,20 @@ class TerminalActivity : AppCompatActivity() {
 
     /** Top-bar button: undo pinch zoom — default font, and for an external console fit it to the PC size again. */
     private fun resetSize() {
-        fontSizeSp = DEFAULT_FONT_SP
+        fontSizeSp = UiPrefs.DEFAULT_FONT_SP
+        uiPrefs.fontSizeSp = fontSizeSp
+        refit()
+    }
+
+    /** Settings dialog changed the size or font: apply both, refitting an external console to the PC size. */
+    private fun applyViewSettings() {
+        fontSizeSp = uiPrefs.fontSizeSp
+        typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
+        terminalView.setTypeface(typeface)
+        refit()
+    }
+
+    private fun refit() {
         if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleCols > 0 && consoleRows > 0) {
             fitWidth = 0 // force the measurement even if the view size is unchanged
             fitToConsole(consoleCols, consoleRows)
@@ -589,7 +611,8 @@ class TerminalActivity : AppCompatActivity() {
             if (scale < 0.9f || scale > 1.1f) {
                 // Manual zoom wins over fit-to-columns (an external console may then be cut off on the right).
                 fitCols = 0
-                fontSizeSp = (fontSizeSp * (if (scale > 1f) 1.1f else 0.9f)).coerceIn(6f, MAX_FONT_SP)
+                fontSizeSp = (fontSizeSp * (if (scale > 1f) 1.1f else 0.9f)).coerceIn(UiPrefs.MIN_FONT_SP, UiPrefs.MAX_FONT_SP)
+                uiPrefs.fontSizeSp = fontSizeSp
                 applyTextSize(spToPx(fontSizeSp))
                 return 1.0f
             }
@@ -655,8 +678,6 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
-        private const val MAX_FONT_SP = 32f
-        private const val DEFAULT_FONT_SP = 12f
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"

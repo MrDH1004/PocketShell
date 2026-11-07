@@ -62,6 +62,15 @@
             android:tint="@color/keybar_text" />
 
         <ImageButton
+            android:id="@+id/viewSettingsButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/view_settings"
+            android:src="@drawable/ic_format_size"
+            android:tint="@color/keybar_text" />
+
+        <ImageButton
             android:id="@+id/fitButton"
             android:layout_width="48dp"
             android:layout_height="48dp"

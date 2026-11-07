@@ -51,6 +51,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   `POST /api/sessions/rec-…/resume` → 그 폴더·셸로 새 host 세션을 만들고 AI가 있었으면 `claude --continue` /
   `codex resume --last` 입력(Enter 포함) 후 항목 삭제. `DELETE`는 항목만 삭제.
 - 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
+- 폰 터미널 보기 설정(상단 Aa 버튼 / 목록 메뉴 '보기 설정'): 글꼴 크기 6~32sp(기본 12, 핀치 확대·축소도 저장),
+  글꼴 = 시스템 monospace / D2Coding / JetBrains Mono(번들, OFL — `assets/licenses`). 외부 콘솔은 이 크기에서 PC 열 수에 맞게 줄인다.
 - 셸 실행 명령:
   - cmd: `cmd.exe` + 환경변수 `PROMPT=$E]9;9;$P$E\$P$G` (OSC 9;9로 cwd 보고)
   - pwsh/powershell: `pwsh.exe -NoLogo -NoExit -Command <prompt 래핑 스크립트>` — 기존 prompt 함수 결과 앞에 `` `e]9;9;$PWD`e\ `` 를 출력
