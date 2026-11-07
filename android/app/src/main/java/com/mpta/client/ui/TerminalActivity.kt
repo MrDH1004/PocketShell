@@ -540,8 +540,8 @@ class TerminalActivity : AppCompatActivity() {
         altButton.visibility = View.GONE
         for (k in listOf(
             SpecialKey.LEFT, SpecialKey.UP, SpecialKey.DOWN, SpecialKey.RIGHT,
-            SpecialKey.HOME, SpecialKey.END, SpecialKey.PGUP, SpecialKey.PGDN,
             SpecialKey.PIPE, SpecialKey.TILDE, SpecialKey.SLASH, SpecialKey.MINUS,
+            SpecialKey.HOME, SpecialKey.END, SpecialKey.PGUP, SpecialKey.PGDN,
         )) {
             keyButton(k.label) { sendSpecial(k) }
         }
