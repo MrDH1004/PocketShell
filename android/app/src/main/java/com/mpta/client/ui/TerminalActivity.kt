@@ -534,7 +534,9 @@ class TerminalActivity : AppCompatActivity() {
         for (k in listOf(SpecialKey.ESC, SpecialKey.TAB, SpecialKey.ENTER)) keyButton(k.label) { sendSpecial(k) }
         ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
         altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
-        altButton.visibility = View.GONE // hidden on the bar; ALT handling is kept
+        // Hidden on the bar (not used); the toggle handling is kept.
+        ctrlButton.visibility = View.GONE
+        altButton.visibility = View.GONE
         for (k in listOf(
             SpecialKey.LEFT, SpecialKey.UP, SpecialKey.DOWN, SpecialKey.RIGHT,
             SpecialKey.HOME, SpecialKey.END, SpecialKey.PGUP, SpecialKey.PGDN,

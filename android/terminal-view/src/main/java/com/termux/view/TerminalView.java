@@ -33,6 +33,7 @@ import android.view.autofill.AutofillValue;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Scroller;
 
 import androidx.annotation.Nullable;
@@ -354,6 +355,23 @@ public final class TerminalView extends View {
             @Override
             public boolean setComposingText(CharSequence text, int newCursorPosition) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: setComposingText(\"" + text + "\")");
+                // mpta: backspace deletes a whole character. The IME's own backspace inside a syllable (한 → 하)
+                // would remove one jamo at a time; instead drop the last character of the composing text,
+                // end the composition and restart the IME so it does not keep (and re-type) the old syllable.
+                Editable content = getEditable();
+                int a = getComposingSpanStart(content);
+                int b = getComposingSpanEnd(content);
+                if (a > b) { int t = a; a = b; b = t; }
+                String from = a >= 0 && b > a ? content.subSequence(a, b).toString() : "";
+                if (ImeTextDecoder.isHangulBackspace(from, text.toString())) {
+                    String kept = ImeTextDecoder.dropLastCodePoint(from);
+                    content.replace(a, b, kept);
+                    removeComposingSpans(content);
+                    Selection.setSelection(content, a + kept.length());
+                    syncEditable();
+                    restartImeSoon();
+                    return true;
+                }
                 super.setComposingText(text, newCursorPosition);
                 syncEditable();
                 return true;
@@ -394,6 +412,14 @@ public final class TerminalView extends View {
                 for (int i = 0; i < del; i++) inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, 127, false, false);
                 if (!tail.isEmpty()) sendTextToTerminal(tail);
                 mSent = target;
+            }
+
+            /** A fresh InputConnection (empty mirror) and a reset IME composition state. */
+            private void restartImeSoon() {
+                post(() -> {
+                    InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) imm.restartInput(TerminalView.this);
+                });
             }
 
             private void resetMirror() {

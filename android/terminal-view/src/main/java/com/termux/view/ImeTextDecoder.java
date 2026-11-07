@@ -33,6 +33,63 @@ public final class ImeTextDecoder {
         return target.substring(commonPrefix(sent, target));
     }
 
+    private static final String CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+    private static final String JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
+    private static final String JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+    /** Compound vowels / final clusters as the keys typed (double consonants like ㄲ are one key). */
+    private static final String COMPOUND = "ㅘㅗㅏㅙㅗㅐㅚㅗㅣㅝㅜㅓㅞㅜㅔㅟㅜㅣㅢㅡㅣ"
+        + "ㄳㄱㅅㄵㄴㅈㄶㄴㅎㄺㄹㄱㄻㄹㅁㄼㄹㅂㄽㄹㅅㄾㄹㅌㄿㄹㅍㅀㄹㅎㅄㅂㅅ";
+
+    /** Hangul text as the jamo keystrokes that build it ("닭" → ㄷㅏㄹㄱ); other characters stay as they are. */
+    public static String keystrokes(String text) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c >= 0xAC00 && c <= 0xD7A3) {
+                int s = c - 0xAC00;
+                sb.append(CHO.charAt(s / 588));
+                appendJamo(sb, JUNG.charAt((s % 588) / 28));
+                if (s % 28 != 0) appendJamo(sb, JONG.charAt(s % 28));
+            } else {
+                appendJamo(sb, c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static void appendJamo(StringBuilder sb, char j) {
+        for (int k = 0; k < COMPOUND.length(); k += 3) {
+            if (COMPOUND.charAt(k) == j) {
+                sb.append(COMPOUND.charAt(k + 1)).append(COMPOUND.charAt(k + 2));
+                return;
+            }
+        }
+        sb.append(j);
+    }
+
+    /**
+     * mpta: true when the IME changed the Hangul composing text {@code from} → {@code to} only by removing
+     * jamo (its backspace inside a syllable: 한 → 하 → ㅎ). Typing only ever adds keystrokes, so it never matches.
+     */
+    public static boolean isHangulBackspace(String from, String to) {
+        if (from.isEmpty() || to.length() > from.length()) return false;
+        boolean hangul = false;
+        for (int i = 0; i < from.length() && !hangul; i++) {
+            char c = from.charAt(i);
+            hangul = (c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x318E);
+        }
+        if (!hangul) return false;
+        String a = keystrokes(from);
+        String b = keystrokes(to);
+        return b.length() < a.length() && a.startsWith(b);
+    }
+
+    /** {@code text} without its last code point. */
+    public static String dropLastCodePoint(String text) {
+        if (text.isEmpty()) return text;
+        return text.substring(0, text.offsetByCodePoints(text.length(), -1));
+    }
+
     private static int commonPrefix(String a, String b) {
         int n = Math.min(a.length(), b.length());
         int i = 0;
