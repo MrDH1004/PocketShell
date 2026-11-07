@@ -507,6 +507,7 @@ class TerminalActivity : AppCompatActivity() {
             return
         }
         emulator.paste(text)
+        terminalView.resetImeLine()
     }
 
     private fun setStatus(text: String) {
@@ -558,6 +559,7 @@ class TerminalActivity : AppCompatActivity() {
         val bytes = KeyMapper.bytesFor(key, ctrlOn, altOn, appCursor)
         clearToggles()
         session.write(bytes, 0, bytes.size)
+        terminalView.resetImeLine() // the keyboard must not re-type the sent / moved-away line on backspace
     }
 
     private fun clearToggles() {

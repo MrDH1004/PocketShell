@@ -307,6 +307,15 @@ public final class TerminalView extends View {
         return true;
     }
 
+    /**
+     * mpta: input was sent outside the IME (key bar Enter/arrows, voice text): drop the IME's idea of the current
+     * line. restartInput creates a fresh InputConnection, whose mirror starts empty.
+     */
+    public void resetImeLine() {
+        InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.restartInput(this);
+    }
+
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
@@ -422,9 +431,27 @@ public final class TerminalView extends View {
                 });
             }
 
+            /**
+             * The line was sent (Enter): forget it here AND in the IME. Without the IME restart it still believes
+             * the sent text is before the cursor, and its next backspace re-composes that text, which then looked
+             * new to the empty mirror and was typed again (the previous chat line came back).
+             */
             private void resetMirror() {
                 mSent = "";
                 getEditable().clear();
+                restartImeSoon();
+            }
+
+            @Override
+            public boolean setComposingRegion(int start, int end) {
+                // A region beyond the mirror is text the IME remembers from before the last reset: ignore it
+                // (re-composing it would type it again) and resync the IME.
+                if (Math.max(start, end) > getEditable().length()) {
+                    if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: stale setComposingRegion(" + start + ", " + end + ")");
+                    restartImeSoon();
+                    return true;
+                }
+                return super.setComposingRegion(start, end);
             }
 
             @Override
