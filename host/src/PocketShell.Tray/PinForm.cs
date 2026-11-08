@@ -3,8 +3,8 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using Mpta.Core.Net;
-using Mpta.Core.Util;
+using Pkshell.Core.Net;
+using Pkshell.Core.Util;
 
 namespace PocketShell.Tray;
 
@@ -127,8 +127,8 @@ internal sealed class PinForm : Form
 
     private async Task<JsonElement> StartPinAsync()
     {
-        var token = File.ReadAllText(MptaPaths.LocalTokenFile(_home), Encoding.UTF8).Trim();
-        var fp = File.ReadAllText(MptaPaths.CertFingerprintFile(_home), Encoding.UTF8).Trim().ToLowerInvariant();
+        var token = File.ReadAllText(PkshellPaths.LocalTokenFile(_home), Encoding.UTF8).Trim();
+        var fp = File.ReadAllText(PkshellPaths.CertFingerprintFile(_home), Encoding.UTF8).Trim().ToLowerInvariant();
         using var handler = new SocketsHttpHandler();
         handler.SslOptions.RemoteCertificateValidationCallback =
             (object _, X509Certificate? cert, X509Chain? _, SslPolicyErrors _) =>

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
-using Mpta.Core.Util;
+using Pkshell.Core.Util;
 
 namespace PocketShell.Tray;
 
@@ -59,7 +59,7 @@ internal sealed class TrayApp : ApplicationContext
             _status, new ToolStripSeparator(),
             pair, new ToolStripMenuItem("프로젝트 폴더…", null, (_, _) => ShowProjects()), _start, _stop, new ToolStripSeparator(),
             new ToolStripMenuItem("데이터 폴더 열기", null, (_, _) => OpenFolder(_home)),
-            new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(MptaPaths.LogsDir(_home))),
+            new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(PkshellPaths.LogsDir(_home))),
             _autoStart, new ToolStripSeparator(),
             new ToolStripMenuItem("종료 (서버도 중지)", null, async (_, _) => await ExitAsync()),
         });

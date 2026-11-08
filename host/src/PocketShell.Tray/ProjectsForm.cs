@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using Mpta.Core.Projects;
-using Mpta.Core.Util;
+using Pkshell.Core.Projects;
+using Pkshell.Core.Util;
 
 namespace PocketShell.Tray;
 

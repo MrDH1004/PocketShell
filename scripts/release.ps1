@@ -127,7 +127,7 @@ try {
     # -------------------------------------------------------------- 2. host publish + zip
     Step "host: dotnet publish win-x64 framework-dependent"
     $pub = Join-Path $Work 'host'
-    Invoke-Checked 'dotnet' @('publish', (Join-Path $Root 'host\src\Mpta\Mpta.csproj'), '-c', 'Release', '-r', 'win-x64',
+    Invoke-Checked 'dotnet' @('publish', (Join-Path $Root 'host\src\Pkshell\Pkshell.csproj'), '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'false', '-o', $pub, '--artifacts-path', (Join-Path $Work 'artifacts'), '-nologo')
     Invoke-Checked 'dotnet' @('publish', (Join-Path $Root 'host\src\PocketShell.Tray\PocketShell.Tray.csproj'), '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'false', '-o', $pub, '--artifacts-path', (Join-Path $Work 'artifacts'), '-nologo')

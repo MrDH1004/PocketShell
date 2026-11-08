@@ -115,7 +115,7 @@
     </LinearLayout>
 
     <!-- Pinch = gallery-style zoom of the picture, one finger drags it while zoomed (ZoomPanLayout). -->
-    <com.mpta.client.ui.ZoomPanLayout
+    <com.neststudio.pocketshell.ui.ZoomPanLayout
         android:id="@+id/zoom"
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -128,7 +128,7 @@
             android:layout_height="match_parent"
             android:focusable="true"
             android:focusableInTouchMode="true" />
-    </com.mpta.client.ui.ZoomPanLayout>
+    </com.neststudio.pocketshell.ui.ZoomPanLayout>
 
     <HorizontalScrollView
         android:layout_width="match_parent"

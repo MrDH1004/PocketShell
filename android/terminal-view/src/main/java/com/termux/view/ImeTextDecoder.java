@@ -20,7 +20,7 @@ public final class ImeTextDecoder {
     }
 
     /**
-     * mpta: edit that turns the composing text already shown on the remote terminal ({@code sent}) into
+     * pkshell: edit that turns the composing text already shown on the remote terminal ({@code sent}) into
      * {@code target}: delete {@link #backspaces} code points, then type {@link #append}. Composition is mirrored
      * live (e.g. ㅁ → 모 → 몸) instead of appearing only when the IME commits.
      */
@@ -68,7 +68,7 @@ public final class ImeTextDecoder {
     }
 
     /**
-     * mpta: true when the IME changed the Hangul composing text {@code from} → {@code to} only by removing
+     * pkshell: true when the IME changed the Hangul composing text {@code from} → {@code to} only by removing
      * jamo (its backspace inside a syllable: 한 → 하 → ㅎ). Typing only ever adds keystrokes, so it never matches.
      */
     public static boolean isHangulBackspace(String from, String to) {

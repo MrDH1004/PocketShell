@@ -9,21 +9,21 @@ plugins {
 val versionProps = Properties().apply {
     rootProject.file("../version.properties").inputStream().use { load(it) }
 }
-val mptaVersionName: String = versionProps.getProperty("versionName")
+val pkshellVersionName: String = versionProps.getProperty("versionName")
     ?: error("version.properties: versionName missing")
-val mptaVersionCode: Int = versionProps.getProperty("versionCode")?.trim()?.toIntOrNull()
+val pkshellVersionCode: Int = versionProps.getProperty("versionCode")?.trim()?.toIntOrNull()
     ?: error("version.properties: versionCode missing or not an integer")
 
 android {
-    namespace = "com.mpta.client"
+    namespace = "com.neststudio.pocketshell"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.pocketshell.app"
+        applicationId = "com.neststudio.pocketshell"
         minSdk = 26
         targetSdk = 35
-        versionCode = mptaVersionCode
-        versionName = mptaVersionName
+        versionCode = pkshellVersionCode
+        versionName = pkshellVersionName
     }
 
     buildTypes {

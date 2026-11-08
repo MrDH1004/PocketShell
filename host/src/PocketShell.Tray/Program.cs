@@ -1,4 +1,4 @@
-using Mpta.Core.Util;
+using Pkshell.Core.Util;
 
 namespace PocketShell.Tray;
 
@@ -18,7 +18,7 @@ internal static class Program
         if (!first && !(restarting && AcquireAfterPrevious(single))) return 0; // already in the tray
 
         ApplicationConfiguration.Initialize();
-        var home = MptaPaths.Home;
+        var home = PkshellPaths.Home;
         Directory.CreateDirectory(home);
         try
         {
@@ -38,7 +38,7 @@ internal static class Program
         try
         {
             if (single.WaitOne(TimeSpan.FromSeconds(60))) return true;
-            TrayLog.Write(MptaPaths.Home, "previous tray still holds the single-instance mutex after 60s; exiting");
+            TrayLog.Write(PkshellPaths.Home, "previous tray still holds the single-instance mutex after 60s; exiting");
             return false;
         }
         catch (AbandonedMutexException) { return true; } // previous tray exited without releasing it: now ours
@@ -49,7 +49,7 @@ internal static class Program
         try
         {
             using var p = System.Diagnostics.Process.GetProcessById(pid);
-            if (!p.WaitForExit(30000)) TrayLog.Write(MptaPaths.Home, $"previous tray pid {pid} still running after 30s");
+            if (!p.WaitForExit(30000)) TrayLog.Write(PkshellPaths.Home, $"previous tray pid {pid} still running after 30s");
         }
         catch (ArgumentException) { } // already gone
         catch (InvalidOperationException) { }
@@ -62,7 +62,7 @@ internal static class TrayLog
     {
         try
         {
-            var dir = MptaPaths.LogsDir(home);
+            var dir = PkshellPaths.LogsDir(home);
             Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "tray.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {line}{Environment.NewLine}");
         }

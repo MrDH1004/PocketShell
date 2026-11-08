@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Win32;
-using Mpta.Core.Util;
+using Pkshell.Core.Util;
 
 namespace PocketShell.Tray;
 
@@ -17,7 +17,7 @@ internal sealed class ServerControl
     public ServerControl(string home)
     {
         _home = home;
-        Port = MptaConfig.LoadOrCreate(home).Port;
+        Port = PkshellConfig.LoadOrCreate(home).Port;
     }
 
     public bool IsRunning
@@ -33,7 +33,7 @@ internal sealed class ServerControl
     /// <summary>Returns null on success, else an error message.</summary>
     public string? Start()
     {
-        Port = MptaConfig.LoadOrCreate(_home).Port; // config may have changed since the tray started
+        Port = PkshellConfig.LoadOrCreate(_home).Port; // config may have changed since the tray started
         if (IsRunning) return null;
         if (!File.Exists(CliPath)) return $"{Brand.CliExe} not found next to {Brand.TrayExe}: {CliPath}";
         var psi = new ProcessStartInfo(CliPath, "serve")

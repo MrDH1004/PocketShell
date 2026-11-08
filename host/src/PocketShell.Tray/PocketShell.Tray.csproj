@@ -15,6 +15,6 @@
     <EmbeddedResource Include="..\..\..\assets\pocketshell.ico" LogicalName="app.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Mpta.Core\Mpta.Core.csproj" />
+    <ProjectReference Include="..\Pkshell.Core\Pkshell.Core.csproj" />
   </ItemGroup>
 </Project>

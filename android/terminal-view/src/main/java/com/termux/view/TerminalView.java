@@ -308,7 +308,7 @@ public final class TerminalView extends View {
     }
 
     /**
-     * mpta: input was sent outside the IME (key bar Enter/arrows, voice text): drop the IME's idea of the current
+     * pkshell: input was sent outside the IME (key bar Enter/arrows, voice text): drop the IME's idea of the current
      * line. restartInput creates a fresh InputConnection, whose mirror starts empty.
      */
     public void resetImeLine() {
@@ -329,7 +329,7 @@ public final class TerminalView extends View {
                 // https://github.com/termux/termux-app/issues/686
                 outAttrs.inputType = InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
             } else {
-                // mpta change: Termux uses InputType.TYPE_NULL here. With TYPE_NULL, Gboard and other
+                // pkshell change: Termux uses InputType.TYPE_NULL here. With TYPE_NULL, Gboard and other
                 // Korean IMEs fall back to raw key events and cannot compose Hangul syllables (jamo are sent
                 // one by one or nothing is sent). A real text class lets the IME compose; the composing text
                 // is kept in this connection's Editable and only sent to the terminal (as UTF-8) once the
@@ -351,7 +351,7 @@ public final class TerminalView extends View {
         return new BaseInputConnection(this, true) {
 
             /*
-             * mpta: the Editable mirrors the current input line as the IME believes it is, and mSent is what the
+             * pkshell: the Editable mirrors the current input line as the IME believes it is, and mSent is what the
              * remote terminal has received of it. Every IME edit is applied to the Editable first, then the remote
              * is brought to the same text (syncTo: DEL per removed code point + the new tail).
              * The Editable is NOT cleared after a commit: IMEs re-compose the word before the cursor (e.g. after a
@@ -364,7 +364,7 @@ public final class TerminalView extends View {
             @Override
             public boolean setComposingText(CharSequence text, int newCursorPosition) {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: setComposingText(\"" + text + "\")");
-                // mpta: backspace deletes a whole character. The IME's own backspace inside a syllable (한 → 하)
+                // pkshell: backspace deletes a whole character. The IME's own backspace inside a syllable (한 → 하)
                 // would remove one jamo at a time; instead drop the last character of the composing text,
                 // end the composition and restart the IME so it does not keep (and re-type) the old syllable.
                 Editable content = getEditable();

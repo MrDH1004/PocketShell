@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * A terminal session whose "process" lives on a remote host (mpta).
+ * A terminal session whose "process" lives on a remote host (pkshell).
  * <p>
  * Replaces Termux's JNI/pty based {@code TerminalSession}:
  * <ul>

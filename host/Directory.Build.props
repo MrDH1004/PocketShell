@@ -9,12 +9,12 @@
   <!-- Single version source (DESIGN.md §11.1): repo-root version.properties (versionName=..., versionCode=N).
        `-p:VersionOverride=x.y.z[-pre]` replaces versionName for one build (QA fake releases). -->
   <PropertyGroup>
-    <MptaVersionFile>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\version.properties'))</MptaVersionFile>
-    <MptaVersionText Condition="Exists('$(MptaVersionFile)')">$([System.IO.File]::ReadAllText('$(MptaVersionFile)'))</MptaVersionText>
-    <MptaVersionName Condition="'$(MptaVersionText)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(MptaVersionText)', '(?m)^\s*versionName\s*=\s*([^\r\n]+?)\s*$').Groups[1].Value)</MptaVersionName>
-    <MptaVersionName Condition="'$(VersionOverride)' != ''">$(VersionOverride)</MptaVersionName>
-    <Version Condition="'$(MptaVersionName)' != ''">$(MptaVersionName)</Version>
-    <Version Condition="'$(MptaVersionName)' == ''">0.0.0</Version>
+    <PkshellVersionFile>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\version.properties'))</PkshellVersionFile>
+    <PkshellVersionText Condition="Exists('$(PkshellVersionFile)')">$([System.IO.File]::ReadAllText('$(PkshellVersionFile)'))</PkshellVersionText>
+    <PkshellVersionName Condition="'$(PkshellVersionText)' != ''">$([System.Text.RegularExpressions.Regex]::Match('$(PkshellVersionText)', '(?m)^\s*versionName\s*=\s*([^\r\n]+?)\s*$').Groups[1].Value)</PkshellVersionName>
+    <PkshellVersionName Condition="'$(VersionOverride)' != ''">$(VersionOverride)</PkshellVersionName>
+    <Version Condition="'$(PkshellVersionName)' != ''">$(PkshellVersionName)</Version>
+    <Version Condition="'$(PkshellVersionName)' == ''">0.0.0</Version>
     <InformationalVersion>$(Version)</InformationalVersion>
   </PropertyGroup>
 </Project>

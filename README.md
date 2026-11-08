@@ -10,9 +10,9 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 | 경로 | 내용 |
 |---|---|
 | `host/src/PocketShell.Tray` | 트레이 앱 `PocketShell.exe` — 서버를 백그라운드로 실행·중지, 휴대폰 연결(PIN), 로그인 시 자동 실행 |
-| `host/src/Mpta` | 서버 + CLI `psh.exe` (`psh serve`, `psh attach` …) |
-| `android/` | Kotlin Android 앱 `com.pocketshell.app` (Termux terminal-emulator/view 기반, Apache-2.0) |
-| `qa/Mpta.QA` | E2E QA 드라이버 |
+| `host/src/Pkshell` | 서버 + CLI `psh.exe` (`psh serve`, `psh attach` …) |
+| `android/` | Kotlin Android 앱 `com.neststudio.pocketshell` (Termux terminal-emulator/view 기반, Apache-2.0) |
+| `qa/Pkshell.QA` | E2E QA 드라이버 |
 | `assets/` | 아이콘 (`scripts/make_icons.py`로 생성) |
 | `docs/DESIGN.md` | 프로토콜/구조 계약 |
 
@@ -61,9 +61,9 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 
 ## 빌드
 ```
-dotnet build host/Mpta.sln && dotnet test host/Mpta.sln
+dotnet build host/Pkshell.sln && dotnet test host/Pkshell.sln
 cd android && gradlew.bat test assembleRelease   # JDK 17, Android SDK 35
-dotnet run --project qa/Mpta.QA -c Release       # E2E QA
+dotnet run --project qa/Pkshell.QA -c Release       # E2E QA
 powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releases → 자동 업데이트)
 ```
 

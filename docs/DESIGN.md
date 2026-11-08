@@ -1,21 +1,21 @@
-# PocketShell (구 MyPCToAndroid / mpta) — 설계/계약 문서 (SSOT)
+# PocketShell (구 MyPCToAndroid / mpta, 코드명 pkshell) — 설계/계약 문서 (SSOT)
 
 사양: `.omc/specs/deep-interview-pc-terminal-to-android.md` (AC-1~22). 이 문서는 구현 계약이다. 컴포넌트 간 인터페이스를 바꾸면 이 문서를 먼저 수정한다.
 
 ## 0. 저장소 구조
 ```
-host/                      .NET 8 솔루션 (Mpta.sln)
-  src/Mpta.Core/           세션/ConPTY/스크롤백/크기정책/인증/외부콘솔/프로토콜 (class lib, net8.0-windows)
-  src/Mpta/                단일 exe `psh.exe` (serve | list | new | attach | pair | devices | revoke | console-reader | console-info)
-  tests/Mpta.Tests/        xUnit 단위 테스트
-qa/Mpta.QA/                E2E QA 드라이버 (.NET 8 console) — 호스트를 실제로 띄워 AC 검증, 리포트 출력
+host/                      .NET 8 솔루션 (Pkshell.sln)
+  src/Pkshell.Core/           세션/ConPTY/스크롤백/크기정책/인증/외부콘솔/프로토콜 (class lib, net8.0-windows)
+  src/Pkshell/                단일 exe `psh.exe` (serve | list | new | attach | pair | devices | revoke | console-reader | console-info)
+  tests/Pkshell.Tests/        xUnit 단위 테스트
+qa/Pkshell.QA/                E2E QA 드라이버 (.NET 8 console) — 호스트를 실제로 띄워 AC 검증, 리포트 출력
 android/                   Kotlin Android 앱 (Gradle, AGP), 모듈: app, terminal-emulator, terminal-view (Termux에서 vendoring, Apache-2.0)
 docs/
 ```
 
 ## 1. 호스트 런타임
 - 언어: C# / .NET 8 (`net8.0-windows`), ASP.NET Core Kestrel (minimal API + WebSockets).
-- 데이터 디렉터리: `MPTA_HOME` 환경변수, 없으면 `%APPDATA%\PocketShell`. 구조:
+- 데이터 디렉터리: `PKSHELL_HOME` 환경변수, 없으면 `%APPDATA%\PocketShell`. 구조:
   - `config.json` `{ "port": 7380 }`
   - `cert.pfx` 자체서명 인증서(최초 실행 시 생성, RSA 2048, CN=PocketShell, 10년). SHA-256 지문(DER, 소문자 hex, 구분자 없음)을 `cert.sha256`에 기록.
   - `local.token` 로컬 CLI용 토큰(최초 생성, 32바이트 base64url).
@@ -100,10 +100,10 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 서버 측 클라이언트별 출력 큐는 4096 청크로 제한. 소비가 밀려 큐가 넘치면 해당 소켓만 close code **4408**("slow consumer")로 종료 — 클라이언트는 재연결하여 replay로 복구(다른 클라이언트는 영향 없음).
 - close code 요약: **4401** = 기기 revoke(재연결 중단), **4408** = slow consumer(재연결), **1009** = 메시지 과대, 1000 = 정상 종료.
 - external 세션(`ext-<pid>`): 서버가 콘솔 버퍼를 ~200ms마다 폴링, 변경 시 **VT 프레임**(`\x1b[?25l\x1b[H` + 각 행 SGR 16색 + `\x1b[K` + 커서 위치 `\x1b[r;cH` + `\x1b[?25h`)으로 binary 전송. 클라이언트 입력 바이트는 KEY_EVENT로 변환해 `WriteConsoleInputW`(AC-13). 크기 정책 미적용.
-- PC 탭 자동 열기(AC-21): `client=android` 연결이고 `openPcTab`≠0이며 해당 세션에 `cli` 클라이언트가 없고 진행 중인 열기 요청도 없으면 → `wt.exe -w 0 nt --title "<title>" "<psh.exe 경로>" attach <id> --port <서버포트> [--home <MPTA_HOME>]` 실행(`--home`은 서버에 MPTA_HOME이 설정된 경우만; WT 탭은 서버 환경변수를 상속하지 않으므로 필요). 15초 내 cli 클라이언트가 붙지 않으면 pending 해제. 포커스를 빼앗지 않도록 실행 전후 foreground 창을 기록하고 바뀌었으면 원래 창으로 복귀 시도. host 세션에만 적용.
+- PC 탭 자동 열기(AC-21): `client=android` 연결이고 `openPcTab`≠0이며 해당 세션에 `cli` 클라이언트가 없고 진행 중인 열기 요청도 없으면 → `wt.exe -w 0 nt --title "<title>" "<psh.exe 경로>" attach <id> --port <서버포트> [--home <PKSHELL_HOME>]` 실행(`--home`은 서버에 PKSHELL_HOME이 설정된 경우만; WT 탭은 서버 환경변수를 상속하지 않으므로 필요). 15초 내 cli 클라이언트가 붙지 않으면 pending 해제. 포커스를 빼앗지 않도록 실행 전후 foreground 창을 기록하고 바뀌었으면 원래 창으로 복귀 시도. host 세션에만 적용.
 
 ## 6. 외부 콘솔(보조 모드)
-- 열거: 프로세스 이름 `cmd.exe|powershell.exe|pwsh.exe` 중 부모가 위 셸이 아니고(최상위 셸), 호스트 세션의 자손이 아니며, mpta 자신이 아닌 것. 그중 **사람이 띄운 것**(부모가 WindowsTerminal/OpenConsole/explorer/IDE 등 터미널 런처)이거나 **AI CLI 실행 중**(자손에 claude.exe→`agent:"claude"`, codex.exe→`agent:"gpt"`)인 것만 목록에 낸다 — MCP 서버·에이전트 도구 셸·네이티브 호스트 같은 백그라운드 셸 제외. `MPTA_EXTERNAL_ALL=1`이면 필터 없이 전부(QA용). 세션 JSON의 `agent`는 external에만 채워진다.
+- 열거: 프로세스 이름 `cmd.exe|powershell.exe|pwsh.exe` 중 부모가 위 셸이 아니고(최상위 셸), 호스트 세션의 자손이 아니며, pkshell 자신이 아닌 것. 그중 **사람이 띄운 것**(부모가 WindowsTerminal/OpenConsole/explorer/IDE 등 터미널 런처)이거나 **AI CLI 실행 중**(자손에 claude.exe→`agent:"claude"`, codex.exe→`agent:"gpt"`)인 것만 목록에 낸다 — MCP 서버·에이전트 도구 셸·네이티브 호스트 같은 백그라운드 셸 제외. `PKSHELL_EXTERNAL_ALL=1`이면 필터 없이 전부(QA용). 세션 JSON의 `agent`는 external에만 채워진다.
 - 콘솔 API 호출은 **헬퍼 자식 프로세스**에서: `psh console-info <pid...>` → stdout JSON `[{pid,title,cols,rows}]`; `psh console-reader <pid>` → `FreeConsole`→`AttachConsole(pid)`→`CONOUT$`/`CONIN$` 열고, stdout(파이프)에 길이접두 프레임(4바이트 LE 길이 + [2바이트 LE cols + 2바이트 LE rows] + VT 프레임 바이트) 출력. 서버는 콘솔 창 크기가 바뀌면 프레임보다 먼저 `{"type":"size"}`를 방송하고, 새 클라이언트에는 hello 직후·replay 전에 보낸다(외부 콘솔은 클라이언트 크기로 리사이즈하지 않으므로 Android는 이 열 수에 맞게 글꼴을 줄인다), stdin(파이프)으로 입력 바이트 수신(4바이트 LE 길이 + 바이트).
 - 색 변환: Windows 속성 FG(B=1,G=2,R=4,I=8) → ANSI 인덱스 `(R?1:0)|(G?2:0)|(B?4:0)`, I면 90번대 아니면 30번대; BG 동일(40/100번대). `COMMON_LVB_UNDERSCORE`→`4`, `COMMON_LVB_REVERSE_VIDEO`→`7`.
 - 입력 변환: 출력 가능 문자→유니코드 KEY_EVENT(down+up); `\r`→VK_RETURN; `\x7f`/`\b`→VK_BACK; `\t`→VK_TAB; 단독 `\x1b`→VK_ESCAPE; `\x1b[A/B/C/D`→화살표; `\x1b[H/F`→Home/End; `\x1b[5~/6~`→PgUp/PgDn; `\x1b[3~`→Delete; 0x01~0x1a→Ctrl+문자(VK 'A'+n-1, LEFT_CTRL_PRESSED, uChar=제어문자).
@@ -117,11 +117,11 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - `psh update [--check] [--force]` → 11.3절.
 - `psh devices`, `psh revoke <id>`
 - CLI는 `local.token`과 `cert.sha256`을 읽어 `wss://127.0.0.1:<port>`로 접속(핀닝).
-- 클라이언트 verb 공통 옵션: `--port N`(우선순위: `--port` > 환경변수 `MPTA_PORT` > config.json port), `--home DIR`(> `MPTA_HOME` > `%APPDATA%\PocketShell`). `psh serve --port N`은 config.json을 바꾸지 않는다.
+- 클라이언트 verb 공통 옵션: `--port N`(우선순위: `--port` > 환경변수 `PKSHELL_PORT` > config.json port), `--home DIR`(> `PKSHELL_HOME` > `%APPDATA%\PocketShell`). `psh serve --port N`은 config.json을 바꾸지 않는다.
 - `psh new --no-attach`: 생성 후 세션 id만 출력.
 
 ## 8. Android 앱
-- Kotlin, minSdk 26, targetSdk/compileSdk 35, 패키지 `com.pocketshell.app`.
+- Kotlin, minSdk 26, targetSdk/compileSdk 35, 패키지 `com.neststudio.pocketshell`.
 - 터미널: Termux `terminal-emulator`/`terminal-view` 소스 vendoring(Apache-2.0, JNI pty 코드 제거). `TerminalSession`을 원격 백엔드(`RemoteTerminalSession`)로 대체: 입력 → WS binary, WS binary → `emulator.append()` + 화면 갱신. truecolor, CJK 폭은 Termux 엔진 그대로.
 - 네트워크: OkHttp WebSocket + 지문 핀닝 TrustManager. hosts 시도 순서는 접속 시점의 폰 네트워크로 정함(HostSelector): 폰에 Tailscale VPN(100.64/10 주소)이 켜져 있으면 Tailscale 주소 → 폰 Wi-Fi/이더넷과 같은 서브넷의 LAN 주소 → 나머지, 꺼져 있으면 같은 LAN → 나머지 → Tailscale. 네트워크가 그대로인 동안은 마지막으로 성공한 주소를 먼저 시도함.
 - 화면: (1) 페어링 — LAN 검색/주소 입력 + PIN + 지문 확인(12.1절), (2) 세션 목록 — 실행 중 / 외부 / 최근 섹션, 새 세션(셸 선택), 당겨서 새로고침, (3) 터미널 — 특수키 줄(ESC, CTRL(토글), ALT(토글), TAB, ←↑↓→, HOME, END, PGUP, PGDN, `|`, `~`, `/`, `-`), 외부 세션이면 "호스트로 인수" 버튼, history면 열 때 resume 호출.
@@ -129,8 +129,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 한글 IME(AC-17): `TerminalView.onCreateInputConnection`에서 `commitText`/조합 텍스트를 UTF-8로 전송, 조합 중 텍스트는 확정 시 전송.
 - 크기: TerminalView의 cols/rows를 연결 쿼리와 `resize` 메시지로 보고.
 
-## 9. QA 드라이버 (`qa/Mpta.QA`)
-- 임시 `MPTA_HOME` + 테스트 포트(예: 7391)로 `psh serve`를 자식 프로세스로 실행, 시나리오별 AC 체크, 결과를 `qa/out/report.md` + 콘솔 표(PASS/FAIL/SKIP + 증거)로 출력. 실패 시 exit code 1.
+## 9. QA 드라이버 (`qa/Pkshell.QA`)
+- 임시 `PKSHELL_HOME` + 테스트 포트(예: 7391)로 `psh serve`를 자식 프로세스로 실행, 시나리오별 AC 체크, 결과를 `qa/out/report.md` + 콘솔 표(PASS/FAIL/SKIP + 증거)로 출력. 실패 시 exit code 1.
 - 시나리오는 AC 번호별 함수. Android 렌더링은 `android` 모듈 JVM 단위테스트(`gradlew test`)가 담당하고, QA 드라이버는 adb 기기가 연결돼 있으면 APK 설치·실행 스모크까지 수행.
 
 ## 10. 호스트 구현 확정 사항 (계약 보충, host 구현 기준)
@@ -152,24 +152,24 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 비교: SemVer 2.0 (prerelease 포함, `0.1.1-alpha < 0.1.1 < 0.1.2-alpha`). 숫자 식별자는 숫자 비교.
 
 ### 11.2 업데이트 소스
-- GitHub Releases: `GET https://api.github.com/repos/MrDH1004/PocketShell/releases?per_page=10` (prerelease 포함, draft 제외), 가장 높은 SemVer 태그 선택. 환경변수/설정 `MPTA_UPDATE_URL`(호스트), 앱 디버그 설정으로 URL 대체 가능(QA용 로컬 서버). User-Agent: `pocketshell-updater`.
+- GitHub Releases: `GET https://api.github.com/repos/MrDH1004/PocketShell/releases?per_page=10` (prerelease 포함, draft 제외), 가장 높은 SemVer 태그 선택. 환경변수/설정 `PKSHELL_UPDATE_URL`(호스트), 앱 디버그 설정으로 URL 대체 가능(QA용 로컬 서버). User-Agent: `pocketshell-updater`.
 - 자산 이름 규칙: `pocketshell-android-v<ver>.apk`, `pocketshell-host-win-x64-v<ver>.zip`.
 - 무결성: 자산의 `digest`(`sha256:<hex>`) 필드와 다운로드 파일 SHA-256 일치 필수. digest 없으면 같은 릴리스의 `SHA256SUMS.txt`(`<hex>  <name>`)로 대체, 둘 다 없으면 업데이트 거부.
 
 ### 11.3 PC 호스트
 - `serve` 시작 시 + 6시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
-- 새 버전 발견 → `%MPTA_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
+- 새 버전 발견 → `%PKSHELL_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
 - 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
 - `POST /api/update/apply {force?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions}`. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
 - 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `psh serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 업데이트가 커밋된 뒤(기존 프로세스 종료 후)에만 `*.old` 삭제.
 - CLI: `psh update [--check] [--force]`.
 - 구현 확정 사항(host):
-  - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `MPTA_UPDATE_URL`이 우선), 확인 주기는 환경변수 `MPTA_UPDATE_INTERVAL_SEC`(기본 6시간, QA용).
+  - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `PKSHELL_UPDATE_URL`이 우선), 확인 주기는 환경변수 `PKSHELL_UPDATE_INTERVAL_SEC`(기본 6시간, QA용).
   - 모드: `auto` = 발견 즉시 다운로드·검증 후 유휴 시 자동 적용, `notify` = `available`까지만(다운로드는 apply 시), `off` = 백그라운드 확인 없음(명시적 check/apply는 동작).
   - `POST /api/update/check` → 즉시 피드 확인 후 `GET /api/update`와 같은 객체. `POST /api/update/apply` 성공 = 200 + 같은 객체(적용은 비동기), 더 새 버전 없음 = 400. 피드는 호스트 자산(`pocketshell-host-win-x64-v<ver>.zip`)이 있는 릴리스 중 최고 버전을 고른다.
-  - staging: `%MPTA_HOME%\updates\<ver>\app\` + 다운로드한 zip + `.ready`(검증된 sha256). `.ready` staging 재사용 시 보관된 zip을 다시 해시해 일치할 때만 그 zip에서 `app\`을 다시 풀어 사용(불일치·zip 없음 → 재다운로드). psh.exe 위치는 zip 루트 또는 단일 최상위 폴더(최초·재사용 동일 규칙). 현재 버전 이하의 staging은 시작 시 삭제.
-  - 포트 인계: 기존 프로세스가 WS를 1012로 닫고 Kestrel·UDP 검색 소켓을 정지(포트 해제) → 세션 파일 핸들 해제 → 파일 교체(`*.old`) → 같은 인자로 새 `psh serve` 실행(환경변수 `MPTA_UPDATE_PARENT_PID`=기존 pid) → 새 프로세스는 바인드 실패 시 20초간 재시도, 기존 프로세스는 루프백 `/api/info`(지문 핀닝)가 **새 버전**을 보고하면 종료(30초 제한). 실패(새 프로세스 종료/시간 초과/버전 불일치) 시 새 프로세스 kill → `*.old` 복원 → 같은 프로세스에서 리스너 재개·세션(history) 재로드, state=`error`. 롤백된 버전은 같은 프로세스에서 자동 재적용하지 않는다(명시적 apply는 재시도).
-  - 커밋 규칙: 업데이트는 기존 프로세스가 인계에 성공해 **종료한 시점에 커밋**된다. 그 전까지는 기존 프로세스가 롤백할 수 있으므로 업데이트로 실행된 새 프로세스(`MPTA_UPDATE_PARENT_PID` 설정)는 기존 pid가 종료하기 전에는 어떤 `*.old`도 지우지 않는다(시작 시 정리 생략, 기존 pid 종료 후에만 정리, 60초 내 종료하지 않으면 정리하지 않고 다음 시작에 맡김). 일반 시작(`MPTA_UPDATE_PARENT_PID` 없음)은 시작 시 정리.
+  - staging: `%PKSHELL_HOME%\updates\<ver>\app\` + 다운로드한 zip + `.ready`(검증된 sha256). `.ready` staging 재사용 시 보관된 zip을 다시 해시해 일치할 때만 그 zip에서 `app\`을 다시 풀어 사용(불일치·zip 없음 → 재다운로드). psh.exe 위치는 zip 루트 또는 단일 최상위 폴더(최초·재사용 동일 규칙). 현재 버전 이하의 staging은 시작 시 삭제.
+  - 포트 인계: 기존 프로세스가 WS를 1012로 닫고 Kestrel·UDP 검색 소켓을 정지(포트 해제) → 세션 파일 핸들 해제 → 파일 교체(`*.old`) → 같은 인자로 새 `psh serve` 실행(환경변수 `PKSHELL_UPDATE_PARENT_PID`=기존 pid) → 새 프로세스는 바인드 실패 시 20초간 재시도, 기존 프로세스는 루프백 `/api/info`(지문 핀닝)가 **새 버전**을 보고하면 종료(30초 제한). 실패(새 프로세스 종료/시간 초과/버전 불일치) 시 새 프로세스 kill → `*.old` 복원 → 같은 프로세스에서 리스너 재개·세션(history) 재로드, state=`error`. 롤백된 버전은 같은 프로세스에서 자동 재적용하지 않는다(명시적 apply는 재시도).
+  - 커밋 규칙: 업데이트는 기존 프로세스가 인계에 성공해 **종료한 시점에 커밋**된다. 그 전까지는 기존 프로세스가 롤백할 수 있으므로 업데이트로 실행된 새 프로세스(`PKSHELL_UPDATE_PARENT_PID` 설정)는 기존 pid가 종료하기 전에는 어떤 `*.old`도 지우지 않는다(시작 시 정리 생략, 기존 pid 종료 후에만 정리, 60초 내 종료하지 않으면 정리하지 않고 다음 시작에 맡김). 일반 시작(`PKSHELL_UPDATE_PARENT_PID` 없음)은 시작 시 정리.
   - `*.old` 정리 대상: 교체 시 설치 폴더에 기록하는 매니페스트 `pocketshell.update-files.txt`(교체한 상대 경로 목록, 자기 자신 포함, 다른 파일과 같은 방식으로 `*.old` 백업·롤백)에 있는 파일 `X` 중 `X`가 존재하는 `X.old`만 삭제. 매니페스트가 없으면 아무것도 지우지 않고, 목록에 없는 사용자 `*.old` 파일은 건드리지 않는다.
   - 롤백 방어: 백업이 있어야 할 파일의 `X.old`가 없으면 `X`를 삭제하지 않고(현재 파일 유지) 실패로 기록해 `error` 메시지(restore problems)에 포함.
 
@@ -192,7 +192,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 구현 확정 사항(host): claim 응답은 code/pin 모두 `{deviceId, token, fp}`. IP별 실패 한도(10회/10분 → 429)는 code·pin claim 실패를 합산하며, 한도 초과 중에는 올바른 PIN/code도 429. 틀린 PIN·만료·폐기 = 401. `pair/start` 본문 생략 또는 `mode`≠`"pin"`이면 code 모드 응답 `{code, expiresAt}`.
 
 ### 12.2 LAN 검색
-- 호스트가 UDP 7381(설정 가능)에서 대기, 사설 IPv4 인터페이스에만 바인딩. 요청 데이터그램 `MPTA?1` → 응답 JSON `{"v":1,"name","hosts":[...],"port":7380,"fpShort"}` (토큰·민감정보 없음).
+- 호스트가 UDP 7381(설정 가능)에서 대기, 사설 IPv4 인터페이스에만 바인딩. 요청 데이터그램 `PKSHELL?1` → 응답 JSON `{"v":1,"name","hosts":[...],"port":7380,"fpShort"}` (토큰·민감정보 없음).
 - 구현 확정 사항(host): 바인딩 대상 = 서버 bind 목록 중 사설 IPv4(10/8, 172.16/12, 192.168/16) + 127.0.0.1(로컬 도구용, 외부 노출 없음). Tailscale CGNAT·0.0.0.0에는 바인딩하지 않음. 포트: `--discovery-port N` > `config.json` `discoveryPort`(기본 7381), 0이면 끔. 바인드 실패는 경고만(서버는 계속).
 - 폰: 각 Wi-Fi 브로드캐스트 주소(및 255.255.255.255)로 전송, 1.5초간 응답 수집해 목록 표시. Tailscale은 IP 직접 입력.
 

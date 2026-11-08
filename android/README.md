@@ -1,6 +1,6 @@
-# mpta Android 클라이언트
+# pkshell Android 클라이언트
 
-계약: `../docs/DESIGN.md` §2·§4·§5·§8. 패키지 `com.mpta.client`, minSdk 26, compile/targetSdk 35.
+계약: `../docs/DESIGN.md` §2·§4·§5·§8. 패키지 `com.neststudio.pocketshell`, minSdk 26, compile/targetSdk 35.
 
 ## 빌드
 ```

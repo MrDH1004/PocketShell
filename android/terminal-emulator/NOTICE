@@ -4,7 +4,7 @@ which is released under the Apache License, Version 2.0 (see LICENSE in this dir
 It is derived from "Terminal Emulator for Android" by Jack Palevich
 (https://github.com/jackpal/Android-Terminal-Emulator), also Apache-2.0.
 
-Modifications for MyPCToAndroid (mpta):
+Modifications for PocketShell (pkshell):
   - Removed JNI pty code (src/main/jni, JNI.java) and the local-subprocess TerminalSession.java.
   - Added RemoteTerminalSession.java: network-backed session (input/resize go to a callback,
     remote output bytes are fed to TerminalEmulator.append on the main thread).
