@@ -285,9 +285,11 @@ class TerminalActivity : AppCompatActivity() {
     /** ⋮ top-bar menu: project files, view settings (fit to screen is its own top-bar button). */
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
-        // Connection + size info (was the title bar's second line), one read-only line per part.
+        // "정보" submenu: connection + size info (was the title bar's second line), one read-only line per part.
+        val info = menu.menu.addSubMenu(0, Menu.NONE, 99, R.string.terminal_info)
+        info.setHeaderTitle(R.string.terminal_info)
         statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
-            menu.menu.add(1, Menu.NONE, i, part).isEnabled = false
+            info.add(1, Menu.NONE, i, part).isEnabled = false
         }
         menu.menu.add(0, OPT_FILES, 100, R.string.files_title)
         menu.menu.add(0, OPT_VIEW, 101, R.string.view_settings)
