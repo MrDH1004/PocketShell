@@ -286,13 +286,16 @@ class TerminalActivity : AppCompatActivity() {
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
         // "정보" submenu: connection + size info (was the title bar's second line), one read-only line per part.
-        val info = menu.menu.addSubMenu(0, Menu.NONE, 99, R.string.terminal_info)
+        // Each entry is its own group so group dividers draw a line between all of them (API 28+).
+        val info = menu.menu.addSubMenu(1, Menu.NONE, 99, R.string.terminal_info)
         info.setHeaderTitle(R.string.terminal_info)
         statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
-            info.add(1, Menu.NONE, i, part).isEnabled = false
+            info.add(10 + i, Menu.NONE, i, part).isEnabled = false
         }
-        menu.menu.add(0, OPT_FILES, 100, R.string.files_title)
-        menu.menu.add(0, OPT_VIEW, 101, R.string.view_settings)
+        menu.menu.add(2, OPT_FILES, 100, R.string.files_title)
+        menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
+        androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
+        androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
                 OPT_FILES -> openFiles()
