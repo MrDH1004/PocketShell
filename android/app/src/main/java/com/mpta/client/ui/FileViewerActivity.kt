@@ -1,0 +1,155 @@
+package com.mpta.client.ui
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.graphics.Typeface
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.appbar.MaterialToolbar
+import com.mpta.client.MptaApp
+import com.mpta.client.R
+import com.mpta.client.core.FilePreview
+import com.mpta.client.core.PreviewKind
+import com.mpta.client.net.ApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+
+/** Read-only preview of a PC file: text (UTF-8 / CP949) or image; anything else offers a download. */
+class FileViewerActivity : AppCompatActivity() {
+
+    private lateinit var api: ApiClient
+    private lateinit var path: String
+    private lateinit var name: String
+    private lateinit var body: FrameLayout
+
+    private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) FileTransfers.download(this, api, path, uri, name)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        val apiClient = (application as MptaApp).api()
+        path = intent.getStringExtra(EXTRA_PATH).orEmpty()
+        name = intent.getStringExtra(EXTRA_NAME).orEmpty()
+        val size = intent.getLongExtra(EXTRA_SIZE, -1)
+        if (apiClient == null || path.isEmpty()) {
+            finish()
+            return
+        }
+        api = apiClient
+
+        val toolbar = MaterialToolbar(this).apply {
+            title = name
+            subtitle = if (size >= 0) FilePreview.humanSize(size) else null
+            setNavigationIcon(R.drawable.ic_arrow_back)
+            setNavigationOnClickListener { finish() }
+            menu.add(0, 1, 0, R.string.files_download).setIcon(R.drawable.ic_download)
+                .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+            setOnMenuItemClickListener { save.launch(name); true }
+        }
+        body = FrameLayout(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        setContentView(root)
+        root.applySystemInsets(includeIme = false)
+
+        val kind = FilePreview.kind(name, if (size >= 0) size else 0)
+        if (kind == PreviewKind.NONE) message(getString(R.string.files_no_preview)) else load(kind)
+    }
+
+    private fun load(kind: PreviewKind) {
+        message(getString(R.string.files_loading))
+        lifecycleScope.launch {
+            try {
+                val bytes = ByteArrayOutputStream().use { out -> api.download(path, out); out.toByteArray() }
+                if (kind == PreviewKind.IMAGE) showImage(bytes) else showText(bytes)
+            } catch (e: IOException) {
+                message(getString(R.string.files_load_failed, "${e.javaClass.simpleName}: ${e.message}"))
+            } catch (e: OutOfMemoryError) {
+                message(getString(R.string.files_no_preview))
+            }
+        }
+    }
+
+    private suspend fun showText(bytes: ByteArray) {
+        if (FilePreview.looksBinary(bytes)) {
+            message(getString(R.string.files_no_preview))
+            return
+        }
+        val text = withContext(Dispatchers.Default) { FilePreview.decodeText(bytes) }
+        val pad = (resources.displayMetrics.density * 12).toInt()
+        val tv = TextView(this).apply {
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            setTextIsSelectable(true)
+            setPadding(pad, pad, pad, pad)
+            this.text = text
+        }
+        val h = HorizontalScrollView(this).apply { addView(tv) }
+        val v = ScrollView(this).apply { addView(h) }
+        body.removeAllViews()
+        body.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    private suspend fun showImage(bytes: ByteArray) {
+        val maxSide = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels) * 2
+        val bitmap = withContext(Dispatchers.Default) {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds) // fills bounds only (returns null)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+        }
+        if (bitmap == null) {
+            message(getString(R.string.files_no_preview))
+            return
+        }
+        val iv = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageBitmap(bitmap)
+        }
+        body.removeAllViews()
+        body.addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    private fun message(text: String) {
+        val pad = (resources.displayMetrics.density * 24).toInt()
+        val tv = TextView(this).apply {
+            this.text = text
+            setPadding(pad, pad, pad, pad)
+        }
+        body.removeAllViews()
+        body.addView(tv)
+        tv.visibility = View.VISIBLE
+    }
+
+    companion object {
+        private const val EXTRA_PATH = "path"
+        private const val EXTRA_NAME = "name"
+        private const val EXTRA_SIZE = "size"
+
+        fun intent(context: Context, path: String, name: String, size: Long): Intent =
+            Intent(context, FileViewerActivity::class.java)
+                .putExtra(EXTRA_PATH, path).putExtra(EXTRA_NAME, name).putExtra(EXTRA_SIZE, size)
+    }
+}

@@ -38,6 +38,14 @@
             android:theme="@style/Theme.Mpta.Terminal"
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
+        <activity
+            android:name=".ui.FileBrowserActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.FileViewerActivity"
+            android:exported="false" />
+
         <!-- Serves downloaded update APKs (cache/updates/) to the package installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"

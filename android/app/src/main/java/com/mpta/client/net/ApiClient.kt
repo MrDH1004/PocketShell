@@ -3,6 +3,7 @@ package com.mpta.client.net
 import android.util.Log
 import com.mpta.client.core.ClaimResult
 import com.mpta.client.core.ClientProtocol
+import com.mpta.client.core.FileListing
 import com.mpta.client.core.FingerprintHostnameVerifier
 import com.mpta.client.core.FingerprintTrustManager
 import com.mpta.client.core.ProjectOptions
@@ -13,10 +14,12 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.io.OutputStream
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
@@ -61,38 +64,91 @@ class ApiClient(
         auth: Boolean = true,
         rawBody: RequestBody? = null,
         client: OkHttpClient = http,
-    ): String =
-        withContext(Dispatchers.IO) {
-            val failures = ArrayList<String>()
-            var lastError: IOException? = null
-            for (host in hosts.ordered()) {
-                val builder = Request.Builder().url(ClientProtocol.baseUrl(host, port) + path)
-                if (auth && token != null) builder.header("Authorization", "Bearer $token")
-                val reqBody = when {
-                    rawBody != null -> rawBody
-                    body != null -> body.toString().toRequestBody(JSON)
-                    method == "POST" -> "{}".toRequestBody(JSON)
-                    else -> null
-                }
-                builder.method(method, reqBody)
-                try {
-                    client.newCall(builder.build()).execute().use { resp ->
-                        hosts.reportSuccess(host)
-                        val text = resp.body?.string().orEmpty()
-                        if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
-                        return@withContext text
-                    }
-                } catch (e: ApiException) {
-                    throw e
-                } catch (e: IOException) {
-                    lastError = e
-                    failures.add("$host: ${e.message ?: e.javaClass.simpleName}")
-                    Log.w(TAG, "$method $path via $host failed", e)
+    ): String {
+        val reqBody = when {
+            rawBody != null -> rawBody
+            body != null -> body.toString().toRequestBody(JSON)
+            method == "POST" -> "{}".toRequestBody(JSON)
+            else -> null
+        }
+        return call(method, path, reqBody, auth, client) { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
+            text
+        }
+    }
+
+    /**
+     * Sends the request to the hosts in order and hands the first response to [handle]. Only a failure to get a
+     * response moves to the next host; an error inside [handle] (e.g. a download cut off) is not retried, since it
+     * may already have written data.
+     */
+    private suspend fun <T> call(
+        method: String,
+        path: String,
+        reqBody: RequestBody?,
+        auth: Boolean,
+        client: OkHttpClient,
+        handle: (Response) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        val failures = ArrayList<String>()
+        var lastError: IOException? = null
+        for (host in hosts.ordered()) {
+            val builder = Request.Builder().url(ClientProtocol.baseUrl(host, port) + path)
+            if (auth && token != null) builder.header("Authorization", "Bearer $token")
+            builder.method(method, reqBody)
+            val resp = try {
+                client.newCall(builder.build()).execute()
+            } catch (e: IOException) {
+                lastError = e
+                failures.add("$host: ${e.message ?: e.javaClass.simpleName}")
+                Log.w(TAG, "$method $path via $host failed", e)
+                continue
+            }
+            hosts.reportSuccess(host)
+            return@withContext resp.use(handle)
+        }
+        if (failures.size <= 1) throw lastError ?: IOException("접속할 호스트가 없습니다")
+        throw IOException(failures.joinToString("\n"), lastError)
+    }
+
+    private fun q(v: String): String = java.net.URLEncoder.encode(v, "UTF-8")
+
+    suspend fun session(id: String): SessionInfo = SessionInfo.fromJson(JSONObject(request("GET", "/api/sessions/$id")))
+
+    /** `GET /api/files?path=` — folder listing (hosts older than 0.2.20 answer 404). */
+    suspend fun listFiles(path: String): FileListing = FileListing.parse(request("GET", "/api/files?path=${q(path)}"))
+
+    /** `GET /api/files/content?path=` streamed into [out]; [progress] gets (bytes so far, total or -1). */
+    suspend fun download(path: String, out: OutputStream, progress: (Long, Long) -> Unit = { _, _ -> }) {
+        val slow = http.newBuilder().readTimeout(60, TimeUnit.SECONDS).build()
+        call("GET", "/api/files/content?path=${q(path)}", null, true, slow) { resp ->
+            if (!resp.isSuccessful) {
+                val text = resp.body?.string().orEmpty()
+                throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
+            }
+            val body = resp.body ?: throw IOException("빈 응답")
+            val total = body.contentLength()
+            body.byteStream().use { input ->
+                val buf = ByteArray(64 * 1024)
+                var done = 0L
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    done += n
+                    progress(done, total)
                 }
             }
-            if (failures.size <= 1) throw lastError ?: IOException("접속할 호스트가 없습니다")
-            throw IOException(failures.joinToString("\n"), lastError)
         }
+    }
+
+    /** `POST /api/files/upload?dir=&name=[&overwrite=1]`; 409 when the file exists and !overwrite. */
+    suspend fun upload(dir: String, name: String, body: RequestBody, overwrite: Boolean) {
+        val slow = http.newBuilder().writeTimeout(120, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()
+        val ow = if (overwrite) "&overwrite=1" else ""
+        request("POST", "/api/files/upload?dir=${q(dir)}&name=${q(name)}$ow", rawBody = body, client = slow)
+    }
 
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
 

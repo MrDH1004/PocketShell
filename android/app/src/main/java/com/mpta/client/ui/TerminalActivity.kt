@@ -176,8 +176,7 @@ class TerminalActivity : AppCompatActivity() {
 
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
-        findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
-        findViewById<View>(R.id.viewSettingsButton).setOnClickListener { ViewSettingsDialog.show(this) { applyViewSettings() } }
+        findViewById<View>(R.id.moreButton).setOnClickListener { showOptions(it) }
         findViewById<View>(R.id.voiceButton).setOnClickListener { startVoiceInput() }
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
             if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -262,6 +261,44 @@ class TerminalActivity : AppCompatActivity() {
             drawnRows = -1 // the grid changed (columns too): always redraw
         }
         redrawIfRowsChanged()
+    }
+
+    /** ⋮ top-bar menu: project files, view settings, fit to screen. */
+    private fun showOptions(anchor: View) {
+        val menu = android.widget.PopupMenu(this, anchor)
+        menu.menu.add(0, OPT_FILES, 0, R.string.files_title)
+        menu.menu.add(0, OPT_VIEW, 1, R.string.view_settings)
+        menu.menu.add(0, OPT_FIT, 2, R.string.fit_screen)
+        menu.setOnMenuItemClickListener {
+            when (it.itemId) {
+                OPT_FILES -> openFiles()
+                OPT_VIEW -> ViewSettingsDialog.show(this) { applyViewSettings() }
+                OPT_FIT -> resetSize()
+            }
+            true
+        }
+        menu.show()
+    }
+
+    /** Opens the file browser at the session's current folder (asked fresh: the shell may have cd'd). */
+    private fun openFiles() {
+        val a = api ?: return
+        val id = sessionId
+        lifecycleScope.launch {
+            val cwd = try {
+                a.session(id).cwd
+            } catch (e: IOException) {
+                Log.w(TAG, "session cwd", e)
+                ""
+            } catch (e: org.json.JSONException) {
+                ""
+            }
+            if (cwd.isBlank()) {
+                Toast.makeText(this@TerminalActivity, R.string.files_no_folder, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            startActivity(FileBrowserActivity.intent(this@TerminalActivity, cwd, titleView.text.toString()))
+        }
     }
 
     /** Top-bar button: undo pinch zoom — default font, and for an external console fit it to the PC size again. */
@@ -716,6 +753,9 @@ class TerminalActivity : AppCompatActivity() {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
+        private const val OPT_FILES = 1
+        private const val OPT_VIEW = 2
+        private const val OPT_FIT = 3
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"

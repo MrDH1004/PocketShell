@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mpta.Core.Auth;
 using Mpta.Core.External;
+using Mpta.Core.Files;
 using Mpta.Core.Net;
 using Mpta.Core.Projects;
 using Mpta.Core.Sessions;
@@ -700,6 +701,47 @@ public sealed class HostServer : IDisposable
             if (err != null) return Error(err.StartsWith("not a supported", StringComparison.Ordinal) ? 400 : 503, err);
             Log.Info($"clipboard: image set ({image.Length} bytes) by {AuthOf(ctx).DeviceId ?? "local"}");
             return Json(new { ok = true, bytes = image.Length });
+        });
+
+        // Phone project file browser (DESIGN.md §4): list / download / upload by absolute PC path.
+        app.MapGet("/api/files", (string? path) =>
+        {
+            var dir = ProjectFiles.Normalize(path);
+            if (dir == null) return Error(400, "절대 경로가 필요합니다");
+            try { return Json(ProjectFiles.List(dir)); }
+            catch (DirectoryNotFoundException) { return Error(404, $"폴더가 없습니다: {dir}"); }
+            catch (UnauthorizedAccessException) { return Error(403, $"접근 권한이 없습니다: {dir}"); }
+            catch (IOException ex) { return Error(400, ex.Message); }
+        });
+
+        app.MapGet("/api/files/content", (string? path) =>
+        {
+            var file = ProjectFiles.Normalize(path);
+            if (file == null) return Error(400, "절대 경로가 필요합니다");
+            if (!File.Exists(file)) return Error(404, $"파일이 없습니다: {file}");
+            return Results.File(file, "application/octet-stream", Path.GetFileName(file), enableRangeProcessing: true);
+        });
+
+        app.MapPost("/api/files/upload", async (HttpContext ctx, string? dir, string? name, string? overwrite) =>
+        {
+            var folder = ProjectFiles.Normalize(dir);
+            if (folder == null) return Error(400, "절대 경로가 필요합니다");
+            var invalid = ProjectFiles.ValidateName(name);
+            if (invalid != null || name == null) return Error(400, invalid ?? "파일 이름이 없습니다");
+            var limit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = ProjectFiles.MaxUploadBytes;
+            try
+            {
+                var saved = await ProjectFiles.SaveAsync(folder, name, ctx.Request.Body, overwrite == "1", ctx.RequestAborted);
+                var size = new FileInfo(saved).Length;
+                Log.Info($"files: uploaded {saved} ({size} bytes) by {AuthOf(ctx).DeviceId ?? "local"}");
+                return Json(new { path = saved, size });
+            }
+            catch (FileExistsException ex) { return Error(409, ex.Message); }
+            catch (DirectoryNotFoundException) { return Error(404, $"폴더가 없습니다: {folder}"); }
+            catch (InvalidDataException ex) { return Error(413, ex.Message); }
+            catch (UnauthorizedAccessException) { return Error(403, $"쓰기 권한이 없습니다: {folder}"); }
+            catch (IOException ex) { return Error(400, ex.Message); }
         });
 
         app.MapPost("/api/external/{pid:int}/adopt", (int pid) =>
