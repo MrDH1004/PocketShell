@@ -65,6 +65,7 @@ import java.util.Locale
 class TerminalActivity : AppCompatActivity() {
 
     private lateinit var terminalView: TerminalView
+    private lateinit var zoom: ZoomPanLayout
     private lateinit var statusView: TextView
     private lateinit var titleView: TextView
     private lateinit var session: RemoteTerminalSession
@@ -145,6 +146,7 @@ class TerminalActivity : AppCompatActivity() {
         titleView = findViewById(R.id.title)
         statusView = findViewById(R.id.status)
         terminalView = findViewById(R.id.terminal)
+        zoom = findViewById(R.id.zoom)
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId }
 
         session = RemoteTerminalSession(TRANSCRIPT_ROWS, sessionClient, object : RemoteTerminalSession.Transport {
@@ -300,10 +302,10 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** Top-bar button: undo pinch zoom — default font, and for an external console fit it to the PC size again. */
+    /** Top-bar button: undo the pinch zoom (1x, picture back in place) and, for an external console, fit it to the PC size again. */
     private fun resetSize() {
-        fontSizeSp = UiPrefs.DEFAULT_FONT_SP
-        uiPrefs.fontSizeSp = fontSizeSp
+        zoom.reset()
+        fontSizeSp = uiPrefs.fontSizeSp
         refit()
     }
 
@@ -680,17 +682,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private val viewClient = object : TerminalViewClient {
-        override fun onScale(scale: Float): Float {
-            if (scale < 0.9f || scale > 1.1f) {
-                // Manual zoom wins over fit-to-columns (an external console may then be cut off on the right).
-                fitCols = 0
-                fontSizeSp = (fontSizeSp * (if (scale > 1f) 1.1f else 0.9f)).coerceIn(UiPrefs.MIN_FONT_SP, UiPrefs.MAX_FONT_SP)
-                uiPrefs.fontSizeSp = fontSizeSp
-                applyTextSize(spToPx(fontSizeSp))
-                return 1.0f
-            }
-            return scale
-        }
+        // Pinch is handled by ZoomPanLayout (picture zoom + drag); the font size is set in 보기 설정.
+        override fun onScale(scale: Float): Float = 1.0f
 
         override fun onRemoteScroll(rowsDown: Int): Boolean {
             if (sessionKind != SessionInfo.KIND_EXTERNAL || !history.hasFrame) return false

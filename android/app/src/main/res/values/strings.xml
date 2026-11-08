@@ -43,7 +43,7 @@
     <string name="recent_limit_off">표시 안 함</string>
     <string name="recent_limit_n">%1$d개</string>
     <string name="view_settings">보기 설정 (글꼴)</string>
-    <string name="view_font_size">글꼴 크기: %1$dsp (터미널에서 두 손가락으로도 조절)</string>
+    <string name="view_font_size">글꼴 크기: %1$dsp</string>
     <string name="view_font">글꼴</string>
     <string name="view_reset">기본값</string>
     <string name="terminal_options">옵션</string>

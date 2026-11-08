@@ -90,13 +90,21 @@
             android:tint="@color/keybar_text" />
     </LinearLayout>
 
-    <com.termux.view.TerminalView
-        android:id="@+id/terminal"
+    <!-- Pinch = gallery-style zoom of the picture, one finger drags it while zoomed (ZoomPanLayout). -->
+    <com.mpta.client.ui.ZoomPanLayout
+        android:id="@+id/zoom"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:focusable="true"
-        android:focusableInTouchMode="true" />
+        android:clipChildren="true">
+
+        <com.termux.view.TerminalView
+            android:id="@+id/terminal"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:focusable="true"
+            android:focusableInTouchMode="true" />
+    </com.mpta.client.ui.ZoomPanLayout>
 
     <HorizontalScrollView
         android:layout_width="match_parent"
