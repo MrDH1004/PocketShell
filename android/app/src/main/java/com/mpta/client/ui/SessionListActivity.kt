@@ -451,7 +451,6 @@ private class SessionAdapter(
                 val s = row.session
                 val v = holder.itemView
                 v.findViewById<TextView>(R.id.title).text = s.title.ifBlank { s.shell.ifBlank { s.id } }
-                v.findViewById<View>(R.id.badge).visibility = if (s.isExternal) View.VISIBLE else View.GONE
                 val live = s.isExternal || s.isRunningHost
                 v.findViewById<View>(R.id.stateDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(v.context, if (live) R.color.live else R.color.text_muted),
