@@ -176,6 +176,7 @@ class TerminalActivity : AppCompatActivity() {
 
         buildKeyBar(findViewById(R.id.keyBar))
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
+        findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
         findViewById<View>(R.id.moreButton).setOnClickListener { showOptions(it) }
         findViewById<View>(R.id.voiceButton).setOnClickListener { startVoiceInput() }
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
@@ -263,17 +264,15 @@ class TerminalActivity : AppCompatActivity() {
         redrawIfRowsChanged()
     }
 
-    /** ⋮ top-bar menu: project files, view settings, fit to screen. */
+    /** ⋮ top-bar menu: project files, view settings (fit to screen is its own top-bar button). */
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
         menu.menu.add(0, OPT_FILES, 0, R.string.files_title)
         menu.menu.add(0, OPT_VIEW, 1, R.string.view_settings)
-        menu.menu.add(0, OPT_FIT, 2, R.string.fit_screen)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
                 OPT_FILES -> openFiles()
                 OPT_VIEW -> ViewSettingsDialog.show(this) { applyViewSettings() }
-                OPT_FIT -> resetSize()
             }
             true
         }
@@ -755,7 +754,6 @@ class TerminalActivity : AppCompatActivity() {
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
         private const val OPT_FILES = 1
         private const val OPT_VIEW = 2
-        private const val OPT_FIT = 3
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"

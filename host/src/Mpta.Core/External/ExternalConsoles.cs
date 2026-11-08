@@ -98,6 +98,18 @@ public sealed class ExternalConsoles : IDisposable
         return result;
     }
 
+    /// <summary>AI CLI ("claude" | "gpt") running under <paramref name="pid"/> in <paramref name="procs"/>, else null.</summary>
+    public static string? AgentUnder(int pid, IReadOnlyList<ProcEntry> procs)
+    {
+        var children = new Dictionary<int, List<ProcEntry>>();
+        foreach (var p in procs)
+        {
+            if (!children.TryGetValue(p.ParentPid, out var l)) children[p.ParentPid] = l = new();
+            l.Add(p);
+        }
+        return FindAgent(pid, children);
+    }
+
     /// <summary>First AI CLI found among the descendants of <paramref name="pid"/> (breadth-first).</summary>
     private static string? FindAgent(int pid, Dictionary<int, List<ProcEntry>> children)
     {

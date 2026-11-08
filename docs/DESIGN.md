@@ -51,7 +51,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   `POST /api/sessions/rec-…/resume` → 그 폴더·셸로 새 host 세션을 만들고 AI가 있었으면 `claude --continue` /
   `codex resume --last` 입력(Enter 포함) 후 항목 삭제. `DELETE`는 항목만 삭제.
 - 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
-- 폰 터미널 상단 ⋮ 메뉴: 프로젝트 파일 / 보기 설정(글꼴) / 원래 크기로 맞춤. 보기 설정은 목록 메뉴에도 있다.
+- 폰 터미널 상단: 원래 크기로 맞춤 버튼 + ⋮ 메뉴(프로젝트 파일 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다.
   글꼴 크기 6~32sp(기본 12, 핀치 확대·축소도 저장),
   글꼴 = 시스템 monospace / D2Coding / JetBrains Mono(번들, OFL — `assets/licenses`). 외부 콘솔은 이 크기에서 PC 열 수에 맞게 줄인다.
 - 프로젝트 파일(호스트 ≥ 0.2.20): 시작 폴더 = `GET /api/sessions/{id}`의 현재 cwd, 그 위로는 올라가지 않는다(폰 UI 제한).

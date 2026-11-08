@@ -300,6 +300,19 @@ public class VtFrameTests
         Assert.Equal(7, ExternalConsoles.FindCandidates(procs, selfPid: 99999, includeAll: true).Count);
     }
 
+    [Fact]
+    public void AgentUnderFindsAiCliBelowAHostShell()
+    {
+        var procs = new List<ProcEntry>
+        {
+            new(100, 1, "psh.exe"), new(200, 100, "powershell.exe"), new(300, 200, "node.exe"), new(400, 300, "claude.exe"),
+            new(500, 100, "cmd.exe"), new(600, 500, "codex.exe"), new(700, 100, "cmd.exe"),
+        };
+        Assert.Equal("claude", ExternalConsoles.AgentUnder(200, procs));
+        Assert.Equal("gpt", ExternalConsoles.AgentUnder(500, procs));
+        Assert.Null(ExternalConsoles.AgentUnder(700, procs));
+    }
+
     private static byte[] Frame(params string[] rows)
     {
         var chars = new char[10 * rows.Length];

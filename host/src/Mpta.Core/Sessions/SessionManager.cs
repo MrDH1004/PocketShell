@@ -70,6 +70,13 @@ public sealed class SessionManager : IDisposable
         Buffer.BlockCopy(marker, 0, initial, prev.Length, marker.Length);
         var s = Create(new CreateSessionRequest { Shell = meta.Shell, Cwd = meta.Cwd, Title = meta.Title, Cols = meta.Cols, Rows = meta.Rows }, historyId, initial);
         DeleteHistory(old);
+        // Ended by a host update/restart while an AI CLI ran: continue that conversation (not a fresh one).
+        var cmd = External.RecentExternals.ResumeCommand(meta.Agent);
+        if (cmd != null)
+        {
+            s.WriteInput(Encoding.UTF8.GetBytes(cmd + "\r"));
+            Log.Info($"session {s.Id}: resumed from {historyId} with `{cmd}`");
+        }
         return s;
     }
 
@@ -117,6 +124,19 @@ public sealed class SessionManager : IDisposable
         }
     }
 
+    private static void NoteAgents(List<HostSession> running)
+    {
+        if (running.Count == 0) return;
+        var procs = External.ExternalConsoles.SnapshotProcesses(); // empty (logged) if the snapshot fails
+        foreach (var s in running)
+        {
+            if (s.ShellPid is not int pid) continue;
+            var agent = External.ExternalConsoles.AgentUnder(pid, procs);
+            s.NoteAgent(agent);
+            if (agent != null) Log.Info($"session {s.Id}: {agent} was running; resume will continue it");
+        }
+    }
+
     private bool _disposed;
 
     /// <summary>Terminates running shells (they become history) and closes every session's files (output.vt), so another
@@ -126,8 +146,10 @@ public sealed class SessionManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         _flushTimer.Dispose();
-        // Terminate running shells so they become history entries with a clean meta.json.
+        // Terminate running shells so they become history entries with a clean meta.json. The AI CLI each one was
+        // running (claude/codex) is recorded first, so reopening it later continues that conversation.
         var running = _sessions.Values.Where(s => s.IsRunning).ToList();
+        NoteAgents(running);
         foreach (var s in running) s.Kill();
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (running.Any(s => s.IsRunning) && DateTime.UtcNow < deadline) Thread.Sleep(50);

@@ -24,7 +24,8 @@ public sealed class SessionDto
     public List<ClientDto> Clients { get; set; } = new();
     public int? Pid { get; set; }
     public string? ResumedFrom { get; set; }
-    /// <summary>External only: AI CLI running in the console ("claude" | "gpt"), else null.</summary>
+    /// <summary>AI CLI ("claude" | "gpt"): running in an external console, or running in a host session when the host
+    /// ended it (history; resume continues it). Else null.</summary>
     public string? Agent { get; set; }
 
     public SessionDto Clone() => new()

@@ -195,6 +195,17 @@ public sealed class HostSession : IDisposable
 
     public void Kill() => _pty?.Kill();
 
+    /// <summary>Remembers the AI CLI that was running when the host ended this session (resume continues it).</summary>
+    public void NoteAgent(string? agent)
+    {
+        lock (Hub.SyncRoot)
+        {
+            if (_meta.Agent == agent) return;
+            _meta.Agent = agent;
+            _dirty = true;
+        }
+    }
+
     public byte[] ReadScrollback()
     {
         lock (Hub.SyncRoot) return _scrollback.ReadAll();
