@@ -36,6 +36,7 @@ class FileViewerActivity : AppCompatActivity() {
     private lateinit var path: String
     private lateinit var name: String
     private lateinit var body: FrameLayout
+    private lateinit var toolbar: MaterialToolbar
 
     private val save = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) FileTransfers.download(this, api, path, uri, name)
@@ -54,7 +55,7 @@ class FileViewerActivity : AppCompatActivity() {
         }
         api = apiClient
 
-        val toolbar = MaterialToolbar(this).apply {
+        toolbar = MaterialToolbar(this).apply {
             title = name
             subtitle = if (size >= 0) FilePreview.humanSize(size) else null
             setNavigationIcon(R.drawable.ic_arrow_back)
@@ -107,8 +108,26 @@ class FileViewerActivity : AppCompatActivity() {
             setPadding(pad, pad, pad, pad)
             this.text = text
         }
+        // Line numbers: a gutter with the same font/size/spacing so rows line up (no wrapping on either side).
+        val lineCount = text.count { it == '\n' } + 1
+        val gutter = TextView(this).apply {
+            typeface = tv.typeface
+            textSize = 13f
+            setLineSpacing(0f, 1.15f)
+            gravity = android.view.Gravity.END
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@FileViewerActivity, R.color.text_muted))
+            setPadding(pad, pad, pad / 2, pad)
+            this.text = (1..lineCount).joinToString("\n")
+            setBackgroundColor(androidx.core.content.ContextCompat.getColor(this@FileViewerActivity, R.color.ink_1))
+        }
+        toolbarSubtitle(getString(R.string.files_lines, lineCount))
         val h = HorizontalScrollView(this).apply { addView(tv) }
-        val v = ScrollView(this).apply { addView(h) }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(gutter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(h, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        val v = ScrollView(this).apply { addView(row) }
         body.removeAllViews()
         body.addView(v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
@@ -132,8 +151,20 @@ class FileViewerActivity : AppCompatActivity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setImageBitmap(bitmap)
         }
+        toolbarSubtitle("${bitmap.width}×${bitmap.height}")
+        // Pinch to zoom, one finger to pan while zoomed (same as the terminal).
+        val zoomBox = ZoomPanLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }
         body.removeAllViews()
-        body.addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        body.addView(zoomBox, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    /** Subtitle: size, plus what the preview adds (line count, image size). */
+    private fun toolbarSubtitle(extra: String) {
+        val size = intent.getLongExtra(EXTRA_SIZE, -1)
+        toolbar.subtitle = listOfNotNull(if (size >= 0) FilePreview.humanSize(size) else null, extra).joinToString(" · ")
     }
 
     private fun message(text: String) {

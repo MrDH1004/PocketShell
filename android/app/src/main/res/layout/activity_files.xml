@@ -12,16 +12,30 @@
         android:layout_height="?attr/actionBarSize"
         app:title="@string/files_title" />
 
-    <TextView
-        android:id="@+id/path"
+    <!-- Breadcrumbs: project root › folder › folder (each tappable), filled in FileBrowserActivity -->
+    <HorizontalScrollView
+        android:id="@+id/crumbScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="start"
-        android:maxLines="2"
-        android:fontFamily="monospace"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="16dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/crumbs"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+    </HorizontalScrollView>
+
+    <TextView
+        android:id="@+id/summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFeatureSettings="tnum"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
         android:paddingBottom="8dp"
         android:textColor="@color/text_muted"
         android:textSize="12sp" />

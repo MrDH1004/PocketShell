@@ -60,7 +60,7 @@
 
         <ImageButton
             android:id="@+id/voiceButton"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/voice_input"
@@ -69,7 +69,7 @@
 
         <ImageButton
             android:id="@+id/pasteImageButton"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/paste_image"
@@ -78,7 +78,7 @@
 
         <ImageButton
             android:id="@+id/fitButton"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/fit_screen"
@@ -87,14 +87,23 @@
 
         <ImageButton
             android:id="@+id/keyboardButton"
-            android:layout_width="48dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/keyboard"
             android:src="@drawable/ic_keyboard"
             android:tint="@color/keybar_text" />
 
-        <!-- Options: project files, view settings (font), fit to screen -->
+        <ImageButton
+            android:id="@+id/filesButton"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/files_title"
+            android:src="@drawable/ic_folder_open"
+            android:tint="@color/keybar_text" />
+
+        <!-- Options: info (connection, sizes), view settings (font) -->
         <ImageButton
             android:id="@+id/moreButton"
             android:layout_width="40dp"

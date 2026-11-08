@@ -184,6 +184,7 @@ class TerminalActivity : AppCompatActivity() {
         findViewById<View>(R.id.keyboardButton).setOnClickListener { toggleKeyboard() }
         findViewById<View>(R.id.fitButton).setOnClickListener { resetSize() }
         findViewById<View>(R.id.moreButton).setOnClickListener { showOptions(it) }
+        findViewById<View>(R.id.filesButton).setOnClickListener { openFiles() }
         findViewById<View>(R.id.voiceButton).setOnClickListener { startVoiceInput() }
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
             if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -283,7 +284,7 @@ class TerminalActivity : AppCompatActivity() {
         zoom.zoomTo(spToPx(fontSizeSp).toFloat() / textPx)
     }
 
-    /** ⋮ top-bar menu: project files, view settings (fit to screen is its own top-bar button). */
+    /** ⋮ top-bar menu: info, view settings (fit to screen is its own top-bar button). */
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
         // "정보" submenu: connection + size info (was the title bar's second line), one read-only line per part.
@@ -293,13 +294,11 @@ class TerminalActivity : AppCompatActivity() {
         statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
             info.add(10 + i, Menu.NONE, i, part).isEnabled = false
         }
-        menu.menu.add(2, OPT_FILES, 100, R.string.files_title)
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
-                OPT_FILES -> openFiles()
                 OPT_VIEW -> {
                     val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
                     ViewSettingsDialog.show(this, note) { applyViewSettings() }
@@ -784,7 +783,6 @@ class TerminalActivity : AppCompatActivity() {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
-        private const val OPT_FILES = 1
         private const val OPT_VIEW = 2
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8

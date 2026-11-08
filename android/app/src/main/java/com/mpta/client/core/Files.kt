@@ -111,3 +111,87 @@ object FilePreview {
         else -> String.format(Locale.ROOT, "%.2f GB", bytes / (1024.0 * 1024 * 1024))
     }
 }
+
+/** What a browser row shows for an entry (icon). */
+enum class FileCategory { FOLDER, CODE, IMAGE, TEXT, ARCHIVE, MEDIA, OTHER }
+
+object FileKinds {
+    private val CODE = setOf(
+        "kt", "kts", "java", "cs", "csproj", "sln", "c", "h", "cpp", "hpp", "cc", "py", "js", "mjs", "cjs", "ts", "tsx",
+        "jsx", "go", "rs", "rb", "php", "swift", "m", "sh", "bash", "ps1", "psm1", "bat", "cmd", "sql", "gradle", "xml",
+        "html", "htm", "css", "scss", "vue", "svelte", "json", "yaml", "yml", "toml", "ini", "dart", "lua", "r",
+    )
+    private val TEXT = setOf("txt", "md", "markdown", "log", "csv", "tsv", "rst", "cfg", "conf", "env", "properties", "gitignore")
+    private val ARCHIVE = setOf("zip", "7z", "rar", "gz", "tar", "tgz", "bz2", "xz", "apk", "aab", "jar", "msi", "iso")
+    private val MEDIA = setOf("mp3", "mp4", "mov", "avi", "mkv", "wav", "flac", "ogg", "webm", "m4a")
+    private val IMAGE = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif", "svg", "ico")
+
+    fun category(e: FileEntry): FileCategory {
+        if (e.dir) return FileCategory.FOLDER
+        val ext = FilePreview.extension(e.name).ifEmpty { e.name.removePrefix(".").lowercase(Locale.ROOT) }
+        return when (ext) {
+            in IMAGE -> FileCategory.IMAGE
+            in CODE -> FileCategory.CODE
+            in TEXT -> FileCategory.TEXT
+            in ARCHIVE -> FileCategory.ARCHIVE
+            in MEDIA -> FileCategory.MEDIA
+            else -> FileCategory.OTHER
+        }
+    }
+}
+
+/** Browser sort orders; folders always come first. */
+enum class FileSort(val id: String) {
+    NAME("name"), MODIFIED("modified"), SIZE("size");
+
+    fun apply(entries: List<FileEntry>): List<FileEntry> {
+        val byName = compareBy<FileEntry, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+        val files = when (this) {
+            NAME -> byName
+            MODIFIED -> compareByDescending<FileEntry> { it.modified }.then(byName)
+            SIZE -> compareByDescending<FileEntry> { it.size }.then(byName)
+        }
+        val (dirs, rest) = entries.partition { it.dir }
+        // Folders have no size: by name for SIZE, by time for MODIFIED.
+        val dirOrder = if (this == MODIFIED) files else byName
+        return dirs.sortedWith(dirOrder) + rest.sortedWith(files)
+    }
+
+    companion object {
+        fun of(id: String): FileSort = entries.firstOrNull { it.id == id } ?: NAME
+    }
+}
+
+/** Breadcrumb segments from the project root to [path]: (label, full path). */
+object Crumbs {
+    fun of(path: String, root: String): List<Pair<String, String>> {
+        val rootLabel = root.trimEnd('\\').substringAfterLast('\\').ifEmpty { root }
+        val out = mutableListOf(rootLabel to root)
+        val rel = PcPath.relative(path, root)
+        if (rel.isEmpty()) return out
+        var cur = root
+        for (part in rel.split('\\').filter { it.isNotEmpty() }) {
+            cur = PcPath.child(cur, part)
+            out += part to cur
+        }
+        return out
+    }
+}
+
+/** "방금 / N분 전 / N시간 전 / N일 전" for the last week, then the date. */
+object RelativeTime {
+    fun format(modified: java.time.Instant, now: java.time.Instant, zone: java.time.ZoneId): String {
+        val s = java.time.Duration.between(modified, now).seconds
+        return when {
+            s < 0 -> date(modified, zone)
+            s < 60 -> "방금"
+            s < 3600 -> "${s / 60}분 전"
+            s < 86400 -> "${s / 3600}시간 전"
+            s < 7 * 86400 -> "${s / 86400}일 전"
+            else -> date(modified, zone)
+        }
+    }
+
+    private fun date(t: java.time.Instant, zone: java.time.ZoneId): String =
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(zone).format(t)
+}

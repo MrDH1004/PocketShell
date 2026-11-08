@@ -22,8 +22,14 @@ class UiPrefs(context: Context) {
         get() = prefs.getString(K_FONT, null).orEmpty()
         set(value) = prefs.edit().putString(K_FONT, value).apply()
 
+    /** File browser sort order id, see FileSort. */
+    var fileSort: String
+        get() = prefs.getString(K_FILE_SORT, null).orEmpty()
+        set(value) = prefs.edit().putString(K_FILE_SORT, value).apply()
+
     companion object {
         private const val PREFS = "ui"
+        private const val K_FILE_SORT = "file_sort"
         private const val K_RECENT_LIMIT = "recent_limit"
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
