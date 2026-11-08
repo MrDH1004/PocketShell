@@ -242,7 +242,11 @@ public sealed class HostServer : IDisposable
         {
             do
             {
-                try { _recent.Observe(ExternalConsoles.Peek()); }
+                try
+                {
+                    _recent.Observe(ExternalConsoles.Peek());
+                    _sessions.NoteRunningAgents();
+                }
                 catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
                 {
                     Log.Error($"recent consoles: {ex.Message}");
@@ -683,12 +687,20 @@ public sealed class HostServer : IDisposable
             }
         });
 
-        app.MapDelete("/api/sessions/{id}", (string id) =>
+        app.MapDelete("/api/sessions/{id}", async (HttpContext ctx, string id) =>
         {
             if (TryExtPid(id, out _)) return Error(400, "external sessions cannot be deleted");
+            var by = AuthOf(ctx).DeviceId ?? "local";
             if (id.StartsWith(RecentExternals.IdPrefix, StringComparison.Ordinal))
-                return _recent.Remove(id) ? Results.NoContent() : Error(404, "session not found");
-            return _sessions.Delete(id) ? Results.NoContent() : Error(404, "session not found");
+            {
+                if (!_recent.Remove(id)) return Error(404, "session not found");
+                Log.Info($"recent {id} deleted by {by}");
+                return Results.NoContent();
+            }
+            // A running session is terminated and its history removed (waits for the shell to exit).
+            if (!await Task.Run(() => _sessions.Delete(id))) return Error(404, "session not found");
+            Log.Info($"session {id} deleted by {by}");
+            return Results.NoContent();
         });
 
         // Phone → PC clipboard image; the phone then sends Alt+V (ESC v) on the session so Claude Code attaches it.

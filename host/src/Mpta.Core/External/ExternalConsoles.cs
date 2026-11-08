@@ -158,7 +158,8 @@ public sealed class ExternalConsoles : IDisposable
 
     /// <summary>
     /// Light snapshot for <see cref="RecentExternals"/>: candidate consoles with folder, shell and AI CLI only. No
-    /// console-info helper and no bridges, so it is cheap to poll; titles are empty.
+    /// console-info helper and no bridges, so it is cheap to poll; titles are empty. CreatedAt = process start time
+    /// (identifies the window for RecentExternals, as in <see cref="List"/>).
     /// </summary>
     public static List<SessionDto> Peek()
     {
@@ -169,6 +170,7 @@ public sealed class ExternalConsoles : IDisposable
             Kind = "external",
             Shell = ShellKind(c.Proc.Exe),
             Cwd = ProcessCwd.TryGet(c.Proc.Pid) ?? "",
+            CreatedAt = TryStartTime(c.Proc.Pid) ?? "",
             Pid = c.Proc.Pid,
             Agent = c.Agent,
         }).ToList();
@@ -200,7 +202,7 @@ public sealed class ExternalConsoles : IDisposable
                 Shell = ShellKind(proc.Exe),
                 Cwd = ProcessCwd.TryGet(info.Pid) ?? "",
                 State = "running",
-                CreatedAt = TryStartTime(info.Pid) ?? now,
+                CreatedAt = TryStartTime(info.Pid) ?? "", // also the RecentExternals key: must be stable
                 LastActivity = now,
                 Cols = info.Cols,
                 Rows = info.Rows,

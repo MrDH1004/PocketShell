@@ -113,6 +113,19 @@ public sealed class PseudoConsoleProcess : IDisposable
         }
     }
 
+    /// <summary>
+    /// Variables a parent Claude Code / agent session leaks into processes it starts (CLAUDECODE, CLAUDE_CODE_*,
+    /// CLAUDE_PID, AI_AGENT, ...). If the host was ever started from such a session, every shell inherited them and
+    /// claude inside a host session ran as a "child session" with transcript saving off — so `claude --continue`
+    /// had nothing to continue. Session shells are independent terminals: drop them (same list as TileCLI).
+    /// </summary>
+    public static bool IsInheritedAgentVariable(string name) =>
+        name.Equals("CLAUDECODE", StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith("CLAUDE_CODE", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("CLAUDE_EFFORT", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("CLAUDE_PID", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("AI_AGENT", StringComparison.OrdinalIgnoreCase);
+
     private static IntPtr BuildEnvironmentBlock(IDictionary<string, string>? overrides)
     {
         var env = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -120,6 +133,7 @@ public sealed class PseudoConsoleProcess : IDisposable
         {
             var k = (string)e.Key;
             if (k.Length == 0 || k.Contains('=') && !k.StartsWith('=')) continue;
+            if (IsInheritedAgentVariable(k)) continue;
             env[k] = (string?)e.Value ?? "";
         }
         if (overrides != null)

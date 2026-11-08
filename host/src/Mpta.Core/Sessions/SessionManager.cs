@@ -80,15 +80,31 @@ public sealed class SessionManager : IDisposable
         return s;
     }
 
-    /// <summary>running → kill; history → delete. Returns false if not found.</summary>
+    /// <summary>
+    /// Deletes a session completely: a running one is terminated first, then its history (output, meta) is removed,
+    /// so it does not come back under 최근. Returns false if not found.
+    /// </summary>
     public bool Delete(string id)
     {
         var s = Get(id);
         if (s == null) return false;
-        if (s.IsRunning) { s.Kill(); return true; }
+        if (s.IsRunning)
+        {
+            s.Kill();
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (s.IsRunning && DateTime.UtcNow < deadline) Thread.Sleep(50);
+            if (s.IsRunning) Log.Warn($"session {id}: still running 5 s after terminate; history removed anyway");
+        }
         DeleteHistory(s);
         return true;
     }
+
+    /// <summary>
+    /// Records, for every running session, the AI CLI (claude/codex) running in it now, so a session that ends
+    /// without the user quitting it (host update/restart, crash) continues that conversation on resume. Called
+    /// periodically and on shutdown.
+    /// </summary>
+    public void NoteRunningAgents() => NoteAgents(_sessions.Values.Where(s => s.IsRunning).ToList());
 
     private void DeleteHistory(HostSession s)
     {

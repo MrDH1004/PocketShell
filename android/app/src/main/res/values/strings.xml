@@ -26,7 +26,7 @@
     <string name="unpair">페어링 해제</string>
     <string name="unpair_confirm">이 PC와의 페어링 정보를 삭제할까요? 다시 쓰려면 PIN 페어링이 필요합니다.</string>
     <string name="delete_session">세션 삭제/종료</string>
-    <string name="delete_running_confirm">실행 중인 셸을 종료할까요?</string>
+    <string name="delete_running_confirm">실행 중인 셸을 종료하고 기록까지 완전히 삭제할까요? (최근 목록에도 남지 않습니다)</string>
     <string name="delete_history_confirm">이 기록을 삭제할까요?</string>
     <string name="confirm">확인</string>
     <string name="external_badge">외부</string>

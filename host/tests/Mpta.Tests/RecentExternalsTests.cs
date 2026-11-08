@@ -66,6 +66,36 @@ public sealed class RecentExternalsTests : IDisposable
     }
 
     [Fact]
+    public void TwoWindowsOnTheSameFolderAreTwoEntries()
+    {
+        static SessionDto Win(int pid, string start, string? agent) =>
+            new() { Kind = "external", Cwd = @"E:\Work\a", Agent = agent, Shell = "cmd", Pid = pid, CreatedAt = start };
+        var r = new RecentExternals(FilePath);
+        r.Observe(new[] { Win(10, "2026-11-08T01:00:00Z", "claude"), Win(20, "2026-11-08T02:00:00Z", null) });
+        r.Observe(new[] { Win(20, "2026-11-08T02:00:00Z", null) });
+        Assert.Equal(RecentExternals.IdForConsole(10, "2026-11-08T01:00:00Z"), Assert.Single(r.Closed()).Id);
+        r.Observe(Array.Empty<SessionDto>());
+        var closed = r.Closed();
+        Assert.Equal(2, closed.Count);
+        Assert.All(closed, c => Assert.Equal(@"E:\Work\a", c.Cwd));
+        // pid reused by a later process = another window
+        Assert.NotEqual(RecentExternals.IdForConsole(10, "a"), RecentExternals.IdForConsole(10, "b"));
+    }
+
+    [Fact]
+    public void AgentSeenOnceIsKeptAndCwdFollowsTheConsole()
+    {
+        var w = new SessionDto { Kind = "external", Cwd = @"E:\Work\a", Agent = "claude", Shell = "cmd", Pid = 5, CreatedAt = "t" };
+        var r = new RecentExternals(FilePath);
+        r.Observe(new[] { w });
+        r.Observe(new[] { new SessionDto { Kind = "external", Cwd = @"E:\Work\b", Agent = null, Shell = "cmd", Pid = 5, CreatedAt = "t" } });
+        r.Observe(Array.Empty<SessionDto>());
+        var e = Assert.Single(new RecentExternals(FilePath).Closed()); // id survives a reload
+        Assert.Equal("claude", e.Agent);
+        Assert.Equal(@"E:\Work\b", e.Cwd);
+    }
+
+    [Fact]
     public void KeepsNewestEntriesOnly()
     {
         var r = new RecentExternals(FilePath);

@@ -46,10 +46,12 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - `host`: 호스트가 ConPTY(`CreatePseudoConsole`)로 띄운 세션. 클라이언트가 0명이어도 셸 종료 전까지 유지(AC-1).
 - `history`: state=exited인 host 세션. 목록에 `kind:"history"`로 나옴. meta는 디스크에 남아 재부팅 후에도 유지(AC-4/11). 최근 50개 보관.
 - `external`: 앱 밖 콘솔. id = `ext-<pid>`.
-- `recent`: 닫힌 external 콘솔(폴더 + AI CLI 단위, 최근 50개, `recent-externals.json`). id = `rec-<12 hex>`, state=exited.
+- `recent`: 닫힌 external 콘솔(콘솔 창 단위 = pid + 프로세스 시작 시각, 같은 폴더 창 2개면 2개, 최근 50개, `recent-externals.json`). id = `rec-<12 hex>`, state=exited.
   호스트가 20초마다 가벼운 프로세스 스냅샷(`ExternalConsoles.Peek`)으로, 그리고 `GET /api/sessions` 때마다 관찰한다.
   `POST /api/sessions/rec-…/resume` → 그 폴더·셸로 새 host 세션을 만들고 AI가 있었으면 `claude --continue` /
   `codex resume --last` 입력(Enter 포함) 후 항목 삭제. `DELETE`는 항목만 삭제.
+- host 세션 셸 환경에서 CLAUDECODE / CLAUDE_CODE_* / CLAUDE_PID / CLAUDE_EFFORT / AI_AGENT 제거(호스트가 Claude Code 안에서 시작돼도 셸 안 claude가 child session으로 돌지 않게 — 그러면 대화 기록 저장이 꺼져 --continue 불가).
+- host 세션에서 도는 AI CLI를 20초마다와 종료 시 meta.agent에 기록 → 업데이트·재시작으로 끝난 세션을 resume하면 `claude --continue` / `codex resume --last` 입력.
 - 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
 - 폰 터미널 상단: 원래 크기로 맞춤 버튼 + ⋮ 메뉴(프로젝트 파일 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다.
   글꼴 크기 6~32sp(기본 12, 핀치 확대·축소도 저장),
@@ -78,7 +80,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 | GET | `/api/sessions/{id}` | Session |
 | POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈) |
 | POST | `/api/sessions/{id}/resume` | history → 새 Session |
-| DELETE | `/api/sessions/{id}` | running이면 kill, history면 삭제 |
+| DELETE | `/api/sessions/{id}` | 완전 삭제: running이면 종료를 기다린 뒤 기록까지 삭제(최근에도 안 남음), history면 삭제 |
 | POST | `/api/external/{pid}/adopt` | 외부 콘솔의 cwd(가능하면)·셸 종류로 새 host 세션 생성 → Session (AC-14). cwd를 못 얻으면 사용자 홈 |
 | POST | `/api/pair/start` | 2절 |
 | POST | `/api/pair/claim` | 2절 |

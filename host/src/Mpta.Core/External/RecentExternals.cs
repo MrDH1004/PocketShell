@@ -8,8 +8,8 @@ namespace Mpta.Core.External;
 
 /// <summary>
 /// External consoles seen while the host runs, remembered after they close (recent-externals.json) so the phone's
-/// 최근 list can reopen the folder and continue the AI CLI. One entry per folder + AI CLI; the newest
-/// <see cref="MaxEntries"/> are kept.
+/// 최근 list can reopen the folder and continue the AI CLI. One entry per console window (pid + start time), so two
+/// windows on the same folder are two entries; the newest <see cref="MaxEntries"/> are kept.
 /// </summary>
 public sealed class RecentExternals
 {
@@ -48,6 +48,17 @@ public sealed class RecentExternals
         return IdPrefix + Convert.ToHexString(hash, 0, 6).ToLowerInvariant();
     }
 
+    /// <summary>Stable id for one console window: its pid + process start time (pids are reused).</summary>
+    public static string IdForConsole(int pid, string startTime)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"console|{pid}|{startTime}"));
+        return IdPrefix + Convert.ToHexString(hash, 0, 6).ToLowerInvariant();
+    }
+
+    /// <summary>Per console when its pid and start time are known, else per folder + AI CLI.</summary>
+    public static string KeyFor(SessionDto s) =>
+        s.Pid is int pid && !string.IsNullOrEmpty(s.CreatedAt) ? IdForConsole(pid, s.CreatedAt) : IdFor(s.Cwd, s.Agent);
+
     /// <summary>Drops the status glyphs AI CLIs put in front of the console title ("✳ name", braille spinners).</summary>
     public static string CleanTitle(string title)
     {
@@ -85,7 +96,7 @@ public sealed class RecentExternals
             foreach (var s in alive)
             {
                 if (string.IsNullOrWhiteSpace(s.Cwd)) continue;
-                var id = IdFor(s.Cwd, s.Agent);
+                var id = KeyFor(s);
                 aliveIds.Add(id);
                 var title = CleanTitle(s.Title);
                 if (!_entries.TryGetValue(id, out var e))
@@ -99,6 +110,9 @@ public sealed class RecentExternals
                     dirty = true;
                 }
                 if (!string.Equals(e.Shell, s.Shell, StringComparison.Ordinal)) { e.Shell = s.Shell; dirty = true; }
+                // The console may cd elsewhere; an AI CLI seen once stays remembered (reopening continues it).
+                if (!string.Equals(e.Cwd, s.Cwd, StringComparison.OrdinalIgnoreCase)) { e.Cwd = s.Cwd; dirty = true; }
+                if (s.Agent != null && !string.Equals(e.Agent, s.Agent, StringComparison.Ordinal)) { e.Agent = s.Agent; dirty = true; }
                 e.LastSeen = now;
             }
             if (_alive.Any(id => !aliveIds.Contains(id))) dirty = true; // closed: persist its last-seen time
@@ -167,7 +181,7 @@ public sealed class RecentExternals
             if (list == null) return;
             foreach (var e in list.Where(e => !string.IsNullOrWhiteSpace(e.Cwd)))
             {
-                e.Id = IdFor(e.Cwd, e.Agent);
+                if (string.IsNullOrEmpty(e.Id)) e.Id = IdFor(e.Cwd, e.Agent);
                 _entries[e.Id] = e;
             }
         }

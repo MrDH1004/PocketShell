@@ -300,6 +300,17 @@ public class VtFrameTests
         Assert.Equal(7, ExternalConsoles.FindCandidates(procs, selfPid: 99999, includeAll: true).Count);
     }
 
+    [Theory]
+    [InlineData("CLAUDECODE", true)]
+    [InlineData("CLAUDE_CODE_CHILD_SESSION", true)]
+    [InlineData("claude_code_session_id", true)]
+    [InlineData("CLAUDE_PID", true)]
+    [InlineData("AI_AGENT", true)]
+    [InlineData("CLAUDE_CONFIG_DIR", false)]
+    [InlineData("PATH", false)]
+    public void SessionShellsDropInheritedAgentVariables(string name, bool dropped) =>
+        Assert.Equal(dropped, Mpta.Core.Pty.PseudoConsoleProcess.IsInheritedAgentVariable(name));
+
     [Fact]
     public void AgentUnderFindsAiCliBelowAHostShell()
     {
