@@ -44,7 +44,7 @@
     <string name="recent_limit_n">%1$d개</string>
     <string name="view_settings">보기 설정 (글꼴)</string>
     <string name="view_font_size">글꼴 크기: %1$dsp</string>
-    <string name="view_external_note">외부 콘솔은 PC 창 전체가 보이도록 자동으로 줄어듦 (설정 크기가 상한). 크게 보려면 두 손가락으로 확대</string>
+    <string name="view_external_note">외부 콘솔은 PC 창 크기 그대로 두고 설정 크기만큼 확대해서 보여줌 (한 손가락으로 이동, 원래 크기 버튼 = PC 창 전체)</string>
     <string name="view_font">글꼴</string>
     <string name="view_reset">기본값</string>
     <string name="terminal_options">옵션</string>

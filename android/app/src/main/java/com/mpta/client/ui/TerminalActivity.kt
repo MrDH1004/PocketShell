@@ -105,6 +105,8 @@ class TerminalActivity : AppCompatActivity() {
     /** External console's row count from the last size notice (0 = unknown). */
     private var consoleRows = 0
     private var consoleCols = 0
+    /** Next external fit also zooms to the user's font size (set when view settings change; opening keeps the whole console). */
+    private var pendingFontZoom = false
     /** Phone grid (cols * 10000 + rows) the current screen content was drawn for; -1 forces a redraw. */
     private var drawnRows = 0
     private var fitWidth = 0
@@ -264,6 +266,19 @@ class TerminalActivity : AppCompatActivity() {
             drawnRows = -1 // the grid changed (columns too): always redraw
         }
         redrawIfRowsChanged()
+        if (pendingFontZoom) {
+            pendingFontZoom = false
+            applyFontZoom()
+        }
+    }
+
+    /**
+     * External console at the user's font size: the grid stays the PC console's (fitted font), the picture is
+     * zoomed by userSize / fittedSize, and one finger pans it. 1x when the whole console already fits at that size.
+     */
+    private fun applyFontZoom() {
+        if (textPx <= 0) return
+        zoom.zoomTo(spToPx(fontSizeSp).toFloat() / textPx)
     }
 
     /** ⋮ top-bar menu: project files, view settings (fit to screen is its own top-bar button). */
@@ -307,6 +322,7 @@ class TerminalActivity : AppCompatActivity() {
 
     /** Top-bar button: undo the pinch zoom (1x, picture back in place) and, for an external console, fit it to the PC size again. */
     private fun resetSize() {
+        pendingFontZoom = false // "fit": the whole PC console, not the font-size zoom
         zoom.reset()
         fontSizeSp = uiPrefs.fontSizeSp
         refit()
@@ -317,6 +333,7 @@ class TerminalActivity : AppCompatActivity() {
         fontSizeSp = uiPrefs.fontSizeSp
         typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
         terminalView.setTypeface(typeface)
+        pendingFontZoom = sessionKind == SessionInfo.KIND_EXTERNAL
         refit()
     }
 
