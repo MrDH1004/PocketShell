@@ -449,8 +449,8 @@ class TerminalActivity : AppCompatActivity() {
         Toast.makeText(this, "이미지를 PC로 보내는 중…", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             try {
-                val png = withContext(Dispatchers.IO) { encodePng(uri) }
-                a.postClipboardImage(png)
+                val (png, jpeg) = withContext(Dispatchers.IO) { encodeImage(uri) }
+                a.postClipboardImage(png, jpeg)
                 val c = connection
                 if (c == null) {
                     Toast.makeText(this@TerminalActivity, "PC 클립보드에 넣었습니다 (세션 연결 없음: PC에서 Alt+V)", Toast.LENGTH_LONG).show()
@@ -460,10 +460,41 @@ class TerminalActivity : AppCompatActivity() {
                 }
             } catch (e: IOException) {
                 Log.w(TAG, "image paste failed", e)
-                Toast.makeText(this@TerminalActivity, "이미지 붙여넣기 실패: ${e.message}", Toast.LENGTH_LONG).show()
+                showPasteError("${e.javaClass.simpleName}: ${e.message}")
+            } catch (e: OutOfMemoryError) {
+                Log.w(TAG, "image paste failed", e)
+                showPasteError("이미지가 너무 큽니다 (메모리 부족)")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "image paste failed", e)
+                showPasteError("이미지 파일 접근 권한이 없습니다: ${e.message}")
             } finally {
                 pastingImage = false
             }
+        }
+    }
+
+    /** Shown in a dialog (not a toast) so the whole reason stays readable and can be reported. */
+    private fun showPasteError(reason: String) {
+        if (isFinishing) return
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("이미지 붙여넣기 실패")
+            .setMessage(reason)
+            .setPositiveButton(R.string.confirm, null)
+            .show()
+    }
+
+    /**
+     * PNG (lossless, best for screenshots); a photo whose PNG is larger than [MAX_PNG_BYTES] is sent as JPEG instead
+     * (a 2560 px photo is ~10 MB as PNG, under 1 MB as JPEG). Returns (bytes, isJpeg).
+     */
+    private fun encodeImage(uri: Uri): Pair<ByteArray, Boolean> {
+        val png = encodePng(uri)
+        if (png.size <= MAX_PNG_BYTES) return png to false
+        val bitmap = BitmapFactory.decodeByteArray(png, 0, png.size) ?: return png to false
+        return ByteArrayOutputStream().use { out ->
+            val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            bitmap.recycle()
+            if (ok) out.toByteArray() to true else png to false
         }
     }
 
@@ -682,6 +713,7 @@ class TerminalActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "mpta"
         private const val TRANSCRIPT_ROWS = 5000
+        private const val MAX_PNG_BYTES = 2 * 1024 * 1024
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"

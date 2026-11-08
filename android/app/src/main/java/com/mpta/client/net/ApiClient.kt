@@ -60,6 +60,7 @@ class ApiClient(
         body: JSONObject? = null,
         auth: Boolean = true,
         rawBody: RequestBody? = null,
+        client: OkHttpClient = http,
     ): String =
         withContext(Dispatchers.IO) {
             val failures = ArrayList<String>()
@@ -75,7 +76,7 @@ class ApiClient(
                 }
                 builder.method(method, reqBody)
                 try {
-                    http.newCall(builder.build()).execute().use { resp ->
+                    client.newCall(builder.build()).execute().use { resp ->
                         hosts.reportSuccess(host)
                         val text = resp.body?.string().orEmpty()
                         if (!resp.isSuccessful) throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
@@ -144,9 +145,13 @@ class ApiClient(
         request("POST", "/api/update/apply", JSONObject().put("force", force))
     }
 
-    /** `POST /api/clipboard/image` (PNG body): the PC puts it on its clipboard for an Alt+V paste. */
-    suspend fun postClipboardImage(png: ByteArray) {
-        request("POST", "/api/clipboard/image", rawBody = png.toRequestBody(PNG))
+    /**
+     * `POST /api/clipboard/image` (PNG/JPEG body): the PC puts it on its clipboard for an Alt+V paste. Images are
+     * MBs, so the upload gets longer timeouts than the 15 s of the small REST calls (slow Tailscale relay / mobile).
+     */
+    suspend fun postClipboardImage(image: ByteArray, jpeg: Boolean) {
+        val slow = http.newBuilder().writeTimeout(120, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+        request("POST", "/api/clipboard/image", rawBody = image.toRequestBody(if (jpeg) JPEG else PNG), client = slow)
     }
 
     private fun httpErrorMessage(code: Int, body: String): String = when (code) {
@@ -162,5 +167,6 @@ class ApiClient(
         const val TAG = "ApiClient"
         val JSON = "application/json; charset=utf-8".toMediaType()
         val PNG = "image/png".toMediaType()
+        val JPEG = "image/jpeg".toMediaType()
     }
 }
