@@ -201,9 +201,16 @@ public final class TerminalView extends View {
                 // Do not start scrolling until last fling has been taken care of:
                 if (!mScroller.isFinished()) return true;
 
-                final boolean mouseTrackingAtStartOfFling = mEmulator.isMouseTrackingActive();
+                // PocketShell: an external console scrolls its own phone-side history (onRemoteScroll(0) probes for
+                // it). Fling relative to the start in both directions, like mouse tracking: the emulator transcript
+                // (mTopRow, its bounds) has nothing to do with that history, which made a downward fling jump far
+                // back and an upward one do nothing.
+                final boolean remote = mClient != null && mClient.onRemoteScroll(0);
+                final boolean mouseTrackingAtStartOfFling = remote || mEmulator.isMouseTrackingActive();
                 float SCALE = 0.25f;
-                if (mouseTrackingAtStartOfFling) {
+                if (remote) {
+                    mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows * 3, mEmulator.mRows * 3);
+                } else if (mouseTrackingAtStartOfFling) {
                     mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
                 } else {
                     mScroller.fling(0, mTopRow, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.getScreen().getActiveTranscriptRows(), 0);
@@ -214,7 +221,7 @@ public final class TerminalView extends View {
 
                     @Override
                     public void run() {
-                        if (mouseTrackingAtStartOfFling != mEmulator.isMouseTrackingActive()) {
+                        if (!remote && mouseTrackingAtStartOfFling != mEmulator.isMouseTrackingActive()) {
                             mScroller.abortAnimation();
                             return;
                         }
