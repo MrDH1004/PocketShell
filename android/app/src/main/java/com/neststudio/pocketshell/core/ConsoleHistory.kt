@@ -60,15 +60,77 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         return history.size + bottomInWindow
     }
 
-    /** Largest useful [scroll] for [viewRows] (0 = live view). */
-    fun maxScroll(viewRows: Int): Int = maxOf(0, liveBottom() - (viewRows - 1))
+    /** Largest useful [scroll] for [viewRows] (0 = live view). [cols] > 0: re-flowed to that width (phone lines). */
+    fun maxScroll(viewRows: Int, cols: Int = 0): Int {
+        if (cols <= 0) return maxOf(0, liveBottom() - (viewRows - 1))
+        if (window.isEmpty()) return 0
+        var total = 0
+        for (idx in 0..liveBottom()) total += count(line(idx), cols)
+        return maxOf(0, total - viewRows)
+    }
+
+    /** Phone lines the last [n] history lines take at [cols] (to keep a scrolled-back view in place). */
+    fun wrappedCount(n: Int, cols: Int): Int {
+        if (cols <= 0) return n
+        var total = 0
+        for (idx in maxOf(0, history.size - n) until history.size) total += count(history[idx], cols)
+        return total
+    }
+
+    private val countCache = HashMap<String, Int>()
+    private var countCols = 0
+
+    private fun count(body: String, cols: Int): Int {
+        if (cols != countCols || countCache.size > 8000) {
+            countCache.clear()
+            countCols = cols
+        }
+        return countCache.getOrPut(body) { Reflow.lineCount(body, cols) }
+    }
+
+    /**
+     * Phone layout (DESIGN §8): the PC rows re-flowed to [cols] (Reflow), bottom-anchored like [render]. [scroll]
+     * counts phone lines; only the lines needed for the view are laid out.
+     */
+    private fun renderReflowed(viewRows: Int, scroll: Int, cols: Int): ByteArray {
+        val c = cursor
+        val need = scroll.coerceAtLeast(0) + viewRows
+        val lines = ArrayList<String>() // bottom first
+        var cursorFromBottom = -1
+        var cursorCol = 0
+        var idx = if (window.isEmpty()) -1 else liveBottom()
+        while (idx >= 0 && lines.size < need) {
+            val cc = if (c != null && idx == history.size + c.first - 1) c.second else 0
+            val r = Reflow.layout(line(idx), cols, cc)
+            for (k in r.lines.indices.reversed()) {
+                if (k == r.cursorLine) {
+                    cursorFromBottom = lines.size
+                    cursorCol = r.cursorCol
+                }
+                lines.add(r.lines[k])
+            }
+            idx--
+        }
+        val s = scroll.coerceIn(0, maxOf(0, lines.size - viewRows))
+        val sb = StringBuilder(START)
+        for (r in 0 until viewRows) {
+            val i = s + viewRows - 1 - r
+            sb.append("[").append(r + 1).append(";1H").append(lines.getOrElse(i) { "" }).append("[0m[K")
+        }
+        val fromTop = viewRows - 1 - (cursorFromBottom - s)
+        if (s == 0 && cursorFromBottom >= 0 && fromTop in 0 until viewRows) {
+            sb.append("[").append(fromTop + 1).append(';').append(cursorCol).append("H[?25h")
+        }
+        return sb.toString().toByteArray(Charsets.UTF_8)
+    }
 
     /**
      * Full redraw of [viewRows] phone rows showing the slice that ends [scroll] lines above the live bottom. The
      * slice is bottom-anchored (input box right above the key bar); when there is less content than rows, the
      * blank rows go on top. Every row is rewritten, so nothing from an earlier layout survives.
      */
-    fun render(viewRows: Int, scroll: Int): ByteArray {
+    fun render(viewRows: Int, scroll: Int, cols: Int = 0): ByteArray {
+        if (cols > 0) return renderReflowed(viewRows, scroll, cols)
         val s = scroll.coerceIn(0, maxScroll(viewRows))
         val end = if (window.isEmpty()) -1 else liveBottom() - s
         val start = end - viewRows + 1

@@ -10,7 +10,6 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -53,7 +52,6 @@ import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.ceil
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.Locale
@@ -93,12 +91,6 @@ class TerminalActivity : AppCompatActivity() {
     private var typeface: Typeface = Typeface.MONOSPACE
     private var textPx = 0
 
-    /**
-     * External consoles keep the PC window's size (the phone cannot resize them), so the font is shrunk until
-     * the whole console (fitCols×fitRows) fits the view. 0 = no fitting (host session, or the user zoomed manually).
-     */
-    private var fitCols = 0
-    private var fitRows = 0
     /** External console: lines scrolled off the PC window + the current window (scroll-back on the phone). */
     private val history = ConsoleHistory()
     /** Lines above the live bottom the user scrolled to (0 = live). */
@@ -108,8 +100,6 @@ class TerminalActivity : AppCompatActivity() {
     private var consoleCols = 0
     /** Phone grid (cols * 10000 + rows) the current screen content was drawn for; -1 forces a redraw. */
     private var drawnRows = 0
-    private var fitWidth = 0
-    private var fitHeight = 0
     private val main = Handler(Looper.getMainLooper())
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var pastingImage = false
@@ -231,44 +221,6 @@ class TerminalActivity : AppCompatActivity() {
         terminalView.setTextSize(px) // re-measures synchronously → onViewResized if the cell grid changed
     }
 
-    /**
-     * Largest font (up to the user's size) at which the whole [cols]×[rows] console fits the view, measured the
-     * same way as TerminalView/TerminalRenderer (columns = floor(width / "X" width), rows = floor((height -
-     * (lineSpacing + ascent)) / lineSpacing)). Applied in one step so the frame that follows the size notice is
-     * drawn at the final grid.
-     */
-    private fun fitToConsole(cols: Int, rows: Int) {
-        val width = terminalView.width
-        val height = terminalView.height
-        if (cols <= 0 || rows <= 0 || width <= 0 || height <= 0) return
-        fitCols = cols
-        fitRows = rows
-        fitWidth = width
-        fitHeight = height
-        // Keyboard up: fit the width only and show the bottom part (ConsoleHistory) instead of a tiny whole console.
-        // Judged by the IME padding actually applied to the root (applySystemInsets), which is what resized this view:
-        // the IME inset flag could still say "visible" while the keyboard was closing, leaving the width-only font.
-        val root = findViewById<View>(R.id.root)
-        val widthOnly = root.height > 0 && root.paddingBottom > root.height / 5
-        Log.i(TAG, "fit ${cols}x$rows view=${width}x$height rootPadBottom=${root.paddingBottom}/${root.height} widthOnly=$widthOnly")
-        val face = typeface
-        val paint = Paint().apply { typeface = face; isAntiAlias = true }
-        var px = spToPx(fontSizeSp)
-        while (px > MIN_FIT_TEXT_PX) {
-            paint.textSize = px.toFloat()
-            val lineSpacing = ceil(paint.fontSpacing).toInt()
-            val viewCols = (width / paint.measureText("X")).toInt()
-            val viewRows = (height - (lineSpacing + ceil(paint.ascent()).toInt())) / lineSpacing
-            if (viewCols >= cols && (widthOnly || viewRows >= rows)) break
-            px--
-        }
-        if (px != textPx) {
-            applyTextSize(px)
-            drawnRows = -1 // the grid changed (columns too): always redraw
-        }
-        redrawIfRowsChanged()
-    }
-
     /** ⋮ top-bar menu: info, view settings (fit to screen is its own top-bar button). */
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
@@ -317,7 +269,7 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** Top-bar button: undo the pinch zoom (1x, picture back in place) and, for an external console, fit it to the PC size again. */
+    /** Top-bar button: undo the pinch zoom (1x, picture back in place) and go back to the saved font size. */
     private fun resetSize() {
         zoom.reset()
         fontSizeSp = uiPrefs.fontSizeSp
@@ -332,13 +284,12 @@ class TerminalActivity : AppCompatActivity() {
         refit()
     }
 
+    /**
+     * The user's font size, for every session kind. An external console keeps the PC window's size, but the phone
+     * does not mirror it: its rows are re-flowed to the phone's columns (ConsoleHistory/Reflow, DESIGN §8).
+     */
     private fun refit() {
-        if (sessionKind == SessionInfo.KIND_EXTERNAL && consoleCols > 0 && consoleRows > 0) {
-            fitWidth = 0 // force the measurement even if the view size is unchanged
-            fitToConsole(consoleCols, consoleRows)
-        } else {
-            applyTextSize(spToPx(fontSizeSp))
-        }
+        applyTextSize(spToPx(fontSizeSp))
         scroll = 0
         drawnRows = -1
         redrawIfRowsChanged()
@@ -347,7 +298,7 @@ class TerminalActivity : AppCompatActivity() {
     /** Draws (history + window) for the current phone rows and scroll position (external consoles). */
     private fun drawExternal() {
         if (!history.hasFrame) return
-        val out = history.render(viewRows, scroll)
+        val out = history.render(viewRows, scroll, viewCols)
         session.appendRemoteOutput(out, 0, out.size)
         updateExternalStatus()
     }
@@ -367,12 +318,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private fun onViewResized(cols: Int, rows: Int) {
-        // View size changed (keyboard shown/hidden, rotation): refit the console to the new area.
-        if (fitCols > 0 && (terminalView.width != fitWidth || terminalView.height != fitHeight)) {
-            main.post { if (fitCols > 0) fitToConsole(fitCols, fitRows) }
-        } else if (sessionKind == SessionInfo.KIND_EXTERNAL) {
-            main.post { redrawIfRowsChanged() }
-        }
+        // View size changed (keyboard shown/hidden, rotation, font): re-flow an external console to the new grid.
+        if (sessionKind == SessionInfo.KIND_EXTERNAL) main.post { redrawIfRowsChanged() }
         val first = viewCols == 0
         viewCols = cols
         viewRows = rows
@@ -393,7 +340,7 @@ class TerminalActivity : AppCompatActivity() {
             if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                 val shifted = history.accept(bytes)
                 if (shifted >= 0) {
-                    if (scroll > 0) scroll += shifted // keep the lines the user is reading in place
+                    if (scroll > 0) scroll += history.wrappedCount(shifted, viewCols) // keep the lines the user is reading in place
                     drawnRows = viewCols * 10_000 + viewRows
                     drawExternal()
                     return
@@ -411,7 +358,8 @@ class TerminalActivity : AppCompatActivity() {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                         consoleRows = message.rows
                         consoleCols = message.cols
-                        fitToConsole(message.cols, message.rows)
+                        drawnRows = -1 // new PC size: lay the rows out again
+                        redrawIfRowsChanged()
                     }
                     setStatus("연결됨 · PC ${message.cols}×${message.rows} · 화면 ${viewCols}×${viewRows}")
                 }
@@ -744,7 +692,7 @@ class TerminalActivity : AppCompatActivity() {
 
         override fun onRemoteScroll(rowsDown: Int): Boolean {
             if (sessionKind != SessionInfo.KIND_EXTERNAL || !history.hasFrame) return false
-            val next = (scroll - rowsDown).coerceIn(0, history.maxScroll(viewRows))
+            val next = (scroll - rowsDown).coerceIn(0, history.maxScroll(viewRows, viewCols))
             if (next != scroll) {
                 scroll = next
                 drawExternal()
@@ -804,7 +752,6 @@ class TerminalActivity : AppCompatActivity() {
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
         private const val OPT_VIEW = 2
         /** Below this the text is unreadable; a wider console is then cut off instead. */
-        private const val MIN_FIT_TEXT_PX = 8
         private const val EXTRA_ID = "id"
         private const val EXTRA_KIND = "kind"
         private const val EXTRA_PID = "pid"

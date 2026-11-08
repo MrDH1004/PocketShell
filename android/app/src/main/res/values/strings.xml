@@ -43,7 +43,7 @@
     <string name="recent_limit_n">%1$d개</string>
     <string name="view_settings">보기 설정 (글꼴)</string>
     <string name="view_font_size">글꼴 크기: %1$dsp</string>
-    <string name="view_external_note">외부 콘솔은 PC 창 전체가 보이게 글꼴이 자동으로 줄어듦 (설정 크기가 상한). 크게 보려면 두 손가락으로 확대</string>
+    <string name="view_external_note">외부 콘솔은 PC 창 크기와 상관없이 폰 폭에 맞춰 줄바꿈해서 보여줌. PC 창은 그대로</string>
     <string name="view_font">글꼴</string>
     <string name="view_reset">기본값</string>
     <string name="terminal_info">정보</string>

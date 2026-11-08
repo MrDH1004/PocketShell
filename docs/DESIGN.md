@@ -56,8 +56,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 폰 터미널 상단: 연결 점(초록 = 연결됨) + 제목, 원래 크기로 맞춤 버튼, 프로젝트 파일(폴더) 버튼 + ⋮ 메뉴(정보: 전체 제목·연결 상태·크기 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다. 연결이 아닐 때(연결 중·끊김·재연결)는 제목 아래 한 줄로 상태 문구를 보여 색에만 의존하지 않고, 점의 설명(TalkBack)도 상태 문구.
 - 오류 문구: "무엇이 실패 + 어떻게 복구" + 원인 한 줄(`ErrorText`). 파괴적 확인은 제목에 대상 이름, 버튼은 동사(종료하고 삭제 / 삭제 / 페어링 해제). 키 바 키캡은 TalkBack에 버튼 역할 + 읽을 이름(Page Up 등).
   글꼴 크기 6~32sp(기본 12). 핀치 = 갤러리처럼 화면 확대(1~5배, 글꼴·PC 크기는 그대로), 확대 중 한 손가락으로 이동(위/아래 끝을 넘겨 끌면 터미널 기록 스크롤), 원래 크기 버튼으로 1배.
-  외부 콘솔: 글꼴 크기는 상한(PC 창 전체가 보이게 자동 축소). 글꼴을 바꿔도 화면 확대 배율은 그대로 — 확대는 핀치로만 바뀐다. 원래 크기 버튼 = 1배 + PC 창 전체. 화면: 어두운 그래파이트 테마(values/colors.xml 토큰, 강조색 1개), 세션 카드에 상태 점(실행 중 초록)과 최근 활동 시간(외부 콘솔 = 제목·폴더·화면이 마지막으로 바뀐 때, ConsoleActivity), 키바는 키캡 모양.
-  글꼴 = 시스템 monospace / D2Coding / JetBrains Mono(번들, OFL — `assets/licenses`). 외부 콘솔은 이 크기에서 PC 열 수에 맞게 줄인다.
+  외부 콘솔: PC 창 크기를 따라가지 않는다 — 폰은 설정 글꼴 크기의 폰 격자로 그리고, PC 각 행을 폰 폭에 맞게 다시 배치한다(`core/Reflow`: 폭을 넘는 행은 먼저 가장 긴 채움 문자 연속(공백·─ 등)을 줄여 구분선·상자를 폰 폭에 맞추고, 그래도 넘치면 줄바꿈, 색 유지, 커서 위치 매핑). PC 창은 그대로. 기록 스크롤 단위 = 폰 줄. 확대는 핀치로만, 원래 크기 버튼 = 1배. 화면: 어두운 그래파이트 테마(values/colors.xml 토큰, 강조색 1개), 세션 카드에 상태 점(실행 중 초록)과 최근 활동 시간(외부 콘솔 = 제목·폴더·화면이 마지막으로 바뀐 때, ConsoleActivity), 키바는 키캡 모양.
+  글꼴 = 시스템 monospace / D2Coding / JetBrains Mono(번들, OFL — `assets/licenses`). 외부 콘솔도 이 크기 그대로(폰 폭에 맞춰 줄바꿈).
 - 프로젝트 파일(호스트 ≥ 0.2.20): 시작 폴더 = `GET /api/sessions/{id}`의 현재 cwd, 그 위로는 올라가지 않는다(폰 UI 제한).
   탐색기: 경로 이동 바(상위 폴더로 바로 이동), 이름 검색, 정렬(이름/최근 수정/크기, 폴더 먼저, 기억), 종류별 아이콘, 상대 시간, 폴더·파일 개수, 길게 누르면 작업 시트(보기/다운로드/열기/PC 경로·이름 복사). 뷰어: 줄 번호, 터미널 글꼴, 이미지 핀치 확대.
   - `GET /api/files?path=<절대경로>` → `{path, entries:[{name, dir, size, modified}]}` (폴더 먼저, 이름순)
@@ -105,7 +105,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 
 ## 6. 외부 콘솔(보조 모드)
 - 열거: 프로세스 이름 `cmd.exe|powershell.exe|pwsh.exe` 중 부모가 위 셸이 아니고(최상위 셸), 호스트 세션의 자손이 아니며, pkshell 자신이 아닌 것. 그중 **사람이 띄운 것**(부모가 WindowsTerminal/OpenConsole/explorer/IDE 등 터미널 런처)이거나 **AI CLI 실행 중**(자손에 claude.exe→`agent:"claude"`, codex.exe→`agent:"gpt"`)인 것만 목록에 낸다 — MCP 서버·에이전트 도구 셸·네이티브 호스트 같은 백그라운드 셸 제외. `PKSHELL_EXTERNAL_ALL=1`이면 필터 없이 전부(QA용). 세션 JSON의 `agent`는 external에만 채워진다.
-- 콘솔 API 호출은 **헬퍼 자식 프로세스**에서: `psh console-info <pid...>` → stdout JSON `[{pid,title,cols,rows}]`; `psh console-reader <pid>` → `FreeConsole`→`AttachConsole(pid)`→`CONOUT$`/`CONIN$` 열고, stdout(파이프)에 길이접두 프레임(4바이트 LE 길이 + [2바이트 LE cols + 2바이트 LE rows] + VT 프레임 바이트) 출력. 서버는 콘솔 창 크기가 바뀌면 프레임보다 먼저 `{"type":"size"}`를 방송하고, 새 클라이언트에는 hello 직후·replay 전에 보낸다(외부 콘솔은 클라이언트 크기로 리사이즈하지 않으므로 Android는 이 열 수에 맞게 글꼴을 줄인다), stdin(파이프)으로 입력 바이트 수신(4바이트 LE 길이 + 바이트).
+- 콘솔 API 호출은 **헬퍼 자식 프로세스**에서: `psh console-info <pid...>` → stdout JSON `[{pid,title,cols,rows}]`; `psh console-reader <pid>` → `FreeConsole`→`AttachConsole(pid)`→`CONOUT$`/`CONIN$` 열고, stdout(파이프)에 길이접두 프레임(4바이트 LE 길이 + [2바이트 LE cols + 2바이트 LE rows] + VT 프레임 바이트) 출력. 서버는 콘솔 창 크기가 바뀌면 프레임보다 먼저 `{"type":"size"}`를 방송하고, 새 클라이언트에는 hello 직후·replay 전에 보낸다(외부 콘솔은 클라이언트 크기로 리사이즈하지 않으므로 Android는 PC 행을 폰 폭에 맞게 다시 배치한다), stdin(파이프)으로 입력 바이트 수신(4바이트 LE 길이 + 바이트).
 - 색 변환: Windows 속성 FG(B=1,G=2,R=4,I=8) → ANSI 인덱스 `(R?1:0)|(G?2:0)|(B?4:0)`, I면 90번대 아니면 30번대; BG 동일(40/100번대). `COMMON_LVB_UNDERSCORE`→`4`, `COMMON_LVB_REVERSE_VIDEO`→`7`.
 - 입력 변환: 출력 가능 문자→유니코드 KEY_EVENT(down+up); `\r`→VK_RETURN; `\x7f`/`\b`→VK_BACK; `\t`→VK_TAB; 단독 `\x1b`→VK_ESCAPE; `\x1b[A/B/C/D`→화살표; `\x1b[H/F`→Home/End; `\x1b[5~/6~`→PgUp/PgDn; `\x1b[3~`→Delete; 0x01~0x1a→Ctrl+문자(VK 'A'+n-1, LEFT_CTRL_PRESSED, uChar=제어문자).
 
