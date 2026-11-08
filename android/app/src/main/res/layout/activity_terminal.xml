@@ -9,7 +9,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/keybar_bg"
+        android:background="@drawable/bg_topbar"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="8dp"
@@ -29,8 +29,9 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="@color/keybar_text"
-                android:textStyle="bold" />
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
 
             <TextView
                 android:id="@+id/status"
@@ -39,7 +40,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="@string/status_connecting"
-                android:textColor="#A0A0A0"
+                android:textColor="@color/text_muted"
                 android:textSize="12sp" />
         </LinearLayout>
 
@@ -109,13 +110,18 @@
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/keybar_bg"
+        android:background="@drawable/bg_keybar"
         android:scrollbars="none">
 
+        <!-- Keycaps (bg_keycap), built in TerminalActivity.buildKeyBar -->
         <LinearLayout
             android:id="@+id/keyBar"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:orientation="horizontal" />
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:paddingStart="5dp"
+            android:paddingTop="7dp"
+            android:paddingEnd="5dp"
+            android:paddingBottom="5dp" />
     </HorizontalScrollView>
 </LinearLayout>

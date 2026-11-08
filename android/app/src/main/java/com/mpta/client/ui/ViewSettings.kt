@@ -40,12 +40,21 @@ enum class TerminalFont(val id: String, val label: String, @FontRes private val 
 
 /** "보기 설정" dialog: font size + font. Changes are saved at once and reported to [onChanged] for live preview. */
 object ViewSettingsDialog {
-    fun show(context: Context, onChanged: () -> Unit = {}) {
+    /** [note]: shown under the size (e.g. an external console caps the size to fit the PC window). */
+    fun show(context: Context, note: String? = null, onChanged: () -> Unit = {}) {
         val prefs = UiPrefs(context)
         val pad = (context.resources.displayMetrics.density * 20).toInt()
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, pad / 2, pad, 0)
+        }
+        fun addNote() {
+            if (note.isNullOrBlank()) return
+            box.addView(TextView(context).apply {
+                text = note
+                textSize = 12f
+                setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.text_muted))
+            })
         }
 
         val sizeLabel = TextView(context)
@@ -71,6 +80,7 @@ object ViewSettingsDialog {
             })
         }
         box.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addNote()
 
         box.addView(TextView(context).apply {
             text = context.getString(R.string.view_font)

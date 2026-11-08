@@ -600,6 +600,7 @@ public final class TerminalView extends View {
     public void setTextSize(int textSize) {
         mRenderer = new TerminalRenderer(textSize, mRenderer == null ? Typeface.MONOSPACE : mRenderer.mTypeface);
         updateSize();
+        invalidate(); // updateSize only redraws when the cell grid changed; a new size must always show at once
     }
 
     public void setTypeface(Typeface newTypeface) {

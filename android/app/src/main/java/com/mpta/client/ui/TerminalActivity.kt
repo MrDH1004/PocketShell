@@ -274,7 +274,10 @@ class TerminalActivity : AppCompatActivity() {
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
                 OPT_FILES -> openFiles()
-                OPT_VIEW -> ViewSettingsDialog.show(this) { applyViewSettings() }
+                OPT_VIEW -> {
+                    val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
+                    ViewSettingsDialog.show(this, note) { applyViewSettings() }
+                }
             }
             true
         }
@@ -593,14 +596,18 @@ class TerminalActivity : AppCompatActivity() {
             tv.text = label
             tv.gravity = Gravity.CENTER
             tv.setTextColor(ContextCompat.getColor(this, R.color.keybar_text))
-            tv.textSize = 14f
-            val pad = (resources.displayMetrics.density * 12).toInt()
-            tv.setPadding(pad, 0, pad, 0)
-            tv.minWidth = (resources.displayMetrics.density * 44).toInt()
+            tv.textSize = 13f
+            tv.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            val d = resources.displayMetrics.density
+            tv.setPadding((d * 12).toInt(), 0, (d * 12).toInt(), (d * 2).toInt()) // bottom = the keycap's lip
+            tv.minWidth = (d * 44).toInt()
             tv.isClickable = true
-            tv.setBackgroundResource(android.R.drawable.list_selector_background)
+            tv.setBackgroundResource(R.drawable.bg_keycap)
             tv.setOnClickListener { onClick() }
-            bar.addView(tv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT))
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)
+            lp.marginStart = (d * 3).toInt()
+            lp.marginEnd = (d * 3).toInt()
+            bar.addView(tv, lp)
             return tv
         }
         for (k in listOf(SpecialKey.ESC, SpecialKey.TAB, SpecialKey.ENTER)) keyButton(k.label) { sendSpecial(k) }
@@ -620,9 +627,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     private fun refreshToggles() {
-        val on = ContextCompat.getColor(this, R.color.keybar_active)
-        ctrlButton.setBackgroundColor(if (ctrlOn) on else 0)
-        altButton.setBackgroundColor(if (altOn) on else 0)
+        ctrlButton.setBackgroundResource(if (ctrlOn) R.drawable.bg_keycap_on else R.drawable.bg_keycap)
+        altButton.setBackgroundResource(if (altOn) R.drawable.bg_keycap_on else R.drawable.bg_keycap)
     }
 
     private fun sendSpecial(key: SpecialKey) {

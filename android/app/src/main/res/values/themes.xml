@@ -1,9 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Mpta" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">#3A6EA5</item>
+    <style name="Theme.Mpta" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorOnPrimary">@color/accent_on</item>
+        <item name="colorPrimaryContainer">@color/accent_container</item>
+        <item name="colorOnPrimaryContainer">@color/accent_on_container</item>
+        <item name="colorSecondary">@color/text_secondary</item>
+        <item name="colorSecondaryContainer">@color/ink_3</item>
+        <item name="colorOnSecondaryContainer">@color/text_secondary</item>
+        <item name="colorSurface">@color/ink_0</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <item name="colorSurfaceContainerLowest">@color/ink_0</item>
+        <item name="colorSurfaceContainerLow">@color/ink_1</item>
+        <item name="colorSurfaceContainer">@color/ink_1</item>
+        <item name="colorSurfaceContainerHigh">@color/ink_2</item>
+        <item name="colorSurfaceContainerHighest">@color/ink_3</item>
+        <item name="colorOutline">@color/hairline_strong</item>
+        <item name="colorOutlineVariant">@color/hairline</item>
+        <item name="colorControlHighlight">@color/ripple</item>
+        <item name="android:colorBackground">@color/ink_0</item>
+        <item name="android:windowBackground">@color/ink_0</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:statusBarColor">@color/ink_0</item>
+        <item name="android:navigationBarColor">@color/ink_0</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="toolbarStyle">@style/Widget.Mpta.Toolbar</item>
+        <item name="android:popupMenuStyle">@style/Widget.Mpta.PopupMenu</item>
+        <item name="popupMenuStyle">@style/Widget.Mpta.PopupMenu</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.Mpta.Dialog</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.Mpta.Dialog</item>
     </style>
+
     <style name="Theme.Mpta.Terminal" parent="Theme.Mpta">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@color/ink_1</item>
+        <item name="android:navigationBarColor">@color/ink_1</item>
+    </style>
+
+    <style name="Widget.Mpta.Toolbar" parent="Widget.Material3.Toolbar">
+        <item name="android:background">@drawable/bg_appbar</item>
+        <item name="titleTextAppearance">@style/TextAppearance.Mpta.Title</item>
+        <item name="titleTextColor">@color/text_primary</item>
+    </style>
+
+    <style name="TextAppearance.Mpta.Title" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textSize">20sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+
+    <style name="Widget.Mpta.PopupMenu" parent="Widget.Material3.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_popup</item>
+        <item name="android:popupElevation">8dp</item>
+    </style>
+
+    <style name="ThemeOverlay.Mpta.Dialog" parent="ThemeOverlay.Material3.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
     </style>
 </resources>

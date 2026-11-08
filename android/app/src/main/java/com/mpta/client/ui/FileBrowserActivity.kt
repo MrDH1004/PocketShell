@@ -96,10 +96,11 @@ class FileBrowserActivity : AppCompatActivity() {
         swipe = findViewById(R.id.swipe)
         swipe.setOnRefreshListener { load() }
 
-        adapter = object : ArrayAdapter<FileEntry>(this, android.R.layout.simple_list_item_2, android.R.id.text1) {
+        adapter = object : ArrayAdapter<FileEntry>(this, R.layout.item_file, android.R.id.text1) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val v = super.getView(position, convertView, parent)
                 val e = getItem(position) ?: return v
+                v.findViewById<android.widget.ImageView>(R.id.icon).setImageResource(if (e.dir) R.drawable.ic_folder else R.drawable.ic_file)
                 v.findViewById<TextView>(android.R.id.text1).text = if (e.dir) "${e.name}/" else e.name
                 v.findViewById<TextView>(android.R.id.text2).text = describe(e)
                 return v

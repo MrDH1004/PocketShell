@@ -1,14 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Session card: state dot (live / idle), title, detail, time. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="?attr/selectableItemBackground"
+    android:layout_marginStart="16dp"
+    android:layout_marginTop="4dp"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="4dp"
+    android:background="@drawable/bg_card"
     android:gravity="center_vertical"
+    android:minHeight="72dp"
     android:orientation="horizontal"
     android:paddingStart="16dp"
-    android:paddingTop="10dp"
+    android:paddingTop="12dp"
     android:paddingEnd="8dp"
-    android:paddingBottom="10dp">
+    android:paddingBottom="12dp">
+
+    <View
+        android:id="@+id/stateDot"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:layout_marginEnd="12dp"
+        android:background="@drawable/dot" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -19,6 +32,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
@@ -27,18 +41,24 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                android:textColor="@color/text_primary"
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:background="?attr/colorSecondaryContainer"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
+                android:background="@drawable/bg_badge"
+                android:paddingStart="8dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="2dp"
                 android:text="@string/external_badge"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
                 android:visibility="gone" />
         </LinearLayout>
 
@@ -46,25 +66,30 @@
             android:id="@+id/detail"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
             android:ellipsize="middle"
             android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
 
         <TextView
             android:id="@+id/time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodySmall" />
+            android:layout_marginTop="2dp"
+            android:fontFeatureSettings="tnum"
+            android:textColor="@color/text_muted"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <ImageButton
         android:id="@+id/newHere"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/new_terminal_here"
         android:src="@drawable/ic_new_terminal_here"
-        android:tint="?attr/colorOnSurface"
+        android:tint="@color/text_secondary"
         android:visibility="gone" />
 </LinearLayout>

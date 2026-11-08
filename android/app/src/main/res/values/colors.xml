@@ -1,7 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="launcher_bg">#1E2A38</color>
-    <color name="keybar_bg">#202020</color>
-    <color name="keybar_text">#E0E0E0</color>
-    <color name="keybar_active">#3A6EA5</color>
+
+    <!-- Graphite ramp, a hair cool (night terminal). Surfaces step up; depth comes from steps and hairlines. -->
+    <color name="ink_0">#0E1013</color>
+    <color name="ink_1">#15181D</color>
+    <color name="ink_2">#1B1F25</color>
+    <color name="ink_3">#232830</color>
+    <color name="ink_edge">#07080A</color>
+    <color name="hairline">#17FFFFFF</color>
+    <color name="hairline_strong">#24FFFFFF</color>
+
+    <color name="text_primary">#E7E9EC</color>
+    <color name="text_secondary">#A3A9B2</color>
+    <color name="text_muted">#6C737E</color>
+
+    <!-- One accent: the existing brand blue, lifted for dark surfaces. -->
+    <color name="accent">#7FA9D8</color>
+    <color name="accent_on">#0E1013</color>
+    <color name="accent_container">#1F3147</color>
+    <color name="accent_on_container">#D5E3F4</color>
+
+    <color name="live">#5CC48D</color>
+    <color name="ripple">#1FFFFFFF</color>
+
+    <color name="keybar_bg">@color/ink_1</color>
+    <color name="keybar_text">@color/text_primary</color>
+    <color name="keybar_active">@color/accent_container</color>
 </resources>

@@ -28,9 +28,13 @@
             android:id="@+id/hostUpdateBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="16dp"
+            android:background="@drawable/shape_card"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="12dp"
+            android:paddingStart="16dp"
             android:paddingEnd="8dp"
             android:visibility="gone">
 
@@ -73,5 +77,7 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:contentDescription="@string/new_session"
+        app:backgroundTint="@color/accent"
+        app:tint="@color/accent_on"
         app:srcCompat="@drawable/ic_add" />
 </FrameLayout>
