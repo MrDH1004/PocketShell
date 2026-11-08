@@ -501,8 +501,10 @@ class TerminalActivity : AppCompatActivity() {
     /** Decodes any image the picker returns (incl. HEIC/WebP) and re-encodes it as PNG, longest side ≤ MAX_SIDE. */
     private fun encodePng(uri: Uri): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw IOException("이미지를 열 수 없습니다")
+        // With inJustDecodeBounds decodeStream always returns null (only `bounds` is filled), so only a null
+        // stream means the image could not be opened.
+        val stream = contentResolver.openInputStream(uri) ?: throw IOException("이미지를 열 수 없습니다")
+        stream.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("지원하지 않는 이미지 형식입니다")
         val opts = BitmapFactory.Options().apply { inSampleSize = ImageSizing.sampleSize(bounds.outWidth, bounds.outHeight) }
         val decoded = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
