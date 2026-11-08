@@ -455,7 +455,7 @@ private class SessionAdapter(
                 v.findViewById<View>(R.id.stateDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(v.context, if (live) R.color.live else R.color.text_muted),
                 )
-                // External consoles: only what tells them apart (AI CLI + folder); their "last activity" is always now.
+                // External consoles: only what tells them apart (AI CLI + folder).
                 val detail = buildList {
                     when (s.agent) {
                         "claude" -> add("Claude")
@@ -466,8 +466,9 @@ private class SessionAdapter(
                 }.joinToString(" · ")
                 v.findViewById<TextView>(R.id.detail).text = detail
                 val time = v.findViewById<TextView>(R.id.time)
-                time.text = if (s.isExternal) "" else formatTime(s.lastActivity)
-                time.visibility = if (s.isExternal) View.GONE else View.VISIBLE
+                // External consoles: the host reports the last title/folder/screen change (older hosts: always now).
+                time.text = formatTime(s.lastActivity)
+                time.visibility = if (time.text.isNullOrBlank()) View.GONE else View.VISIBLE
                 val newHere = v.findViewById<View>(R.id.newHere)
                 newHere.visibility = if (s.isExternal) View.VISIBLE else View.GONE
                 newHere.setOnClickListener { onNewHere(s) }

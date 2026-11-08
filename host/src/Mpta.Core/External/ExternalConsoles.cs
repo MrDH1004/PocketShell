@@ -21,6 +21,7 @@ public sealed class ExternalConsoles : IDisposable
     private readonly ConcurrentDictionary<int, ExternalBridge> _bridges = new();
     /// <summary>Per console pid; outlives bridges so a phone reopening a console gets the earlier lines.</summary>
     private readonly ConcurrentDictionary<int, ConsoleScrollback> _scrollbacks = new();
+    private readonly ConsoleActivity _activity = new();
     private readonly object _cacheGate = new();
     private DateTime _cacheTime = DateTime.MinValue;
     private List<SessionDto> _cache = new();
@@ -194,16 +195,20 @@ public sealed class ExternalConsoles : IDisposable
             var cand = candidates.FirstOrDefault(c => c.Proc.Pid == info.Pid);
             if (cand == null) continue;
             var proc = cand.Proc;
+            var title = tabTitles.TryGetValue(info.Pid, out var tab) && !string.IsNullOrWhiteSpace(tab) ? tab : info.Title;
+            var cwd = ProcessCwd.TryGet(info.Pid) ?? "";
+            var started = TryStartTime(info.Pid) ?? "";
+            var screen = _scrollbacks.TryGetValue(info.Pid, out var sb) ? sb.LastChange : null;
             list.Add(new SessionDto
             {
                 Id = "ext-" + info.Pid,
                 Kind = "external",
-                Title = tabTitles.TryGetValue(info.Pid, out var tab) && !string.IsNullOrWhiteSpace(tab) ? tab : info.Title,
+                Title = title,
                 Shell = ShellKind(proc.Exe),
-                Cwd = ProcessCwd.TryGet(info.Pid) ?? "",
+                Cwd = cwd,
                 State = "running",
-                CreatedAt = TryStartTime(info.Pid) ?? "", // also the RecentExternals key: must be stable
-                LastActivity = now,
+                CreatedAt = started, // also the RecentExternals key: must be stable
+                LastActivity = _activity.Observe(info.Pid, title + "\n" + cwd, started, screen, now),
                 Cols = info.Cols,
                 Rows = info.Rows,
                 Pid = info.Pid,
@@ -215,6 +220,7 @@ public sealed class ExternalConsoles : IDisposable
             _cache = list;
             _cacheTime = DateTime.UtcNow;
         }
+        _activity.Prune(list.Where(s => s.Pid != null).Select(s => s.Pid!.Value).ToHashSet());
         WatchAgents(list);
         return list.Select(s => WithClients(s.Clone())).ToList();
     }

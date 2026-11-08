@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Mpta.Core.Util;
 
 namespace Mpta.Core.External;
 
@@ -22,6 +23,10 @@ public sealed partial class ConsoleScrollback
 
     public int Count { get { lock (_lock) return _lines.Count; } }
 
+    /// <summary>When the window content last changed (ISO UTC), null before the first frame.</summary>
+    public string? LastChange { get { lock (_lock) return _lastChange; } }
+    private string? _lastChange;
+
     /// <summary>Takes one VtFrame; returns how many lines scrolled into the scrollback (-1 if not a frame).</summary>
     public int Accept(byte[] vtFrame)
     {
@@ -29,6 +34,7 @@ public sealed partial class ConsoleScrollback
         if (rows == null) return -1;
         lock (_lock)
         {
+            if (_lastChange == null || !_window.SequenceEqual(rows, StringComparer.Ordinal)) _lastChange = Ids.IsoNow();
             int k = _window.Count == rows.Count ? ScrollShift(_window, rows) : 0;
             for (int i = 0; i < k; i++) _lines.AddLast(_window[i]);
             // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
