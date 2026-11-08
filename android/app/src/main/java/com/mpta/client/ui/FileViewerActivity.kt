@@ -96,10 +96,13 @@ class FileViewerActivity : AppCompatActivity() {
             return
         }
         val text = withContext(Dispatchers.Default) { FilePreview.decodeText(bytes) }
-        val pad = (resources.displayMetrics.density * 12).toInt()
+        val pad = (resources.displayMetrics.density * 16).toInt()
         val tv = TextView(this).apply {
-            typeface = Typeface.MONOSPACE
-            textSize = 12f
+            // Same font as the terminal (보기 설정), so code reads the same in both places.
+            typeface = TerminalFont.of(com.mpta.client.data.UiPrefs(this@FileViewerActivity).fontId).typeface(this@FileViewerActivity)
+            textSize = 13f
+            setLineSpacing(0f, 1.15f)
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@FileViewerActivity, R.color.text_primary))
             setTextIsSelectable(true)
             setPadding(pad, pad, pad, pad)
             this.text = text
@@ -124,6 +127,7 @@ class FileViewerActivity : AppCompatActivity() {
             return
         }
         val iv = ImageView(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             setImageBitmap(bitmap)
@@ -136,6 +140,9 @@ class FileViewerActivity : AppCompatActivity() {
         val pad = (resources.displayMetrics.density * 24).toInt()
         val tv = TextView(this).apply {
             this.text = text
+            textSize = 14f
+            setLineSpacing(0f, 1.15f)
+            setTextColor(androidx.core.content.ContextCompat.getColor(this@FileViewerActivity, R.color.text_secondary))
             setPadding(pad, pad, pad, pad)
         }
         body.removeAllViews()

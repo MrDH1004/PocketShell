@@ -657,6 +657,24 @@ public final class TerminalView extends View {
         mEmulator.sendMouseEvent(button, x, y, pressed);
     }
 
+    /**
+     * PocketShell: scroll by a finger distance handled outside this view (zoomed picture dragged past its edge).
+     * Same accumulation as onScroll; positive = towards newer lines.
+     */
+    public void scrollByFinger(float distanceY) {
+        if (mEmulator == null) return;
+        distanceY += mScrollRemainder;
+        int deltaRows = (int) (distanceY / mRenderer.mFontLineSpacing);
+        mScrollRemainder = distanceY - deltaRows * mRenderer.mFontLineSpacing;
+        if (deltaRows == 0) return;
+        MotionEvent e = MotionEvent.obtain(0, 0, MotionEvent.ACTION_MOVE, getWidth() / 2f, getHeight() / 2f, 0);
+        try {
+            doScroll(e, deltaRows);
+        } finally {
+            e.recycle();
+        }
+    }
+
     /** Perform a scroll, either from dragging the screen or by scrolling a mouse wheel. */
     void doScroll(MotionEvent event, int rowsDown) {
         // PocketShell: external consoles keep their own history outside the emulator (see onRemoteScroll).

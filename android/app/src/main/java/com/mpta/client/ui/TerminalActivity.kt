@@ -150,6 +150,7 @@ class TerminalActivity : AppCompatActivity() {
         statusView = findViewById(R.id.status)
         terminalView = findViewById(R.id.terminal)
         zoom = findViewById(R.id.zoom)
+        zoom.onOverscrollY = { terminalView.scrollByFinger(it) } // zoomed: dragging past the edge scrolls history
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId }
 
         session = RemoteTerminalSession(TRANSCRIPT_ROWS, sessionClient, object : RemoteTerminalSession.Transport {

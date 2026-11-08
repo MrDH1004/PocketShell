@@ -30,6 +30,12 @@ class ZoomPanLayout @JvmOverloads constructor(context: Context, attrs: Attribute
     /** Called after the zoom level changes (e.g. to show it). */
     var onZoomChanged: ((Float) -> Unit)? = null
 
+    /**
+     * Vertical drag beyond the zoomed picture's edge, in child pixels; positive = finger moving up (like
+     * GestureDetector's distanceY), i.e. towards newer lines.
+     */
+    var onOverscrollY: ((Float) -> Unit)? = null
+
     private val detector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(d: ScaleGestureDetector): Boolean {
             val next = (scale * d.scaleFactor).coerceIn(1f, MAX_SCALE)
@@ -97,8 +103,12 @@ class ZoomPanLayout @JvmOverloads constructor(context: Context, attrs: Attribute
             MotionEvent.ACTION_MOVE -> {
                 if (!detector.isInProgress && ev.pointerCount == 1 && scale > 1f) {
                     tx += ev.x - lastX
-                    ty += ev.y - lastY
-                    apply()
+                    val wanted = ty + (ev.y - lastY)
+                    ty = wanted
+                    apply() // clamps ty to the picture's edges
+                    // Past the top/bottom edge the drag scrolls the terminal (history), in content pixels.
+                    val over = wanted - ty
+                    if (over != 0f) onOverscrollY?.invoke(-over / scale)
                 }
                 lastX = ev.x; lastY = ev.y
             }

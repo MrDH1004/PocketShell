@@ -95,11 +95,11 @@ class PairingActivity : AppCompatActivity() {
                     for (h in hosts) {
                         val key = addressKey(h.hosts.first(), h.port)
                         discovered[key] = h
-                        val b = Button(this@PairingActivity)
-                        b.isAllCaps = false
-                        b.text = "${h.name}\n$key · ${h.fpShort}"
-                        b.setOnClickListener { hostAddress.setText(key) }
-                        discoveredList.addView(b)
+                        val row = layoutInflater.inflate(R.layout.item_discovered_pc, discoveredList, false)
+                        row.findViewById<android.widget.TextView>(R.id.pcName).text = h.name
+                        row.findViewById<android.widget.TextView>(R.id.pcAddress).text = "$key · ${h.fpShort}"
+                        row.setOnClickListener { hostAddress.setText(key) }
+                        discoveredList.addView(row)
                     }
                 }
             } catch (e: IOException) {
