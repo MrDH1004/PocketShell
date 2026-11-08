@@ -66,6 +66,36 @@ class ReflowTest {
     }
 
     @Test
+    fun pcWordWrappedRowsJoinAndRewrapWithHangingIndent() {
+        val a = "- aaaa bbbb cccc dd"
+        val b = "  eeee ffff"
+        assertEquals(true, Reflow.joins(Reflow.info(a), Reflow.info(b), 20))
+        assertEquals(false, Reflow.joins(Reflow.info(a), Reflow.info("- new item"), 20)) // a new list item
+        assertEquals(false, Reflow.joins(Reflow.info("short line"), Reflow.info(b), 20))  // not wrapped
+        assertEquals(false, Reflow.joins(Reflow.info("│ aaaa bbbb cccc  │"), Reflow.info("│ eeee"), 20)) // box
+        val r = Reflow.layoutGroup(listOf(a, b), 12)
+        assertEquals(listOf("- aaaa bbbb", "  cccc dd", "  eeee ffff"), r.lines.map(::strip))
+        // A path cut at the window edge continues without a space.
+        val p = Reflow.layoutGroup(listOf("Read src/main/java/com/x", "  /Reflow.kt"), 40)
+        assertEquals(listOf("Read src/main/java/com/x/Reflow.kt"), p.lines.map(::strip))
+    }
+
+    @Test
+    fun historyJoinsWrappedRowsWhenPcWidthKnown() {
+        val h = ConsoleHistory()
+        h.pcCols = 20
+        val sb = StringBuilder("$esc[?25l$esc[H")
+        listOf("- aaaa bbbb cccc dd", "  eeee ffff", "> x").forEachIndexed { i, r ->
+            sb.append("$esc[${i + 1};1H").append(r).append("$esc[0m$esc[K")
+        }
+        h.accept(sb.toString().toByteArray())
+        val out = String(h.render(4, 0, 12), Charsets.UTF_8)
+        val rows = Regex("$esc\\[(\\d+);1H(.*?)$esc\\[0m$esc\\[K").findAll(out).map { strip(it.groupValues[2]) }.toList()
+        assertEquals(listOf("- aaaa bbbb", "  cccc dd", "  eeee ffff", "> x"), rows)
+        assertEquals(0, h.maxScroll(4, 12))
+    }
+
+    @Test
     fun fitColsAvoidsStrayWrappedCharacters() {
         assertEquals(53, Reflow.fitCols(50, 53))  // fits: no change
         assertEquals(56, Reflow.fitCols(56, 53))  // a bit wider: shrink so the row stays on one line

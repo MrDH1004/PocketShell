@@ -400,6 +400,7 @@ class TerminalActivity : AppCompatActivity() {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                         consoleRows = message.rows
                         consoleCols = message.cols
+                        history.pcCols = message.cols
                         fitExternal()
                         drawnRows = -1 // new PC size: lay the rows out again
                         redrawIfRowsChanged()

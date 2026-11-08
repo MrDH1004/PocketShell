@@ -60,32 +60,66 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         return history.size + bottomInWindow
     }
 
+    /**
+     * PC window width. When known, rows the PC program word-wrapped at that width are joined back into one logical
+     * line (Reflow.joins) before being wrapped at the phone width.
+     */
+    var pcCols: Int = 0
+        set(value) {
+            if (field != value) countCache.clear()
+            field = value
+        }
+
     /** Largest useful [scroll] for [viewRows] (0 = live view). [cols] > 0: re-flowed to that width (phone lines). */
     fun maxScroll(viewRows: Int, cols: Int = 0): Int {
         if (cols <= 0) return maxOf(0, liveBottom() - (viewRows - 1))
         if (window.isEmpty()) return 0
-        var total = 0
-        for (idx in 0..liveBottom()) total += count(line(idx), cols)
-        return maxOf(0, total - viewRows)
+        return maxOf(0, countRange(0, liveBottom(), cols) - viewRows)
     }
 
     /** Phone lines the last [n] history lines take at [cols] (to keep a scrolled-back view in place). */
     fun wrappedCount(n: Int, cols: Int): Int {
         if (cols <= 0) return n
+        return countRange(maxOf(0, history.size - n), history.size - 1, cols)
+    }
+
+    /** Phone lines rows [from]..[to] take, joined rows counted once per group (groups cut at [from]). */
+    private fun countRange(from: Int, to: Int, cols: Int): Int {
         var total = 0
-        for (idx in maxOf(0, history.size - n) until history.size) total += count(history[idx], cols)
+        var idx = to
+        while (idx >= from) {
+            val s = maxOf(groupStart(idx), from)
+            total += count(s, idx, cols)
+            idx = s - 1
+        }
         return total
     }
 
     private val countCache = HashMap<String, Int>()
     private var countCols = 0
 
-    private fun count(body: String, cols: Int): Int {
+    private fun count(from: Int, to: Int, cols: Int): Int {
         if (cols != countCols || countCache.size > 8000) {
             countCache.clear()
             countCols = cols
         }
-        return countCache.getOrPut(body) { Reflow.lineCount(body, cols) }
+        val bodies = (from..to).map(::line)
+        return countCache.getOrPut(bodies.joinToString("\n")) { Reflow.layoutGroup(bodies, cols).lines.size }
+    }
+
+    private val infoCache = HashMap<String, Reflow.RowInfo>()
+
+    private fun info(body: String): Reflow.RowInfo {
+        if (infoCache.size > 8000) infoCache.clear()
+        return infoCache.getOrPut(body) { Reflow.info(body) }
+    }
+
+    /** First row of the logical line (joined PC rows) that row [idx] belongs to. */
+    private fun groupStart(idx: Int): Int {
+        if (pcCols <= 0) return idx
+        var s = idx
+        while (s > 0 && idx - s < MAX_GROUP && Reflow.joins(info(line(s - 1)), info(line(s)), pcCols)) s--
+        return s
     }
 
     /**
@@ -99,9 +133,12 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         var cursorFromBottom = -1
         var cursorCol = 0
         var idx = if (window.isEmpty()) -1 else liveBottom()
+        val cursorIdx = if (c != null) history.size + c.first - 1 else -1
         while (idx >= 0 && lines.size < need) {
-            val cc = if (c != null && idx == history.size + c.first - 1) c.second else 0
-            val r = Reflow.layout(line(idx), cols, cc)
+            val s = groupStart(idx)
+            val cr = if (cursorIdx in s..idx) cursorIdx - s else -1
+            val r = Reflow.layoutGroup((s..idx).map(::line), cols, cr, if (cr >= 0) c!!.second else 0)
+            idx = s
             for (k in r.lines.indices.reversed()) {
                 if (k == r.cursorLine) {
                     cursorFromBottom = lines.size
@@ -152,6 +189,7 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
 
     companion object {
         private const val START = "\u001b[?25l\u001b[H"
+        private const val MAX_GROUP = 60
         private val ROW = Regex("\u001b\\[(\\d+);1H(.*?)\u001b\\[0m\u001b\\[K")
         private val CURSOR = Regex("\u001b\\[(\\d+);(\\d+)H\u001b\\[\\?25h$")
 
