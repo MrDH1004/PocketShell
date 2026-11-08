@@ -53,7 +53,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - host 세션 셸 환경에서 CLAUDECODE / CLAUDE_CODE_* / CLAUDE_PID / CLAUDE_EFFORT / AI_AGENT 제거(호스트가 Claude Code 안에서 시작돼도 셸 안 claude가 child session으로 돌지 않게 — 그러면 대화 기록 저장이 꺼져 --continue 불가).
 - host 세션에서 도는 AI CLI를 20초마다와 종료 시 meta.agent에 기록 → 업데이트·재시작으로 끝난 세션을 resume하면 `claude --continue` / `codex resume --last` 입력.
 - 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
-- 폰 터미널 상단: 원래 크기로 맞춤 버튼 + ⋮ 메뉴(프로젝트 파일 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다.
+- 폰 터미널 상단: 연결 점(초록 = 연결됨) + 제목, 원래 크기로 맞춤 버튼 + ⋮ 메뉴(연결 상태·크기 정보 / 프로젝트 파일 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다.
   글꼴 크기 6~32sp(기본 12). 핀치 = 갤러리처럼 화면 확대(1~5배, 글꼴·PC 크기는 그대로), 확대 중 한 손가락으로 이동, 원래 크기 버튼으로 1배.
   외부 콘솔: 보기 설정에서 크기를 바꾸면 PC 창 크기는 그대로 두고 설정 크기만큼 화면을 확대(왼쪽 아래 기준, 한 손가락 이동). 원래 크기 버튼 = PC 창 전체. 화면: 어두운 그래파이트 테마(values/colors.xml 토큰, 강조색 1개), 세션 카드에 상태 점(실행 중 초록), 키바는 키캡 모양.
   글꼴 = 시스템 monospace / D2Coding / JetBrains Mono(번들, OFL — `assets/licenses`). 외부 콘솔은 이 크기에서 PC 열 수에 맞게 줄인다.

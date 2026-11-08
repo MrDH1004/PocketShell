@@ -21,6 +21,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -284,8 +285,12 @@ class TerminalActivity : AppCompatActivity() {
     /** ⋮ top-bar menu: project files, view settings (fit to screen is its own top-bar button). */
     private fun showOptions(anchor: View) {
         val menu = android.widget.PopupMenu(this, anchor)
-        menu.menu.add(0, OPT_FILES, 0, R.string.files_title)
-        menu.menu.add(0, OPT_VIEW, 1, R.string.view_settings)
+        // Connection + size info (was the title bar's second line), one read-only line per part.
+        statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
+            menu.menu.add(1, Menu.NONE, i, part).isEnabled = false
+        }
+        menu.menu.add(0, OPT_FILES, 100, R.string.files_title)
+        menu.menu.add(0, OPT_VIEW, 101, R.string.view_settings)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
                 OPT_FILES -> openFiles()
@@ -601,8 +606,13 @@ class TerminalActivity : AppCompatActivity() {
         terminalView.resetImeLine()
     }
 
+    /** Status text is shown in the ⋮ menu; the title bar only shows a dot (green = connected). */
     private fun setStatus(text: String) {
         statusView.text = text
+        val live = text.startsWith("연결됨")
+        findViewById<View>(R.id.connDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
+            ContextCompat.getColor(this, if (live) R.color.live else R.color.text_muted),
+        )
     }
 
     // ---------------------------------------------------------------- key bar
