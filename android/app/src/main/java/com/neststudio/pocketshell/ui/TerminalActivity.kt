@@ -10,6 +10,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -39,6 +40,7 @@ import com.neststudio.pocketshell.R
 import com.neststudio.pocketshell.core.ConsoleHistory
 import com.neststudio.pocketshell.core.ImageSizing
 import com.neststudio.pocketshell.core.KeyMapper
+import com.neststudio.pocketshell.core.Reflow
 import com.neststudio.pocketshell.core.ServerMessage
 import com.neststudio.pocketshell.core.SessionInfo
 import com.neststudio.pocketshell.core.SpecialKey
@@ -289,16 +291,53 @@ class TerminalActivity : AppCompatActivity() {
      * does not mirror it: its rows are re-flowed to the phone's columns (ConsoleHistory/Reflow, DESIGN §8).
      */
     private fun refit() {
-        applyTextSize(spToPx(fontSizeSp))
+        if (sessionKind == SessionInfo.KIND_EXTERNAL) fitExternal() else applyTextSize(spToPx(fontSizeSp))
         scroll = 0
         drawnRows = -1
         redrawIfRowsChanged()
     }
 
+    /** External console: the column count rows are laid out at (Reflow.fitCols), 0 = the view's columns. */
+    private var reflowCols = 0
+    /** View width [fitExternal] measured for (re-measured when it changes, e.g. rotation). */
+    private var fittedWidth = 0
+
+    private fun layoutCols(): Int = if (reflowCols in 1..viewCols) reflowCols else viewCols
+
+    /**
+     * External console font: the user's size, shrunk a little (Reflow.MAX_SHRINK at most) when that makes full PC
+     * rows split into whole phone lines instead of leaving a few stray characters on an extra line. Columns are
+     * measured the same way as TerminalRenderer: floor(width / width of "X").
+     */
+    private fun fitExternal() {
+        val userPx = spToPx(fontSizeSp)
+        val width = terminalView.width
+        if (width <= 0 || consoleCols <= 0) {
+            reflowCols = 0
+            applyTextSize(userPx)
+            return
+        }
+        fittedWidth = width
+        val face = typeface
+        val paint = Paint().apply { typeface = face; isAntiAlias = true }
+        fun colsAt(px: Int): Int {
+            paint.textSize = px.toFloat()
+            return (width / paint.measureText("X")).toInt()
+        }
+        val target = Reflow.fitCols(consoleCols, colsAt(userPx))
+        var px = userPx
+        while (px > MIN_TEXT_PX && colsAt(px) < target) px--
+        reflowCols = target
+        if (px != textPx) {
+            applyTextSize(px)
+            drawnRows = -1
+        }
+    }
+
     /** Draws (history + window) for the current phone rows and scroll position (external consoles). */
     private fun drawExternal() {
         if (!history.hasFrame) return
-        val out = history.render(viewRows, scroll, viewCols)
+        val out = history.render(viewRows, scroll, layoutCols())
         session.appendRemoteOutput(out, 0, out.size)
         updateExternalStatus()
     }
@@ -319,7 +358,10 @@ class TerminalActivity : AppCompatActivity() {
 
     private fun onViewResized(cols: Int, rows: Int) {
         // View size changed (keyboard shown/hidden, rotation, font): re-flow an external console to the new grid.
-        if (sessionKind == SessionInfo.KIND_EXTERNAL) main.post { redrawIfRowsChanged() }
+        if (sessionKind == SessionInfo.KIND_EXTERNAL) main.post {
+            if (terminalView.width != fittedWidth && consoleCols > 0) fitExternal() // width changed (rotation)
+            redrawIfRowsChanged()
+        }
         val first = viewCols == 0
         viewCols = cols
         viewRows = rows
@@ -340,7 +382,7 @@ class TerminalActivity : AppCompatActivity() {
             if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                 val shifted = history.accept(bytes)
                 if (shifted >= 0) {
-                    if (scroll > 0) scroll += history.wrappedCount(shifted, viewCols) // keep the lines the user is reading in place
+                    if (scroll > 0) scroll += history.wrappedCount(shifted, layoutCols()) // keep the lines the user is reading in place
                     drawnRows = viewCols * 10_000 + viewRows
                     drawExternal()
                     return
@@ -358,6 +400,7 @@ class TerminalActivity : AppCompatActivity() {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
                         consoleRows = message.rows
                         consoleCols = message.cols
+                        fitExternal()
                         drawnRows = -1 // new PC size: lay the rows out again
                         redrawIfRowsChanged()
                     }
@@ -692,7 +735,7 @@ class TerminalActivity : AppCompatActivity() {
 
         override fun onRemoteScroll(rowsDown: Int): Boolean {
             if (sessionKind != SessionInfo.KIND_EXTERNAL || !history.hasFrame) return false
-            val next = (scroll - rowsDown).coerceIn(0, history.maxScroll(viewRows, viewCols))
+            val next = (scroll - rowsDown).coerceIn(0, history.maxScroll(viewRows, layoutCols()))
             if (next != scroll) {
                 scroll = next
                 drawExternal()
@@ -747,6 +790,7 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val MIN_TEXT_PX = 8
         private const val TAG = "pkshell"
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024

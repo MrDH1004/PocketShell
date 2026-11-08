@@ -64,4 +64,14 @@ class ReflowTest {
         assertEquals(0, h.maxScroll(5, 10))
         assertEquals(1, h.maxScroll(3, 10))
     }
+
+    @Test
+    fun fitColsAvoidsStrayWrappedCharacters() {
+        assertEquals(53, Reflow.fitCols(50, 53))  // fits: no change
+        assertEquals(56, Reflow.fitCols(56, 53))  // a bit wider: shrink so the row stays on one line
+        assertEquals(53, Reflow.fitCols(80, 53))  // 1.5x: shrinking that much is too small, wrap instead
+        assertEquals(61, Reflow.fitCols(240, 53)) // 4 lines of up to 61 instead of 4 full + 28 stray
+        // A full row of Korean (wide) text at 61 columns stays on 4 lines.
+        assertEquals(4, Reflow.lineCount("가".repeat(120), 61))
+    }
 }

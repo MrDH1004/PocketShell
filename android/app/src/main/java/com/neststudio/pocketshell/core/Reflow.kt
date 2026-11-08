@@ -33,6 +33,24 @@ object Reflow {
         return wrap(cells, cols)
     }
 
+    /** Most the font is shrunk (as a column ratio) to avoid stray wrapped characters, see [fitCols]. */
+    const val MAX_SHRINK = 1.25
+
+    /**
+     * Columns to lay an external console out at. A full PC row of [pcCols] wraps into several phone lines and the
+     * last one is often just a few stray characters ("ps" alone on a line). When a slightly smaller font (at most
+     * [MAX_SHRINK] times the columns) makes the PC width an exact multiple of the phone width, full rows split into
+     * whole lines: that column count is returned. Otherwise (or when the PC row already fits) [phoneCols].
+     */
+    fun fitCols(pcCols: Int, phoneCols: Int): Int {
+        if (pcCols <= phoneCols || phoneCols <= 0) return phoneCols
+        val lines = pcCols / phoneCols
+        // +1 per line when it wraps more than once: a wide char that would cross the edge moves to the next line,
+        // and that lost cell must not push the row onto one more line.
+        val target = (pcCols + lines - 1) / lines + if (lines >= 2) 1 else 0
+        return if (target <= phoneCols * MAX_SHRINK) target else phoneCols
+    }
+
     /** Number of phone lines [body] takes at [cols]. */
     fun lineCount(body: String, cols: Int): Int = layout(body, cols).lines.size
 
