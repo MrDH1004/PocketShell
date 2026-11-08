@@ -34,6 +34,7 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.EdgeEffect;
 import android.widget.Scroller;
 
 import androidx.annotation.Nullable;
@@ -84,6 +85,15 @@ public final class TerminalView extends View {
 
     /** What was left in from scrolling movement. */
     float mScrollRemainder;
+
+    /**
+     * PocketShell: smooth scrolling of a client-scrolled (external console) history. The client moves whole rows;
+     * the part of a row in between is drawn as a pixel offset (content shifted down by this much, 0 at rest), so
+     * dragging and flinging move pixel by pixel. Edges stretch/glow.
+     */
+    float mRemoteOffset;
+    private EdgeEffect mEdgeTop, mEdgeBottom;
+    private boolean mRemoteFling;
 
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
@@ -144,6 +154,10 @@ public final class TerminalView extends View {
             @Override
             public boolean onUp(MotionEvent event) {
                 mScrollRemainder = 0.0f;
+                if (isRemoteScroll()) {
+                    releaseEdges();
+                    post(() -> { if (mScroller.isFinished()) settleRemote(); }); // after a fling had its chance to start
+                }
                 if (mEmulator != null && mEmulator.isMouseTrackingActive() && !event.isFromSource(InputDevice.SOURCE_MOUSE) && !isSelectingText() && !scrolledWithFinger) {
                     // Quick event processing when mouse tracking is active - do not wait for check of double tapping
                     // for zooming.
@@ -179,6 +193,12 @@ public final class TerminalView extends View {
                     sendMouseEventCode(e, TerminalEmulator.MOUSE_LEFT_BUTTON_MOVED, true);
                 } else {
                     scrolledWithFinger = true;
+                    if (isRemoteScroll()) {
+                        mScroller.forceFinished(true);
+                        mRemoteFling = false;
+                        remoteScrollPx(distanceY, true);
+                        return true;
+                    }
                     distanceY += mScrollRemainder;
                     int deltaRows = (int) (distanceY / mRenderer.mFontLineSpacing);
                     mScrollRemainder = distanceY - deltaRows * mRenderer.mFontLineSpacing;
@@ -205,12 +225,14 @@ public final class TerminalView extends View {
                 // it). Fling relative to the start in both directions, like mouse tracking: the emulator transcript
                 // (mTopRow, its bounds) has nothing to do with that history, which made a downward fling jump far
                 // back and an upward one do nothing.
-                final boolean remote = mClient != null && mClient.onRemoteScroll(0);
-                final boolean mouseTrackingAtStartOfFling = remote || mEmulator.isMouseTrackingActive();
+                if (isRemoteScroll()) {
+                    startRemoteFling(velocityY);
+                    return true;
+                }
+                final boolean remote = false;
+                final boolean mouseTrackingAtStartOfFling = mEmulator.isMouseTrackingActive();
                 float SCALE = 0.25f;
-                if (remote) {
-                    mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows * 3, mEmulator.mRows * 3);
-                } else if (mouseTrackingAtStartOfFling) {
+                if (mouseTrackingAtStartOfFling) {
                     mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
                 } else {
                     mScroller.fling(0, mTopRow, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.getScreen().getActiveTranscriptRows(), 0);
@@ -670,6 +692,10 @@ public final class TerminalView extends View {
      */
     public void scrollByFinger(float distanceY) {
         if (mEmulator == null) return;
+        if (isRemoteScroll()) {
+            remoteScrollPx(distanceY, false);
+            return;
+        }
         distanceY += mScrollRemainder;
         int deltaRows = (int) (distanceY / mRenderer.mFontLineSpacing);
         mScrollRemainder = distanceY - deltaRows * mRenderer.mFontLineSpacing;
@@ -679,6 +705,119 @@ public final class TerminalView extends View {
             doScroll(e, deltaRows);
         } finally {
             e.recycle();
+        }
+    }
+
+    private boolean isRemoteScroll() {
+        return mClient != null && mEmulator != null && mClient.onRemoteScroll(0);
+    }
+
+    /**
+     * Moves the client history by {@code dy} pixels (positive = towards newer lines, like a scroll distance). Whole
+     * rows go to the client, the rest stays in {@link #mRemoteOffset}. Returns false when an edge stopped it.
+     */
+    private boolean remoteScrollPx(float dy, boolean pull) {
+        float line = mRenderer.mFontLineSpacing;
+        float off = mRemoteOffset - dy;
+        boolean blocked = false;
+        while (off >= line) {
+            if (!mClient.canRemoteScroll(-1)) { off = 0; blocked = true; break; }
+            mClient.onRemoteScroll(-1);
+            off -= line;
+        }
+        while (off < 0) {
+            if (!mClient.canRemoteScroll(1)) { off = 0; blocked = true; break; }
+            mClient.onRemoteScroll(1);
+            off += line;
+        }
+        // Content shifted down by off needs an older row above it; at the oldest row stay on the grid.
+        if (off > 0 && !mClient.canRemoteScroll(-1)) { off = 0; blocked = true; }
+        mRemoteOffset = off;
+        if (blocked && pull && getHeight() > 0) {
+            EdgeEffect edge = dy < 0 ? edgeTop() : edgeBottom();
+            edge.onPull(Math.abs(dy) / getHeight());
+        }
+        invalidate();
+        return !blocked;
+    }
+
+    private EdgeEffect edgeTop() {
+        if (mEdgeTop == null) mEdgeTop = new EdgeEffect(getContext());
+        return mEdgeTop;
+    }
+
+    private EdgeEffect edgeBottom() {
+        if (mEdgeBottom == null) mEdgeBottom = new EdgeEffect(getContext());
+        return mEdgeBottom;
+    }
+
+    private void releaseEdges() {
+        if (mEdgeTop != null) mEdgeTop.onRelease();
+        if (mEdgeBottom != null) mEdgeBottom.onRelease();
+        invalidate();
+    }
+
+    /** Pixel fling over the client history: same physics both ways, bounces at an edge. */
+    private void startRemoteFling(float velocityY) {
+        mScroller.fling(0, 0, 0, -(int) velocityY, 0, 0, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2);
+        mRemoteFling = true;
+        postOnAnimation(new Runnable() {
+            private int mLastY = 0;
+
+            @Override
+            public void run() {
+                if (!mRemoteFling) return;
+                if (mScroller.isFinished() || !isRemoteScroll()) { mRemoteFling = false; settleRemote(); return; }
+                boolean more = mScroller.computeScrollOffset();
+                int newY = mScroller.getCurrY();
+                int dy = newY - mLastY;
+                mLastY = newY;
+                if (!remoteScrollPx(dy, false)) {
+                    EdgeEffect edge = dy < 0 ? edgeTop() : edgeBottom();
+                    edge.onAbsorb((int) Math.abs(mScroller.getCurrVelocity()));
+                    mScroller.forceFinished(true);
+                    mRemoteFling = false;
+                    invalidate();
+                    return;
+                }
+                if (more) postOnAnimation(this); else { mRemoteFling = false; settleRemote(); }
+            }
+        });
+    }
+
+    /** Glides a partial row offset onto the row grid (the nearer row). */
+    private void settleRemote() {
+        if (mRemoteOffset == 0 || mRemoteFling) return;
+        float line = mRenderer.mFontLineSpacing;
+        final float target = mRemoteOffset < line / 2 ? mRemoteOffset : mRemoteOffset - line; // + = towards newer
+        final long start = android.os.SystemClock.uptimeMillis();
+        postOnAnimation(new Runnable() {
+            private float mDone = 0;
+
+            @Override
+            public void run() {
+                if (mRemoteFling || !mScroller.isFinished()) return; // a new gesture took over
+                float t = Math.min(1f, (android.os.SystemClock.uptimeMillis() - start) / 160f);
+                float eased = 1f - (1f - t) * (1f - t) * (1f - t);
+                float now = target * eased;
+                remoteScrollPx(now - mDone, false);
+                mDone = now;
+                if (t < 1f) postOnAnimation(this);
+                else if (Math.abs(mRemoteOffset) < 0.5f || Math.abs(mRemoteOffset - line) < 0.5f) {
+                    mRemoteOffset = 0;
+                    invalidate();
+                }
+            }
+        });
+    }
+
+    /** PocketShell: drops a partial-row scroll offset (the client jumped, e.g. back to the live view). */
+    public void resetRemoteOffset() {
+        mScroller.forceFinished(true);
+        mRemoteFling = false;
+        if (mRemoteOffset != 0) {
+            mRemoteOffset = 0;
+            invalidate();
         }
     }
 
@@ -1142,11 +1281,36 @@ public final class TerminalView extends View {
                 mTextSelectionCursorController.getSelectors(sel);
             }
 
+            boolean shifted = mRemoteOffset != 0;
+            if (shifted) {
+                canvas.save();
+                canvas.translate(0, mRemoteOffset);
+            }
             mRenderer.render(mEmulator, canvas, mTopRow, sel[0], sel[1], sel[2], sel[3]);
+            if (shifted) canvas.restore();
+            drawEdges(canvas);
 
             // render the text selection handles
             renderTextSelection();
         }
+    }
+
+    private void drawEdges(Canvas canvas) {
+        boolean more = false;
+        int w = getWidth(), h = getHeight();
+        if (mEdgeTop != null && !mEdgeTop.isFinished()) {
+            mEdgeTop.setSize(w, h);
+            more |= mEdgeTop.draw(canvas);
+        }
+        if (mEdgeBottom != null && !mEdgeBottom.isFinished()) {
+            int save = canvas.save();
+            canvas.translate(w, h);
+            canvas.rotate(180);
+            mEdgeBottom.setSize(w, h);
+            more |= mEdgeBottom.draw(canvas);
+            canvas.restoreToCount(save);
+        }
+        if (more) postInvalidateOnAnimation();
     }
 
     public RemoteTerminalSession getCurrentSession() {

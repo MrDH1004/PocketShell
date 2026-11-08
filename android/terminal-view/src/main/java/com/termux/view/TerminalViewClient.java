@@ -36,6 +36,11 @@ public interface TerminalViewClient {
         return false;
     }
 
+    /** PocketShell: whether {@link #onRemoteScroll} can move {@code rowsDown} (sign only) further, for edge effects. */
+    default boolean canRemoteScroll(int rowsDown) {
+        return false;
+    }
+
     boolean shouldBackButtonBeMappedToEscape();
 
     boolean shouldEnforceCharBasedInput();

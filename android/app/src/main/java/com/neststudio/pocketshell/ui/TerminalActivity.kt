@@ -147,6 +147,7 @@ class TerminalActivity : AppCompatActivity() {
             override fun sendInput(data: ByteArray) {
                 if (scroll > 0) { // typing returns to the live view
                     scroll = 0
+                    terminalView.resetRemoteOffset()
                     drawExternal()
                 }
                 connection?.sendInput(data)
@@ -293,6 +294,7 @@ class TerminalActivity : AppCompatActivity() {
     private fun refit() {
         if (sessionKind == SessionInfo.KIND_EXTERNAL) fitExternal() else applyTextSize(spToPx(fontSizeSp))
         scroll = 0
+        terminalView.resetRemoteOffset()
         drawnRows = -1
         redrawIfRowsChanged()
     }
@@ -743,6 +745,9 @@ class TerminalActivity : AppCompatActivity() {
             }
             return true
         }
+
+        override fun canRemoteScroll(rowsDown: Int): Boolean =
+            if (rowsDown < 0) scroll < history.maxScroll(viewRows, layoutCols()) else scroll > 0
 
         override fun onSingleTapUp(e: MotionEvent?) {
             terminalView.requestFocus()

@@ -37,6 +37,7 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         while (history.size > maxLines) history.removeFirst()
         window = next.asList()
         cursor = CURSOR.find(text)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
+        version++
         return shifted
     }
 
@@ -44,12 +45,14 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
     fun replaceHistory(lines: List<String>) {
         history.clear()
         lines.takeLast(maxLines).forEach { history.addLast(it) }
+        version++
     }
 
     fun clear() {
         history.clear()
         window = emptyList()
         cursor = null
+        version++
     }
 
     /** Index (0-based, in history + window) of the last line worth showing at the bottom: content or cursor. */
@@ -66,15 +69,28 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
      */
     var pcCols: Int = 0
         set(value) {
-            if (field != value) countCache.clear()
+            if (field != value) {
+                countCache.clear()
+                version++
+            }
             field = value
         }
+
+    /** Bumped on every content change; keys the [maxScroll] cache. */
+    private var version = 0
+    private var maxKey: Triple<Int, Int, Int>? = null
+    private var maxValue = 0
 
     /** Largest useful [scroll] for [viewRows] (0 = live view). [cols] > 0: re-flowed to that width (phone lines). */
     fun maxScroll(viewRows: Int, cols: Int = 0): Int {
         if (cols <= 0) return maxOf(0, liveBottom() - (viewRows - 1))
         if (window.isEmpty()) return 0
-        return maxOf(0, countRange(0, liveBottom(), cols) - viewRows)
+        val key = Triple(version, viewRows, cols)
+        if (key != maxKey) { // asked per scrolled row while flinging: count once per frame/size
+            maxValue = maxOf(0, countRange(0, liveBottom(), cols) - viewRows)
+            maxKey = key
+        }
+        return maxValue
     }
 
     /** Phone lines the last [n] history lines take at [cols] (to keep a scrolled-back view in place). */
