@@ -13,7 +13,7 @@
 
     <color name="text_primary">#E7E9EC</color>
     <color name="text_secondary">#A3A9B2</color>
-    <color name="text_muted">#6C737E</color>
+    <color name="text_muted">#828994</color>
 
     <!-- One accent: the existing brand blue, lifted for dark surfaces. -->
     <color name="accent">#7FA9D8</color>

@@ -400,7 +400,9 @@ class FileBrowserActivity : AppCompatActivity() {
 
     private fun showError(title: String, reason: String) {
         if (isFinishing) return
-        AlertDialog.Builder(this).setTitle(title).setMessage(reason).setPositiveButton(R.string.confirm, null).show()
+        AlertDialog.Builder(this).setTitle(title)
+            .setMessage(getString(R.string.retry_connect_hint) + ErrorText.cause(this, reason))
+            .setPositiveButton(R.string.confirm, null).show()
     }
 
     companion object {

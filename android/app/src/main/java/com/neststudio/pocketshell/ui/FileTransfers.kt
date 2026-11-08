@@ -31,7 +31,7 @@ object FileTransfers {
         if (activity.isFinishing) return
         AlertDialog.Builder(activity)
             .setTitle(R.string.files_download_failed)
-            .setMessage(reason)
+            .setMessage(activity.getString(R.string.retry_connect_hint) + ErrorText.cause(activity, reason))
             .setPositiveButton(R.string.confirm, null)
             .show()
     }

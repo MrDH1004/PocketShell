@@ -50,12 +50,17 @@
                     android:textSize="15sp" />
             </LinearLayout>
 
+            <!-- Shown only while not connected (connecting / disconnected / reconnecting) -->
             <TextView
                 android:id="@+id/status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:ellipsize="end"
+                android:maxLines="1"
                 android:text="@string/status_connecting"
-                android:visibility="gone" />
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <ImageButton
@@ -106,7 +111,7 @@
         <!-- Options: info (connection, sizes), view settings (font) -->
         <ImageButton
             android:id="@+id/moreButton"
-            android:layout_width="40dp"
+            android:layout_width="44dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/terminal_options"
@@ -134,6 +139,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_keybar"
+        android:fadingEdgeLength="24dp"
+        android:requiresFadingEdge="horizontal"
         android:scrollbars="none">
 
         <!-- Keycaps (bg_keycap), built in TerminalActivity.buildKeyBar -->
@@ -142,9 +149,9 @@
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:orientation="horizontal"
-            android:paddingStart="5dp"
-            android:paddingTop="7dp"
-            android:paddingEnd="5dp"
-            android:paddingBottom="5dp" />
+            android:paddingStart="4dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="4dp" />
     </HorizontalScrollView>
 </LinearLayout>

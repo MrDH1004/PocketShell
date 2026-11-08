@@ -276,8 +276,10 @@ class TerminalActivity : AppCompatActivity() {
         // Each entry is its own group so group dividers draw a line between all of them (API 28+).
         val info = menu.menu.addSubMenu(1, Menu.NONE, 99, R.string.terminal_info)
         info.setHeaderTitle(R.string.terminal_info)
+        // First line: the full session title (the title bar truncates it).
+        info.add(9, Menu.NONE, 0, titleView.text).isEnabled = false
         statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
-            info.add(10 + i, Menu.NONE, i, part).isEnabled = false
+            info.add(10 + i, Menu.NONE, i + 1, part).isEnabled = false
         }
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
@@ -475,9 +477,9 @@ class TerminalActivity : AppCompatActivity() {
                 val s = a.resume(sessionId)
                 switchTo(s)
             } catch (e: IOException) {
-                setStatus("재개 실패: ${e.message}")
+                setStatus(getString(R.string.err_resume, e.message.orEmpty()))
             } catch (e: org.json.JSONException) {
-                setStatus("재개 실패: 서버 응답 형식 오류")
+                setStatus(getString(R.string.err_resume, getString(R.string.err_hint_update_pc)))
             }
         }
     }
@@ -528,8 +530,8 @@ class TerminalActivity : AppCompatActivity() {
     private fun showPasteError(reason: String) {
         if (isFinishing) return
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("이미지 붙여넣기 실패")
-            .setMessage(reason)
+            .setTitle(R.string.err_paste_title)
+            .setMessage(getString(R.string.retry_connect_hint) + ErrorText.cause(this, reason))
             .setPositiveButton(R.string.confirm, null)
             .show()
     }
@@ -594,21 +596,36 @@ class TerminalActivity : AppCompatActivity() {
         terminalView.resetImeLine()
     }
 
-    /** Status text is shown in the ⋮ menu; the title bar only shows a dot (green = connected). */
+    /**
+     * Connected: the dot alone (green), the details live in the ⋮ menu. Anything else (connecting, disconnected,
+     * reconnecting) is also written under the title, so the state never rests on the dot's color. The dot carries
+     * the full text for TalkBack.
+     */
     private fun setStatus(text: String) {
         statusView.text = text
         val live = text.startsWith("연결됨")
-        findViewById<View>(R.id.connDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
+        val dot = findViewById<View>(R.id.connDot)
+        dot.backgroundTintList = android.content.res.ColorStateList.valueOf(
             ContextCompat.getColor(this, if (live) R.color.live else R.color.text_muted),
         )
+        dot.contentDescription = getString(R.string.conn_status_desc, text)
+        statusView.visibility = if (live) View.GONE else View.VISIBLE
     }
 
     // ---------------------------------------------------------------- key bar
 
     private fun buildKeyBar(bar: LinearLayout) {
-        fun keyButton(label: String, onClick: () -> Unit): TextView {
+        fun keyButton(label: String, spoken: Int? = null, onClick: () -> Unit): TextView {
             val tv = TextView(this)
             tv.text = label
+            if (spoken != null) tv.contentDescription = getString(spoken)
+            // Announced as a button by TalkBack (a plain clickable TextView has no role).
+            androidx.core.view.ViewCompat.setAccessibilityDelegate(tv, object : androidx.core.view.AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: androidx.core.view.accessibility.AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = Button::class.java.name
+                }
+            })
             tv.gravity = Gravity.CENTER
             tv.setTextColor(ContextCompat.getColor(this, R.color.keybar_text))
             tv.textSize = 13f
@@ -620,12 +637,12 @@ class TerminalActivity : AppCompatActivity() {
             tv.setBackgroundResource(R.drawable.bg_keycap)
             tv.setOnClickListener { onClick() }
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)
-            lp.marginStart = (d * 3).toInt()
-            lp.marginEnd = (d * 3).toInt()
+            lp.marginStart = (d * 4).toInt()
+            lp.marginEnd = (d * 4).toInt()
             bar.addView(tv, lp)
             return tv
         }
-        for (k in listOf(SpecialKey.ESC, SpecialKey.TAB, SpecialKey.ENTER)) keyButton(k.label) { sendSpecial(k) }
+        for (k in listOf(SpecialKey.ESC, SpecialKey.TAB, SpecialKey.ENTER)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
         ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
         altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
         // Hidden on the bar (not used); the toggle handling is kept.
@@ -636,9 +653,28 @@ class TerminalActivity : AppCompatActivity() {
             SpecialKey.PIPE, SpecialKey.TILDE, SpecialKey.SLASH, SpecialKey.MINUS,
             SpecialKey.HOME, SpecialKey.END, SpecialKey.PGUP, SpecialKey.PGDN,
         )) {
-            keyButton(k.label) { sendSpecial(k) }
+            keyButton(k.label, spokenName(k)) { sendSpecial(k) }
         }
         refreshToggles()
+    }
+
+    /** What TalkBack says for a key cap (symbols and abbreviations read badly). */
+    private fun spokenName(k: SpecialKey): Int = when (k) {
+        SpecialKey.ESC -> R.string.key_esc
+        SpecialKey.TAB -> R.string.key_tab
+        SpecialKey.ENTER -> R.string.key_enter
+        SpecialKey.LEFT -> R.string.key_left
+        SpecialKey.UP -> R.string.key_up
+        SpecialKey.DOWN -> R.string.key_down
+        SpecialKey.RIGHT -> R.string.key_right
+        SpecialKey.HOME -> R.string.key_home
+        SpecialKey.END -> R.string.key_end
+        SpecialKey.PGUP -> R.string.key_pgup
+        SpecialKey.PGDN -> R.string.key_pgdn
+        SpecialKey.PIPE -> R.string.key_pipe
+        SpecialKey.TILDE -> R.string.key_tilde
+        SpecialKey.SLASH -> R.string.key_slash
+        SpecialKey.MINUS -> R.string.key_minus
     }
 
     private fun refreshToggles() {

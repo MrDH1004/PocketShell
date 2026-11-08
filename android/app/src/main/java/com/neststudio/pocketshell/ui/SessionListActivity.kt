@@ -115,12 +115,11 @@ class SessionListActivity : AppCompatActivity() {
                 showMessage(if (adapter.itemCount == 0) getString(R.string.sessions_empty) else null)
                 refreshHostUpdate()
             } catch (e: ApiException) {
-                if (e.code == 401) showMessage("인증 실패: 이 기기의 등록이 취소되었습니다. 메뉴 > 페어링 해제 후 다시 페어링하세요.")
-                else showMessage(e.message)
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } catch (e: IOException) {
-                showMessage("PC에 연결할 수 없습니다: ${e.message}")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } catch (e: org.json.JSONException) {
-                showMessage("서버 응답 형식 오류: ${e.message}")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } finally {
                 swipe.isRefreshing = false
             }
@@ -212,16 +211,16 @@ class SessionListActivity : AppCompatActivity() {
         val api = (application as PkshellApp).api() ?: return
         val pid = s.pid ?: s.id.removePrefix("ext-").toIntOrNull()
         if (pid == null) {
-            showMessage("외부 세션 PID를 알 수 없습니다")
+            showMessage(getString(R.string.err_external_pid))
             return
         }
         lifecycleScope.launch {
             try {
                 openSession(api.newTerminalHere(pid))
             } catch (e: IOException) {
-                showMessage("새 터미널 열기 실패: ${e.message}")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_new_terminal, e))
             } catch (e: org.json.JSONException) {
-                showMessage("새 터미널 열기 실패: 서버 응답 형식 오류 (${e.message})")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_new_terminal, e))
             }
         }
     }
@@ -240,13 +239,13 @@ class SessionListActivity : AppCompatActivity() {
             val options = try {
                 api.projectOptions()
             } catch (e: ApiException) {
-                showMessage(if (e.code == 404) getString(R.string.project_host_old) else "새 프로젝트: ${e.message}")
+                showMessage(if (e.code == 404) getString(R.string.project_host_old) else ErrorText.of(this@SessionListActivity, R.string.err_project_options, e))
                 return@launch
             } catch (e: IOException) {
-                showMessage("새 프로젝트: PC에 연결할 수 없습니다 (${e.message})")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_project_options, e))
                 return@launch
             } catch (e: org.json.JSONException) {
-                showMessage("새 프로젝트: 서버 응답 형식 오류 (${e.message})")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_project_options, e))
                 return@launch
             }
             when {
@@ -302,11 +301,12 @@ class SessionListActivity : AppCompatActivity() {
             try {
                 openSession(api.createProject(root, name, agent))
             } catch (e: ApiException) {
-                showInfo(e.message ?: "새 프로젝트를 만들지 못했습니다")
+                // The host explains why (folder exists, bad name …); show it as is when it says something.
+                showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_project, e))
             } catch (e: IOException) {
-                showMessage("새 프로젝트 생성 실패: ${e.message}")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_project, e))
             } catch (e: org.json.JSONException) {
-                showMessage("새 프로젝트 생성 실패: 서버 응답 형식 오류 (${e.message})")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_project, e))
             }
         }
     }
@@ -339,25 +339,26 @@ class SessionListActivity : AppCompatActivity() {
                 val s = api.createSession(shell, title, null, null)
                 openSession(s)
             } catch (e: IOException) {
-                showMessage("세션 생성 실패: ${e.message}")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
             } catch (e: org.json.JSONException) {
-                showMessage("세션 생성 실패: 서버 응답 형식 오류 (${e.message})")
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
             }
         }
     }
 
     private fun confirmDelete(s: SessionInfo) {
         if (s.isExternal) return
+        val name = s.title.ifBlank { s.shell.ifBlank { s.id } }
         AlertDialog.Builder(this)
-            .setTitle(R.string.delete_session)
+            .setTitle(getString(if (s.isRunningHost) R.string.delete_running_title else R.string.delete_history_title, name))
             .setMessage(if (s.isRunningHost) R.string.delete_running_confirm else R.string.delete_history_confirm)
-            .setPositiveButton(R.string.confirm) { _, _ ->
+            .setPositiveButton(if (s.isRunningHost) R.string.delete_running_action else R.string.delete_history_action) { _, _ ->
                 val api = (application as PkshellApp).api() ?: return@setPositiveButton
                 lifecycleScope.launch {
                     try {
                         api.delete(s.id)
                     } catch (e: IOException) {
-                        showMessage("삭제 실패: ${e.message}")
+                        showMessage(ErrorText.of(this@SessionListActivity, R.string.err_delete_session, e))
                     }
                     refresh()
                 }
@@ -385,7 +386,7 @@ class SessionListActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.unpair)
             .setMessage(R.string.unpair_confirm)
-            .setPositiveButton(R.string.confirm) { _, _ ->
+            .setPositiveButton(R.string.unpair) { _, _ ->
                 (application as PkshellApp).unpair()
                 startActivity(Intent(this, PairingActivity::class.java))
                 finish()

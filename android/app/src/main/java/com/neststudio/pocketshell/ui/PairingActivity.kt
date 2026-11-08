@@ -135,7 +135,7 @@ class PairingActivity : AppCompatActivity() {
                 status.text = when (e.code) {
                     401 -> getString(R.string.pin_wrong)
                     429 -> getString(R.string.pin_rate_limited)
-                    else -> "페어링 실패: ${e.message}"
+                    else -> ErrorText.of(this@PairingActivity, R.string.err_pairing, e)
                 }
             } catch (e: IOException) {
                 status.text = getString(R.string.pin_connect_failed, e.message ?: "")
