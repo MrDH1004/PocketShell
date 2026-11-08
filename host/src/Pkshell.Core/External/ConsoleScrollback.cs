@@ -18,8 +18,65 @@ public sealed partial class ConsoleScrollback
     private readonly LinkedList<string> _lines = new();
     private List<string> _window = new();
     private readonly object _lock = new();
+    private readonly string? _file;
+    private bool _dirty;
 
     public ConsoleScrollback(int maxLines = DefaultMaxLines) => _maxLines = maxLines;
+
+    /// <summary>
+    /// Scrollback kept in <paramref name="file"/> too, so it survives a host restart: loaded here, written by
+    /// <see cref="Save"/>. The saved window becomes the previous frame, so the first frame after the restart adds the
+    /// rows that scrolled off while the host was down (or nothing, when the screen was redrawn).
+    /// </summary>
+    public ConsoleScrollback(string file, int maxLines = DefaultMaxLines) : this(maxLines)
+    {
+        _file = file;
+        try
+        {
+            if (!File.Exists(file)) return;
+            var all = File.ReadAllLines(file, Encoding.UTF8);
+            if (all.Length == 0 || !int.TryParse(all[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n) || n > all.Length - 1) return;
+            _window = all.Skip(1).Take(n).ToList();
+            foreach (var line in all.Skip(1 + n).TakeLast(maxLines)) _lines.AddLast(line);
+        }
+        catch (IOException ex) { Log.Warn($"scrollback load {file}: {ex.Message}"); }
+        catch (UnauthorizedAccessException ex) { Log.Warn($"scrollback load {file}: {ex.Message}"); }
+    }
+
+    /// <summary>Writes the file (when there is one and something changed since the last save).</summary>
+    public void Save()
+    {
+        if (_file == null) return;
+        string text;
+        lock (_lock)
+        {
+            if (!_dirty) return;
+            _dirty = false;
+            var sb = new StringBuilder();
+            sb.Append(_window.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
+            foreach (var r in _window) sb.Append(r).Append('\n');
+            foreach (var l in _lines) sb.Append(l).Append('\n');
+            text = sb.ToString();
+        }
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
+            var tmp = _file + ".tmp";
+            File.WriteAllText(tmp, text, new UTF8Encoding(false));
+            File.Move(tmp, _file, overwrite: true);
+        }
+        catch (IOException ex) { Log.Warn($"scrollback save {_file}: {ex.Message}"); lock (_lock) _dirty = true; }
+        catch (UnauthorizedAccessException ex) { Log.Warn($"scrollback save {_file}: {ex.Message}"); lock (_lock) _dirty = true; }
+    }
+
+    /// <summary>Deletes the file (the console is gone).</summary>
+    public void DeleteFile()
+    {
+        if (_file == null) return;
+        try { File.Delete(_file); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
 
     public int Count { get { lock (_lock) return _lines.Count; } }
 
@@ -34,7 +91,11 @@ public sealed partial class ConsoleScrollback
         if (rows == null) return -1;
         lock (_lock)
         {
-            if (_lastChange == null || !_window.SequenceEqual(rows, StringComparer.Ordinal)) _lastChange = Ids.IsoNow();
+            if (_lastChange == null || !_window.SequenceEqual(rows, StringComparer.Ordinal))
+            {
+                _lastChange = Ids.IsoNow();
+                _dirty = true;
+            }
             int k = _window.Count == rows.Count ? ScrollShift(_window, rows) : 0;
             for (int i = 0; i < k; i++) _lines.AddLast(_window[i]);
             // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.

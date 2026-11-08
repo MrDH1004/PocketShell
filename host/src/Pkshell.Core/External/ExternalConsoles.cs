@@ -26,7 +26,51 @@ public sealed class ExternalConsoles : IDisposable
     private DateTime _cacheTime = DateTime.MinValue;
     private List<SessionDto> _cache = new();
 
-    public ExternalConsoles(string helperExe) { _helperExe = helperExe; }
+    /// <summary>Where scrollbacks are kept across host restarts (null = memory only).</summary>
+    private readonly string? _scrollbackDir;
+    private readonly Timer? _saveTimer;
+
+    public ExternalConsoles(string helperExe, string? scrollbackDir = null)
+    {
+        _helperExe = helperExe;
+        _scrollbackDir = scrollbackDir;
+        if (scrollbackDir != null) _saveTimer = new Timer(_ => SaveScrollbacks(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private void SaveScrollbacks()
+    {
+        foreach (var sb in _scrollbacks.Values) sb.Save();
+    }
+
+    /// <summary>File for console <paramref name="pid"/> started at <paramref name="started"/> (pid alone can be reused).</summary>
+    public static string ScrollbackFile(string dir, int pid, string started)
+    {
+        var key = new string(started.Where(char.IsAsciiLetterOrDigit).ToArray());
+        return Path.Combine(dir, $"{pid}-{key}.log");
+    }
+
+    private ConsoleScrollback NewScrollback(int pid, SessionDto info) =>
+        _scrollbackDir == null || string.IsNullOrEmpty(info.CreatedAt)
+            ? new ConsoleScrollback()
+            : new ConsoleScrollback(ScrollbackFile(_scrollbackDir, pid, info.CreatedAt));
+
+    private bool _prunedFiles;
+
+    /// <summary>Deletes saved scrollbacks of consoles that no longer exist (pid gone or reused by another process).</summary>
+    private void PruneScrollbackFiles(List<SessionDto> list)
+    {
+        if (_scrollbackDir == null || !Directory.Exists(_scrollbackDir)) return;
+        var keep = list.Where(s => s.Pid != null && !string.IsNullOrEmpty(s.CreatedAt))
+            .Select(s => ScrollbackFile(_scrollbackDir, s.Pid!.Value, s.CreatedAt))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(_scrollbackDir))
+                if (!keep.Contains(f)) File.Delete(f);
+        }
+        catch (IOException ex) { Log.Warn($"scrollback prune: {ex.Message}"); }
+        catch (UnauthorizedAccessException ex) { Log.Warn($"scrollback prune: {ex.Message}"); }
+    }
 
     /// <summary>Tab names per Windows Terminal window handle (set by the server; reading WT's UI needs UI Automation).</summary>
     public Func<IReadOnlyDictionary<long, IReadOnlyList<string>>>? TabNames { get; set; }
@@ -233,7 +277,12 @@ public sealed class ExternalConsoles : IDisposable
     {
         var alive = list.Where(s => s.Pid != null).Select(s => s.Pid!.Value).ToHashSet();
         foreach (var pid in _scrollbacks.Keys)
-            if (!alive.Contains(pid)) _scrollbacks.TryRemove(pid, out _);
+            if (!alive.Contains(pid) && _scrollbacks.TryRemove(pid, out var gone)) gone.DeleteFile();
+        if (!_prunedFiles && list.Count > 0)
+        {
+            _prunedFiles = true; // once per host run: files of consoles closed while the host was down
+            PruneScrollbackFiles(list);
+        }
         foreach (var s in list)
         {
             if (s.Agent == null || s.Pid is not int pid) continue;
@@ -242,7 +291,7 @@ public sealed class ExternalConsoles : IDisposable
     }
 
     private ExternalBridge NewBridge(int pid, SessionDto info) =>
-        new(_helperExe, pid, info, _scrollbacks.GetOrAdd(pid, _ => new ConsoleScrollback()), () => _bridges.TryRemove(pid, out _));
+        new(_helperExe, pid, info, _scrollbacks.GetOrAdd(pid, p => NewScrollback(p, info)), () => _bridges.TryRemove(pid, out _));
 
     public SessionDto? Get(int pid)
     {
@@ -318,7 +367,9 @@ public sealed class ExternalConsoles : IDisposable
 
     public void Dispose()
     {
+        _saveTimer?.Dispose();
         foreach (var b in _bridges.Values) b.Stop();
+        SaveScrollbacks();
     }
 }
 

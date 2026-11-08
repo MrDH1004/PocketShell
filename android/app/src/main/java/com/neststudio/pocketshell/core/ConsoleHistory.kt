@@ -43,6 +43,7 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
 
     /** The PC's scrollback for this console (sent on connect) replaces what the phone collected itself. */
     fun replaceHistory(lines: List<String>) {
+        if (lines.isEmpty() && history.isNotEmpty()) return // a restarted host with nothing yet: keep what the phone has
         history.clear()
         lines.takeLast(maxLines).forEach { history.addLast(it) }
         version++

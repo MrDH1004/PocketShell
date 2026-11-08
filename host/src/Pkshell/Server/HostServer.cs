@@ -144,7 +144,7 @@ public sealed class HostServer : IDisposable
         _sessions = new SessionManager(_home);
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
-        _externals = new ExternalConsoles(_exe) { TabNames = TerminalTabs.Read };
+        _externals = new ExternalConsoles(_exe, Path.Combine(_home, "external-scrollback")) { TabNames = TerminalTabs.Read };
         _recent = new RecentExternals(RecentExternals.FileIn(_home));
         _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
         var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };

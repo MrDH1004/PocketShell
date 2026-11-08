@@ -354,6 +354,34 @@ public class VtFrameTests
     }
 
     [Fact]
+    public void ScrollbackSurvivesHostRestart()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pkshell-sb-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var file = ExternalConsoles.ScrollbackFile(dir, 42, "2026-11-09T01:02:03.456Z");
+            var sb = new ConsoleScrollback(file);
+            sb.Accept(Frame("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "> in", "status"));
+            sb.Accept(Frame("l3", "l4", "l5", "l6", "l7", "l8", "l9", "l10", "> in", "status"));
+            sb.Save();
+            // Restarted host: earlier lines are back, and rows that scrolled off while it was down are added.
+            var again = new ConsoleScrollback(file);
+            Assert.Equal(2, again.Snapshot().Count);
+            Assert.Equal(1, again.Accept(Frame("l4", "l5", "l6", "l7", "l8", "l9", "l10", "l11", "> in", "status")));
+            var lines = again.Snapshot();
+            Assert.Equal(3, lines.Count);
+            Assert.EndsWith("l1", lines[0]);
+            Assert.EndsWith("l3", lines[2]);
+            again.DeleteFile();
+            Assert.False(File.Exists(file));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void ScrollbackDropsLinesThatCameBackOnScreen()
     {
         var sb = new ConsoleScrollback();
