@@ -61,15 +61,6 @@ class ZoomPanLayout @JvmOverloads constructor(context: Context, attrs: Attribute
         onZoomChanged?.invoke(scale)
     }
 
-    /** Zooms to [s] showing the bottom-left part (where the prompt usually is). */
-    fun zoomTo(s: Float) {
-        scale = s.coerceIn(1f, MAX_SCALE)
-        tx = 0f
-        ty = height - height * scale
-        apply()
-        onZoomChanged?.invoke(scale)
-    }
-
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
