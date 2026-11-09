@@ -81,6 +81,17 @@ class ReflowTest {
     }
 
     @Test
+    fun codeAndDiffRowsKeepIndentationAndAreNotJoined() {
+        // Indentation inside a code row is not squeezed: the row wraps, under the code column.
+        val r = Reflow.layout("141      outside.nav = x", 20)
+        assertEquals(listOf("141      outside.nav", "      = x"), r.lines.map(::strip))
+        // A numbered code line and a diff continuation ("+parent)") stay separate rows.
+        val code = "146 +   while (root != null && root.parent != blockerT."
+        assertEquals(false, Reflow.joins(Reflow.info(code), Reflow.info("        +parent) root = root.parent;"), 56))
+        assertEquals(false, Reflow.joins(Reflow.info("x".repeat(50)), Reflow.info("  +parent)"), 52))
+    }
+
+    @Test
     fun historyJoinsWrappedRowsWhenPcWidthKnown() {
         val h = ConsoleHistory()
         h.pcCols = 20

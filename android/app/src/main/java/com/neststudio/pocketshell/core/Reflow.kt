@@ -36,6 +36,10 @@ object Reflow {
         val startsBlock: Boolean,
         /** Ends with a box-drawing char (a box or rule row). */
         val endsBlock: Boolean,
+        /** Starts with a line number (code / diff view): whitespace matters, never joined onto. */
+        val numbered: Boolean = false,
+        /** First word is a diff sign glued to text ("+parent)"): a diff view's own wrapped continuation. */
+        val gutter: Boolean = false,
     ) {
         val blank: Boolean get() = indent >= width
     }
@@ -48,6 +52,7 @@ object Reflow {
     private const val FILLERS = "  ─━═-"
     private val MARKERS = setOf("-", "*", "+", "•", "●", "⏺", "⎿", "└", "├", ">", "❯", "✻", "※", "✓", "✗")
     private val NUMBERED = Regex("\\d{1,3}[.)]")
+    private val LINE_NUMBER = Regex("\\d{1,5}")
 
     /** The PC program may wrap a little short of the window edge (right padding). */
     private const val WRAP_SLACK = 2
@@ -65,9 +70,10 @@ object Reflow {
         val first = parse(bodies[0])
         if (cursorRow == 0 && cursorCol > 0) markCursor(first, cursorCol - 1)
         if (bodies.size == 1) {
-            val hang = hangOf(info(first), cols)
+            val inf0 = info(first)
+            val hang = hangOf(inf0, cols)
             squeeze(first, cols)
-            return wrap(first, cols, hang)
+            return wrap(first, cols, hang, if (inf0.blank) 0 else inf0.textStart)
         }
         val cells = ArrayList(first)
         var prev = info(first)
@@ -97,6 +103,7 @@ object Reflow {
     fun joins(prev: RowInfo, next: RowInfo, pcCols: Int): Boolean {
         if (pcCols <= 0 || prev.blank || next.blank) return false
         if (prev.endsBlock || next.startsBlock) return false
+        if (prev.numbered || next.gutter) return false // code: a wrapped code line keeps its own rows
         if (prev.width * 4 < pcCols * 3) return false
         if (next.indent < prev.indent) return false
         return prev.width + 1 + next.firstWord > pcCols - WRAP_SLACK
@@ -130,7 +137,9 @@ object Reflow {
             e--
         }
         val w = word.toString()
-        val isMarker = w in MARKERS || NUMBERED.matches(w)
+        val numbered = LINE_NUMBER.matches(w)
+        val gutter = w.length >= 2 && (w[0] == '+' || w[0] == '-') && w[1] != w[0]
+        val isMarker = w in MARKERS || NUMBERED.matches(w) || numbered
         val firstBox = k < end && isBox(cells[k].text)
         val lastBox = end > 0 && isBox(cells[end - 1].text)
         var textStart = indent
@@ -143,7 +152,7 @@ object Reflow {
             }
             textStart = col
         }
-        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox)
+        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox, numbered, gutter)
     }
 
     private fun isBox(text: String): Boolean = text.isNotEmpty() && text[0] in '─'..'▟'
@@ -227,6 +236,12 @@ object Reflow {
                 }
                 var j = i + 1
                 while (j < cells.size && cells[j].text == c.text && cells[j].sgr == c.sgr) j++
+                // Blanks only as padding before a box's right edge (or the row end): indentation inside text and
+                // code ("140      outside…") keeps its width, or lines next to each other stop lining up.
+                if (c.space && (j until cells.size).any { !cells[it].space && !isBox(cells[it].text) }) {
+                    i = j
+                    continue
+                }
                 if (j - i > bestLen) {
                     bestStart = i
                     bestLen = j - i
@@ -246,7 +261,7 @@ object Reflow {
      * Wraps [cells] at [cols], breaking after a word when the line is at least a third full (else mid-word, as a
      * terminal would). Continuation lines start with [hang] blank cells.
      */
-    private fun wrap(cells: List<Cell>, cols: Int, hang: Int): Result {
+    private fun wrap(cells: List<Cell>, cols: Int, hang: Int, textCol: Int = 0): Result {
         val lines = ArrayList<String>()
         var cursorLine = -1
         var cursorCol = 0
@@ -270,7 +285,8 @@ object Reflow {
                     while (k > i && !(cells[k].space && !cells[k].cursor)) k--
                     var before = 0
                     for (x in i until k) before += cells[x].width
-                    if (k > i && before * 3 >= avail) {
+                    // Never break inside the leading indent / marker / line number: the first line must carry text.
+                    if (k > i && before * 3 >= avail && (lines.isNotEmpty() || before > textCol)) {
                         end = k
                         next = k
                     }
