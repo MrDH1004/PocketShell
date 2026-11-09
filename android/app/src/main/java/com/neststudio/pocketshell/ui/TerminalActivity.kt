@@ -636,7 +636,12 @@ class TerminalActivity : AppCompatActivity() {
             bar.addView(tv, lp)
             return tv
         }
-        for (k in listOf(SpecialKey.ESC, SpecialKey.TAB, SpecialKey.ENTER)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
+        for (k in listOf(SpecialKey.ESC, SpecialKey.TAB)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
+        keyButton(SpecialKey.ENTER.label, spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
+            // The return symbol is a small glyph at 13sp; size it to fill the keycap.
+            textSize = 26f
+            includeFontPadding = false
+        }
         ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
         altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
         // Hidden on the bar (not used); the toggle handling is kept.
