@@ -265,6 +265,19 @@ public class VtFrameTests
     }
 
     [Fact]
+    public void AsciiPromptUnderInputBoxBorderAlsoGraysPlaceholder()
+    {
+        var (chars, attrs) = Grid("───", "> hint", "───");
+        VtFrame.GrayPromptPlaceholder(chars, attrs, 8, 3, 2, 1);
+        Assert.Equal(0x08, attrs[8 + 2]);
+        Assert.Equal(0x07, attrs[8 + 0]);
+        // A shell prompt ending in "> " (not under a box border) is left alone.
+        var (c2, a2) = Grid("", "> x");
+        VtFrame.GrayPromptPlaceholder(c2, a2, 8, 2, 2, 1);
+        Assert.All(a2, a => Assert.Equal(0x07, a));
+    }
+
+    [Fact]
     public void TypedPromptTextKeepsItsColor()
     {
         var (chars, attrs) = Grid("❯ typed", "x");

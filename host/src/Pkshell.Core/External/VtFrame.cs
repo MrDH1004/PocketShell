@@ -60,13 +60,14 @@ public static class VtFrame
     private const ushort ColorMask = 0x00FF | Win32.COMMON_LVB_UNDERSCORE | Win32.COMMON_LVB_REVERSE_VIDEO;
 
     private const char PromptChar = '❯'; // ❯ (Claude Code input prompt)
+    private const char AsciiPrompt = '>';
     private const ushort DefaultColor = 0x07; // white on black
     private const ushort GrayColor = 0x08;    // bright black on black → SGR 90
 
     /// <summary>
     /// Claude Code draws its suggested prompt in faint (SGR 2), which legacy console attributes cannot express: it reads
     /// back as plain 0x07, the same as typed text. The suggestion is only shown while the input is empty, i.e. the
-    /// cursor sits right after "❯ " with text to its right; typed text puts the cursor at its end. In that state the
+    /// cursor sits right after "❯ " (or "> ") with text to its right; typed text puts the cursor at its end. In that state the
     /// default-colored cells from the cursor to the input box's bottom border (a row starting with '─') are turned gray.
     /// </summary>
     public static void GrayPromptPlaceholder(char[] chars, ushort[] attrs, int width, int height, int cursorX, int cursorY)
@@ -74,7 +75,12 @@ public static class VtFrame
         if (cursorY < 0 || cursorY >= height || cursorX < 2 || cursorX >= width) return;
         int row = cursorY * width;
         char gap = chars[row + cursorX - 1];
-        if (chars[row + cursorX - 2] != PromptChar || (gap != ' ' && gap != ' ')) return; // Claude Code uses NBSP
+        if (gap != ' ' && gap != '\u00a0') return; // Claude Code uses NBSP
+        char prompt = chars[row + cursorX - 2];
+        // Claude Code draws "❯ ", or "> " in some states (e.g. queued messages). An ASCII '>' only counts at the start
+        // of a row right under the input box's top border ('─'), so a shell prompt like "PS C:\> " is left alone.
+        bool claudeBox = prompt == AsciiPrompt && cursorX == 2 && cursorY > 0 && chars[row - width] == '─';
+        if (prompt != PromptChar && !claudeBox) return;
         for (int y = cursorY; y < height; y++)
         {
             int start = y * width;
