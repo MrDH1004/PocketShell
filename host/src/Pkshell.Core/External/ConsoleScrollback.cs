@@ -97,7 +97,13 @@ public sealed partial class ConsoleScrollback
                 _dirty = true;
             }
             int k = _window.Count == rows.Count ? ScrollShift(_window, rows) : 0;
-            for (int i = 0; i < k; i++) _lines.AddLast(_window[i]);
+            if (k > 0)
+            {
+                // Claude Code re-renders a growing reply; a partly drawn copy that scrolled off earlier is replaced.
+                var tail = _lines.TakeLast(Math.Min(_lines.Count, 60)).ToList();
+                for (int r = RedrawnTail(tail, _window.Take(k).ToList()); r > 0; r--) _lines.RemoveLast();
+                for (int i = 0; i < k; i++) _lines.AddLast(_window[i]);
+            }
             // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
             for (int m = OverlapWithTop(_lines.TakeLast(Math.Min(_lines.Count, 40)).ToList(), rows); m > 0; m--) _lines.RemoveLast();
             while (_lines.Count > _maxLines) _lines.RemoveFirst();
@@ -146,6 +152,28 @@ public sealed partial class ConsoleScrollback
         for (int k = 1; k < h; k++) if (Ok(k)) return k;
         return 0;
     }
+
+    /// <summary>
+    /// Lines at the end of <paramref name="tail"/> that are an earlier render of the start of <paramref name="added"/>:
+    /// the first line equal (at least 4 visible characters), every later one equal or a prefix of the new line (a reply
+    /// still being written; blank = not drawn yet). 0 when there is none; the longest run wins. Same as Android.
+    /// </summary>
+    public static int RedrawnTail(IReadOnlyList<string> tail, IReadOnlyList<string> added)
+    {
+        if (added.Count == 0 || SgrRegex().Replace(added[0], "").Trim().Length < 4) return 0;
+        for (int j = 0; j < tail.Count; j++)
+        {
+            int n = tail.Count - j;
+            if (n > added.Count || !string.Equals(tail[j], added[0], StringComparison.Ordinal)) continue;
+            bool ok = true;
+            for (int i = 1; i < n && ok; i++) ok = added[i].StartsWith(tail[j + i], StringComparison.Ordinal);
+            if (ok) return n;
+        }
+        return 0;
+    }
+
+    [GeneratedRegex("\x1b\\[[0-9;]*m")]
+    private static partial Regex SgrRegex();
 
     /// <summary>
     /// Largest m (≥ 2, with ≥ 2 non-blank lines) such that the last m lines of <paramref name="tail"/> equal the first

@@ -31,14 +31,21 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         val next = Array(height) { "" }
         for ((y, body) in rows) next[y - 1] = body
         val shifted = if (window.size == height) scrollShift(window, next.asList()) else 0
-        for (i in 0 until shifted) history.addLast(window[i])
+        var added = shifted
+        if (shifted > 0) {
+            // Claude Code re-renders a growing reply; a partly drawn copy that scrolled off earlier is replaced, not kept.
+            val redrawn = redrawnTail(history.takeLast(60), window.subList(0, shifted))
+            repeat(redrawn) { history.removeLast() }
+            added -= redrawn
+            for (i in 0 until shifted) history.addLast(window[i])
+        }
         // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
         repeat(overlapWithTop(history.takeLast(40), next.asList())) { history.removeLast() }
         while (history.size > maxLines) history.removeFirst()
         window = next.asList()
         cursor = CURSOR.find(text)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
         version++
-        return shifted
+        return maxOf(0, added)
     }
 
     /** The PC's scrollback for this console (sent on connect) replaces what the phone collected itself. */
@@ -209,6 +216,23 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         private const val MAX_GROUP = 60
         private val ROW = Regex("\u001b\\[(\\d+);1H(.*?)\u001b\\[0m\u001b\\[K")
         private val CURSOR = Regex("\u001b\\[(\\d+);(\\d+)H\u001b\\[\\?25h$")
+
+        private val SGR = Regex("\u001b\\[[0-9;]*m")
+
+        /**
+         * Lines at the end of [tail] that are an earlier render of the start of [added]: the first line equal (and at
+         * least 4 visible characters), every later one equal or a prefix of the new line (a reply still being written,
+         * blank = not drawn yet). 0 when there is none. The longest such run wins.
+         */
+        fun redrawnTail(tail: List<String>, added: List<String>): Int {
+            if (added.isEmpty() || added[0].replace(SGR, "").trim().length < 4) return 0
+            for (j in tail.indices) {
+                val n = tail.size - j
+                if (n > added.size || tail[j] != added[0]) continue
+                if ((1 until n).all { added[it].startsWith(tail[j + it]) }) return n
+            }
+            return 0
+        }
 
         /** Largest m (≥ 2, ≥ 2 non-blank) where the last m lines of [tail] equal the first m rows of [window]; else 0. */
         fun overlapWithTop(tail: List<String>, window: List<String>): Int {

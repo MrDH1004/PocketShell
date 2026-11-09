@@ -367,6 +367,16 @@ public class VtFrameTests
     }
 
     [Fact]
+    public void ScrollbackReplacesPartlyDrawnReplyInsteadOfRepeatingIt()
+    {
+        var tail = new List<string> { "old", "● reply line one", "line two" };
+        Assert.Equal(2, ConsoleScrollback.RedrawnTail(tail, ["● reply line one", "line two"]));
+        Assert.Equal(2, ConsoleScrollback.RedrawnTail(tail, ["● reply line one", "line two and more", ""]));
+        Assert.Equal(0, ConsoleScrollback.RedrawnTail(tail, ["● other", "x"]));
+        Assert.Equal(0, ConsoleScrollback.RedrawnTail(new List<string> { "ok" }, ["ok"]));
+    }
+
+    [Fact]
     public void ScrollbackSurvivesHostRestart()
     {
         var dir = Path.Combine(Path.GetTempPath(), "pkshell-sb-" + Guid.NewGuid().ToString("N"));

@@ -107,6 +107,19 @@ class ReflowTest {
     }
 
     @Test
+    fun partlyDrawnReplyThatScrolledOffIsReplacedNotRepeated() {
+        val tail = listOf("old", "● 세 기능 모두 가능", "지금 작업은 계속")
+        // Same block again: the earlier copy goes.
+        assertEquals(2, ConsoleHistory.redrawnTail(tail, listOf("● 세 기능 모두 가능", "지금 작업은 계속")))
+        // A fuller render of the same reply: the partial copy (and a not-yet-drawn blank) goes.
+        assertEquals(2, ConsoleHistory.redrawnTail(tail, listOf("● 세 기능 모두 가능", "지금 작업은 계속 진행하고", "")))
+        assertEquals(3, ConsoleHistory.redrawnTail(tail + "", listOf("● 세 기능 모두 가능", "지금 작업은 계속 진행", "", "1.")))
+        // Different text or a too short first line: kept.
+        assertEquals(0, ConsoleHistory.redrawnTail(tail, listOf("● 다른 내용", "x")))
+        assertEquals(0, ConsoleHistory.redrawnTail(listOf("ok"), listOf("ok")))
+    }
+
+    @Test
     fun fitColsAvoidsStrayWrappedCharacters() {
         assertEquals(53, Reflow.fitCols(50, 53))  // fits: no change
         assertEquals(56, Reflow.fitCols(56, 53))  // a bit wider: shrink so the row stays on one line
