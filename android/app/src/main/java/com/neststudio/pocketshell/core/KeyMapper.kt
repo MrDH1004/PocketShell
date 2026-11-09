@@ -4,7 +4,7 @@ package com.neststudio.pocketshell.core
 enum class SpecialKey(val label: String) {
     ESC("ESC"),
     TAB("TAB"),
-    ENTER("ENTER"),
+    ENTER("↵"), // return symbol: narrower than "ENTER" (TalkBack says "Enter", see TerminalActivity.spokenName)
     LEFT("←"),
     UP("↑"),
     DOWN("↓"),
