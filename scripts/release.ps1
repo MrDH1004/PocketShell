@@ -157,6 +157,14 @@ try {
     if ($apkCert -ne $expectedCert) { throw "APK signer $apkCert != debug keystore cert $expectedCert (in-place update would fail)" }
     Write-Host "    $apkName signer sha256=$apkCert (matches debug keystore)"
 
+    # Copy into <repo>\build (gitignored): the phone's file browser can reach the project folder but not the desktop,
+    # so the APK can be installed by hand from there. The three newest are kept.
+    $localBuild = Join-Path $Root 'build'
+    New-Item -ItemType Directory -Force -Path $localBuild | Out-Null
+    Copy-Item -Force $apkOut (Join-Path $localBuild $apkName)
+    Get-ChildItem $localBuild -Filter 'pocketshell-android-v*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 3 | Remove-Item -Force
+    Write-Host "    copied to $localBuild\$apkName"
+
     # Host zip carries the APK too (android\<apk>), so paired phones can update over the LAN (GET /api/app/android).
     $pubAndroid = Join-Path $pub 'android'
     New-Item -ItemType Directory -Force -Path $pubAndroid | Out-Null
