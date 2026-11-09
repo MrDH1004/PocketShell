@@ -177,6 +177,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 ### 11.4 Android
 - 앱 시작 시(하루 1회 제한) + 세션 목록 메뉴 "업데이트 확인"에서 확인.
 - 새 버전 → 다이얼로그(버전, 릴리스 노트) → 다운로드(앱 캐시) → SHA-256 검증 → FileProvider URI로 설치 인텐트(`REQUEST_INSTALL_PACKAGES`, 출처 허용 미설정 시 설정 화면 안내). 서명 키가 같아야 덮어쓰기 설치됨(릴리스는 동일 키로 서명).
+- 받을 곳 두 군데를 동시에 확인: 페어링된 PC 호스트(같은 망, `GET /api/app/android` → `{version,name,size,sha256}`, APK는 `GET /api/app/android/apk`, GitHub 조회 한도와 무관)와 GitHub Releases. 다이얼로그 버튼 "PC에서 받기 (같은 망)" / "GitHub에서 받기"(있는 것만). 둘 다 SHA-256 검증. 호스트는 설치 폴더 `android\pocketshell-android-v<ver>.apk` 중 최신을 내줌(릴리스 zip에 포함).
 - 세션 목록에 PC 호스트 업데이트 상태 표시(`/api/info.update`), "PC 업데이트 적용" 버튼(세션 실행 중이면 확인 후 force).
 
 ### 11.5 릴리스 스크립트

@@ -143,6 +143,22 @@ class ApiClient(
         }
     }
 
+    /** `GET /api/app/android` — the phone app the PC host ships (version, name, size, sha256); 404 when it has none. */
+    suspend fun androidApp(): String = request("GET", "/api/app/android")
+
+    /** `GET /api/app/android/apk` handed to [handle] as (stream, length or -1). */
+    suspend fun <T> androidApk(handle: (java.io.InputStream, Long) -> T): T {
+        val slow = http.newBuilder().readTimeout(60, TimeUnit.SECONDS).build()
+        return call("GET", "/api/app/android/apk", null, true, slow) { resp ->
+            if (!resp.isSuccessful) {
+                val text = resp.body?.string().orEmpty()
+                throw ApiException(resp.code, httpErrorMessage(resp.code, text), text)
+            }
+            val body = resp.body ?: throw IOException("빈 응답")
+            body.byteStream().use { handle(it, body.contentLength()) }
+        }
+    }
+
     /** `POST /api/files/upload?dir=&name=[&overwrite=1]`; 409 when the file exists and !overwrite. */
     suspend fun upload(dir: String, name: String, body: RequestBody, overwrite: Boolean) {
         val slow = http.newBuilder().writeTimeout(120, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()

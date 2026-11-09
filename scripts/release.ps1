@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   1. version.properties: versionName=<Version>, versionCode=<previous + 1>
-  2. host: dotnet publish psh (server/CLI) + PocketShell (tray) into one folder (win-x64, framework-dependent)
+  2. host: dotnet publish psh (server/CLI) + PocketShell (tray) into one folder (win-x64, framework-dependent);
+     zipped after step 3 with the APK under android\ (phone updates over the LAN)
   3. Android: gradlew assembleRelease (release is signed with the same key as v0.1.0, the default debug
      keystore %USERPROFILE%\.android\debug.keystore) -> pocketshell-android-v<Version>.apk; signer certificate is
      checked against that keystore so in-place app updates keep working
@@ -137,10 +138,6 @@ try {
         if ($pv.Split('+')[0] -ne $Version) { throw "published $exe.dll reports version '$pv', expected $Version" }
     }
     Get-ChildItem $pub -Filter '*.pdb' | Remove-Item -Force
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    if (Test-Path $hostZip) { Remove-Item -Force $hostZip }
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($pub, $hostZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
-    Write-Host "    $hostZipName ($([math]::Round((Get-Item $hostZip).Length / 1MB, 2)) MB)"
 
     # -------------------------------------------------------------- 3. APK
     Step "android: gradlew assembleRelease (signed with $DebugKeystore)"
@@ -159,6 +156,15 @@ try {
     $apkCert = Get-ApkSignerSha256 $apkOut
     if ($apkCert -ne $expectedCert) { throw "APK signer $apkCert != debug keystore cert $expectedCert (in-place update would fail)" }
     Write-Host "    $apkName signer sha256=$apkCert (matches debug keystore)"
+
+    # Host zip carries the APK too (android\<apk>), so paired phones can update over the LAN (GET /api/app/android).
+    $pubAndroid = Join-Path $pub 'android'
+    New-Item -ItemType Directory -Force -Path $pubAndroid | Out-Null
+    Copy-Item -Force $apkOut (Join-Path $pubAndroid $apkName)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $hostZip) { Remove-Item -Force $hostZip }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($pub, $hostZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+    Write-Host "    $hostZipName ($([math]::Round((Get-Item $hostZip).Length / 1MB, 2)) MB, includes android\$apkName)"
 
     # -------------------------------------------------------------- 4. SHA256SUMS.txt
     Step "SHA256SUMS.txt"

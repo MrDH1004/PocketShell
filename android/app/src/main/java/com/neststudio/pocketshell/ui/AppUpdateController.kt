@@ -16,7 +16,9 @@ import com.neststudio.pocketshell.core.IntegrityException
 import com.neststudio.pocketshell.core.ReleaseNotes
 import com.neststudio.pocketshell.net.AppUpdater
 import com.neststudio.pocketshell.net.VerifiedUpdate
+import com.neststudio.pocketshell.PkshellApp
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
@@ -54,33 +56,52 @@ class AppUpdateController(private val activity: AppCompatActivity) {
     /** Menu "업데이트 확인". */
     fun manualCheck() = check(manual = true)
 
+    /**
+     * Checks both sources at once: the paired PC host over the LAN (`GET /api/app/android`, no GitHub rate limit) and
+     * GitHub Releases. Either one is enough; the dialog lets the user pick where to download from.
+     */
     private fun check(manual: Boolean) {
         if (job?.isActive == true) return
         job = activity.lifecycleScope.launch {
-            try {
-                val update = updater.check()
-                when {
-                    update != null -> showUpdateDialog(update)
-                    manual -> toast(activity.getString(R.string.update_latest, updater.currentVersion))
-                }
-            } catch (e: IntegrityException) {
-                if (manual) showError(e.message)
-            } catch (e: IOException) {
-                if (manual) showError(activity.getString(R.string.update_check_failed, e.message ?: ""))
+            val api = (activity.application as PkshellApp).api()
+            updater.pcApi = api
+            val pc = async { if (api == null) null else runCatching { updater.checkPc(api) } }
+            val gh = async { runCatching { updater.check() } }
+            val pcResult = pc.await()
+            val ghResult = gh.await()
+            val pcUpdate = pcResult?.getOrNull()
+            val ghUpdate = ghResult.getOrNull()
+            when {
+                pcUpdate != null || ghUpdate != null -> showUpdateDialog(pcUpdate, ghUpdate)
+                !manual -> Unit
+                ghResult.isSuccess || pcResult?.isSuccess == true ->
+                    toast(activity.getString(R.string.update_latest, updater.currentVersion))
+                else -> showError(
+                    activity.getString(
+                        R.string.update_check_failed_both,
+                        pcResult?.exceptionOrNull()?.message ?: activity.getString(R.string.update_pc_unpaired),
+                        ghResult.exceptionOrNull()?.message ?: "",
+                    ),
+                )
             }
         }
     }
 
-    private fun showUpdateDialog(update: VerifiedUpdate) {
+    private fun showUpdateDialog(pc: VerifiedUpdate?, gh: VerifiedUpdate?) {
         if (activity.isFinishing) return
-        val c = update.candidate
-        val notes = ReleaseNotes.clean(c.notes).ifEmpty { activity.getString(R.string.update_no_notes) }
-        AlertDialog.Builder(activity)
+        val newest = listOfNotNull(pc, gh).maxBy { it.candidate.version }
+        val notes = ReleaseNotes.clean(gh?.candidate?.notes.orEmpty()).ifEmpty { activity.getString(R.string.update_no_notes) }
+        val b = AlertDialog.Builder(activity)
             .setTitle(R.string.update_available_title)
-            .setMessage(activity.getString(R.string.update_available_message, updater.currentVersion, c.version.toString(), notes))
-            .setPositiveButton(activity.getString(R.string.update_download, c.version.toString())) { _, _ -> download(update) }
+            .setMessage(activity.getString(R.string.update_available_message, updater.currentVersion, newest.candidate.version.toString(), notes))
             .setNegativeButton(R.string.update_later, null)
-            .show()
+        if (pc != null) {
+            b.setPositiveButton(activity.getString(R.string.update_from_pc, pc.candidate.version.toString())) { _, _ -> download(pc) }
+            if (gh != null) b.setNeutralButton(activity.getString(R.string.update_from_github, gh.candidate.version.toString())) { _, _ -> download(gh) }
+        } else if (gh != null) {
+            b.setPositiveButton(activity.getString(R.string.update_from_github, gh.candidate.version.toString())) { _, _ -> download(gh) }
+        }
+        b.show()
     }
 
     private fun download(update: VerifiedUpdate) {

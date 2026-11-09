@@ -716,6 +716,20 @@ public sealed class HostServer : IDisposable
             return Json(new { ok = true, bytes = image.Length });
         });
 
+        // Phone app update over the LAN (DESIGN.md §11.4): the APK shipped next to psh.exe in the release zip.
+        app.MapGet("/api/app/android", () =>
+        {
+            var apk = Pkshell.Core.Update.AndroidApk.Find(AppContext.BaseDirectory);
+            if (apk == null) return Error(404, "이 PC 서버에는 폰 앱 설치 파일이 없습니다. PC 서버를 업데이트하세요");
+            return Json(new { version = apk.Version, name = apk.Name, size = apk.Size, sha256 = apk.Sha256 });
+        });
+        app.MapGet("/api/app/android/apk", () =>
+        {
+            var apk = Pkshell.Core.Update.AndroidApk.Find(AppContext.BaseDirectory);
+            if (apk == null) return Error(404, "이 PC 서버에는 폰 앱 설치 파일이 없습니다. PC 서버를 업데이트하세요");
+            return Results.File(apk.Path, "application/vnd.android.package-archive", apk.Name, enableRangeProcessing: true);
+        });
+
         // Phone project file browser (DESIGN.md §4): list / download / upload by absolute PC path.
         app.MapGet("/api/files", (string? path) =>
         {

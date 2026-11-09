@@ -377,6 +377,29 @@ public class VtFrameTests
     }
 
     [Fact]
+    public void AndroidApkFindsNewestShippedApk()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pkshell-apk-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.Null(Pkshell.Core.Update.AndroidApk.Find(dir));
+            var apkDir = Directory.CreateDirectory(Path.Combine(dir, "android")).FullName;
+            File.WriteAllText(Path.Combine(apkDir, "pocketshell-android-v0.2.9.apk"), "old");
+            File.WriteAllText(Path.Combine(apkDir, "pocketshell-android-v0.2.10.apk"), "new");
+            File.WriteAllText(Path.Combine(apkDir, "other.apk"), "x");
+            var apk = Pkshell.Core.Update.AndroidApk.Find(dir);
+            Assert.NotNull(apk);
+            Assert.Equal("0.2.10", apk!.Version);
+            Assert.Equal(3, apk.Size);
+            Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("new"u8.ToArray())).ToLowerInvariant(), apk.Sha256);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void ScrollbackSurvivesHostRestart()
     {
         var dir = Path.Combine(Path.GetTempPath(), "pkshell-sb-" + Guid.NewGuid().ToString("N"));

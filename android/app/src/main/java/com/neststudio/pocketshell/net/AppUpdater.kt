@@ -16,8 +16,11 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** An update whose SHA-256 is known (from the asset digest or SHA256SUMS.txt). */
-data class VerifiedUpdate(val candidate: ReleaseCandidate, val sha256: String)
+/**
+ * An update whose SHA-256 is known (from the asset digest or SHA256SUMS.txt, or from the PC host). [fromPc]: the APK
+ * comes from the paired PC host over the LAN (`GET /api/app/android/apk`) instead of GitHub.
+ */
+data class VerifiedUpdate(val candidate: ReleaseCandidate, val sha256: String, val fromPc: Boolean = false)
 
 /**
  * Android self-update (DESIGN.md §11.2/§11.4). Talks to GitHub with normal CA validation (certificate pinning
@@ -35,6 +38,9 @@ class AppUpdater(context: Context) {
         .build()
 
     val currentVersion: String get() = BuildConfig.VERSION_NAME
+
+    /** Paired PC host, for [checkPc] / PC downloads (set by the UI before downloading a [VerifiedUpdate.fromPc]). */
+    var pcApi: ApiClient? = null
 
     /** Effective release list URL; the override is honoured only in debug builds. */
     val releasesUrl: String
@@ -71,6 +77,24 @@ class AppUpdater(context: Context) {
     }
 
     /**
+     * The phone app the paired PC host ships (`GET /api/app/android`), when newer than this app; null when up to date.
+     * Throws [IOException] when the host cannot be reached or has no APK (older hosts answer 404).
+     */
+    suspend fun checkPc(api: ApiClient): VerifiedUpdate? = withContext(Dispatchers.IO) {
+        val o = try {
+            org.json.JSONObject(api.androidApp())
+        } catch (e: org.json.JSONException) {
+            throw IOException("PC 응답을 읽지 못했습니다", e)
+        }
+        val version = com.neststudio.pocketshell.core.SemVer.parse(o.optString("version")) ?: throw IOException("PC 응답에 버전이 없습니다")
+        val sha = o.optString("sha256").lowercase().takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            ?: throw IntegrityException("PC 서버가 SHA-256을 보내지 않아 업데이트를 거부합니다")
+        val name = o.optString("name").ifBlank { Releases.androidAssetName(version) }
+        val candidate = ReleaseCandidate(version, "v$version", "PocketShell v$version", "", name, "", sha, null)
+        Releases.newerThan(currentVersion, candidate)?.let { VerifiedUpdate(it, sha, fromPc = true) }
+    }
+
+    /**
      * Downloads the APK into the app cache (`cache/updates/`), verifying SHA-256 while streaming. On mismatch the
      * partial file is deleted and [IntegrityException] is thrown.
      */
@@ -81,9 +105,22 @@ class AppUpdater(context: Context) {
             dir.listFiles()?.forEach { it.delete() }
             val target = File(dir, update.candidate.apkName)
             val part = File(dir, update.candidate.apkName + ".part")
-            val req = Request.Builder().url(update.candidate.apkUrl).header("User-Agent", USER_AGENT).build()
             val ctx = coroutineContext
             try {
+                if (update.fromPc) {
+                    val api = pcApi ?: throw IOException("PC와 페어링되어 있지 않습니다")
+                    api.androidApk { input, total ->
+                        part.outputStream().use { out ->
+                            Sha256.copyVerified(input, out, update.sha256) { n ->
+                                ctx.ensureActive()
+                                onProgress(n, total)
+                            }
+                        }
+                    }
+                    if (!part.renameTo(target)) throw IOException("다운로드 파일을 저장할 수 없습니다")
+                    return@withContext target
+                }
+                val req = Request.Builder().url(update.candidate.apkUrl).header("User-Agent", USER_AGENT).build()
                 http.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) throw IOException("다운로드 실패 (HTTP ${resp.code})")
                     val body = resp.body ?: throw IOException("다운로드 응답 본문이 없습니다")

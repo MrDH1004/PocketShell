@@ -93,6 +93,10 @@
     <string name="update_available_message">지금 설치됨: %1$s\n업데이트 후: %2$s\n\n변경 내용\n%3$s</string>
     <string name="update_no_notes">(변경 내용 설명 없음)</string>
     <string name="update_download">%1$s 설치</string>
+    <string name="update_from_pc">PC에서 받기 (같은 망) %1$s</string>
+    <string name="update_from_github">GitHub에서 받기 %1$s</string>
+    <string name="update_pc_unpaired">PC와 페어링되어 있지 않음</string>
+    <string name="update_check_failed_both">업데이트를 확인하지 못했습니다. PC 연결이나 인터넷 연결을 확인하고 다시 시도하세요.\n\nPC: %1$s\nGitHub: %2$s</string>
     <string name="update_later">나중에</string>
     <string name="update_downloading">업데이트 다운로드 중</string>
     <string name="update_progress">%1$d%%</string>
