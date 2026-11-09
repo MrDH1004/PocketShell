@@ -18,7 +18,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.appbar.MaterialToolbar
@@ -88,7 +88,19 @@ class SessionListActivity : AppCompatActivity() {
         swipe = findViewById(R.id.swipe)
         swipe.setOnRefreshListener { refresh() }
         val list = findViewById<RecyclerView>(R.id.list)
-        list.layoutManager = LinearLayoutManager(this)
+        // Wide screens (tablet, landscape): session cards in columns, section titles across the full width.
+        val columns = WideScreen.columns(this)
+        list.layoutManager = GridLayoutManager(this, columns).apply {
+            spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+                override fun getSpanSize(position: Int) = if (adapter.getItemViewType(position) == 0) columns else 1
+            }
+        }
+        if (columns > 1) {
+            // Cards keep 16dp to the screen edge and get 16dp between columns (8dp list padding + 8dp margins).
+            val pad = (8 * resources.displayMetrics.density).toInt()
+            list.setPaddingRelative(pad, list.paddingTop, pad, list.paddingBottom)
+            adapter.compact = true
+        }
         list.adapter = adapter
         findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { showNewChooser() }
 
@@ -420,6 +432,9 @@ private class SessionAdapter(
 
     private var rows: List<Row> = emptyList()
 
+    /** Grid mode: 8dp side margins on cards (the list adds 8dp padding), section titles shifted to match. */
+    var compact = false
+
     fun submit(s: SessionSections, running: String, external: String, recent: String) {
         val out = ArrayList<Row>()
         fun section(title: String, items: List<SessionInfo>) {
@@ -442,7 +457,19 @@ private class SessionAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         val layout = if (viewType == 0) R.layout.item_section else R.layout.item_session
-        return object : RecyclerView.ViewHolder(inflater.inflate(layout, parent, false)) {}
+        val view = inflater.inflate(layout, parent, false)
+        if (compact) {
+            val d = parent.resources.displayMetrics.density
+            if (viewType == 0) {
+                view.setPaddingRelative((12 * d).toInt(), view.paddingTop, (12 * d).toInt(), view.paddingBottom)
+            } else {
+                (view.layoutParams as? ViewGroup.MarginLayoutParams)?.let {
+                    it.marginStart = (8 * d).toInt()
+                    it.marginEnd = (8 * d).toInt()
+                }
+            }
+        }
+        return object : RecyclerView.ViewHolder(view) {}
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {

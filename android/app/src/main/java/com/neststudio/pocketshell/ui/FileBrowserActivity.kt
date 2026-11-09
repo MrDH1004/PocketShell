@@ -86,6 +86,7 @@ class FileBrowserActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_files)
+        WideScreen.limitWidth(findViewById(R.id.list), 840)
         findViewById<View>(R.id.root).applySystemInsets(includeIme = false)
 
         val apiClient = (application as PkshellApp).api()

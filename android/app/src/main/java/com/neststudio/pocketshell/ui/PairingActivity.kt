@@ -56,6 +56,7 @@ class PairingActivity : AppCompatActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pairing)
+        WideScreen.limitWidth(findViewById(R.id.content), 560)
         findViewById<android.view.View>(R.id.root).applySystemInsets(includeIme = true)
 
         status = findViewById(R.id.status)
