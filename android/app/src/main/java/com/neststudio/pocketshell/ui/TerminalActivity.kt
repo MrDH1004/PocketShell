@@ -637,10 +637,10 @@ class TerminalActivity : AppCompatActivity() {
             return tv
         }
         for (k in listOf(SpecialKey.ESC, SpecialKey.TAB)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
-        keyButton(SpecialKey.ENTER.label, spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
-            // The return symbol is a small glyph at 13sp; size it to fill the keycap.
-            textSize = 26f
-            includeFontPadding = false
+        keyButton("", spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
+            // A drawn return icon (like the system keyboard's), not the font's tiny "↵" glyph.
+            val icon = ContextCompat.getDrawable(context, R.drawable.ic_key_enter)
+            setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
         }
         ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
         altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
