@@ -210,7 +210,9 @@ if ($Local) {
     Write-Host "    copied to $localHost\$hostZipName"
     Invoke-Checked 'git' @('-C', $Root, 'add', 'version.properties')
     Invoke-Checked 'git' @('-C', $Root, 'commit', '-m', "local build v$Version")
-    Invoke-Checked 'git' @('-C', $Root, 'push')
+    # The build is already usable locally; a failed push (offline) only warns.
+    try { Invoke-Checked 'git' @('-C', $Root, 'push') }
+    catch { Write-Warning "git push failed ($($_.Exception.Message)); push later" }
     Step "local build v$Version ready (apply: psh update)"
     return
 }
