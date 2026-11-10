@@ -378,6 +378,34 @@ public class UpdateStagingTests
     }
 
     [Fact]
+    public async Task LocalFolderFeedStagesTheNewestLocalBuild()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pkshell-localfeed-" + Guid.NewGuid().ToString("N"));
+        var feedDir = Path.Combine(root, "feed");
+        var home = Path.Combine(root, "home");
+        Directory.CreateDirectory(feedDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(feedDir, "pocketshell-host-win-x64-v1.0.5.zip"), ZipWithTopFolder());
+            File.WriteAllBytes(Path.Combine(feedDir, "pocketshell-host-win-x64-v1.1.0.zip"), ZipWithTopFolder());
+            File.WriteAllText(Path.Combine(feedDir, "notes.txt"), "ignored");
+
+            Assert.True(ReleaseFeed.TryLocalDir(feedDir, out var dir));
+            Assert.Equal(feedDir, dir);
+            Assert.False(ReleaseFeed.TryLocalDir(ReleaseFeed.DefaultUrl, out _));
+
+            using var svc = await Check(home, feedDir);
+            Assert.Equal(UpdateStates.Ready, svc.Status.State);
+            Assert.Equal("1.1.0", svc.Status.Latest);
+            Assert.Equal("content of pocketshell-host/psh.exe", File.ReadAllText(Path.Combine(svc.StagingDir!, "psh.exe")));
+
+            using var missing = await Check(Path.Combine(root, "home2"), Path.Combine(root, "nope"));
+            Assert.Equal(UpdateStates.Error, missing.Status.State);
+        }
+        finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+    }
+
+    [Fact]
     public async Task ReadyStagingIsReusedAfterReverifyingCachedZip()
     {
         var home = Path.Combine(Path.GetTempPath(), "pkshell-stage-" + Guid.NewGuid().ToString("N"));

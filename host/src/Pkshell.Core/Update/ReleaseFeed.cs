@@ -47,6 +47,41 @@ public static class ReleaseFeed
         return list;
     }
 
+    /// <summary>
+    /// A feed that is a local folder (a rooted path or a file: URI) instead of a releases URL: builds made on this PC are
+    /// installed without publishing them (scripts/release.ps1 -Local drops the host zip there).
+    /// </summary>
+    public static bool TryLocalDir(string feedUrl, out string dir)
+    {
+        dir = "";
+        if (string.IsNullOrWhiteSpace(feedUrl)) return false;
+        if (!Uri.TryCreate(feedUrl.Trim(), UriKind.Absolute, out var u) || !u.IsFile) return false;
+        dir = u.LocalPath;
+        return true;
+    }
+
+    /// <summary>
+    /// Releases in a local folder feed: every <c>pocketshell-host-win-x64-v&lt;ver&gt;.zip</c>. The asset URL is the file path
+    /// and the digest is the file's own SHA-256 (the folder is local and trusted; the hash still guards the copy).
+    /// </summary>
+    public static List<ReleaseInfo> ScanDir(string dir)
+    {
+        if (!Directory.Exists(dir)) throw new DirectoryNotFoundException($"local update folder not found: {dir}");
+        var list = new List<ReleaseInfo>();
+        foreach (var path in Directory.EnumerateFiles(dir, "pocketshell-host-win-x64-v*.zip"))
+        {
+            var name = Path.GetFileName(path);
+            var m = Regex.Match(name, @"^pocketshell-host-win-x64-v(.+)\.zip$");
+            if (!m.Success || !SemVer.TryParse(m.Groups[1].Value, out var ver) || name != HostAssetName(ver)) continue;
+            string hex;
+            using (var fs = File.OpenRead(path))
+                hex = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs)).ToLowerInvariant();
+            list.Add(new ReleaseInfo(ver, "v" + ver, ver.IsPrerelease, "local build",
+                new[] { new ReleaseAsset(name, path, "sha256:" + hex) }));
+        }
+        return list;
+    }
+
     /// <summary>Highest SemVer release (prerelease included) that carries an asset named by <paramref name="assetName"/>.</summary>
     public static ReleaseInfo? PickLatest(IEnumerable<ReleaseInfo> releases, Func<SemVer, string> assetName) =>
         releases.Where(r => r.Asset(assetName(r.Version)) != null).OrderByDescending(r => r.Version).FirstOrDefault();

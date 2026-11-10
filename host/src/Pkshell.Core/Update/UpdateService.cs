@@ -162,15 +162,10 @@ public sealed class UpdateService : IDisposable
             List<ReleaseInfo> releases;
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Get, FeedUrl);
-                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                using var resp = await _http.SendAsync(req, cts.Token);
-                var body = await resp.Content.ReadAsStringAsync(cts.Token);
-                if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)resp.StatusCode} from {FeedUrl}");
-                releases = ReleaseFeed.Parse(body);
+                if (ReleaseFeed.TryLocalDir(FeedUrl, out var localDir)) releases = ReleaseFeed.ScanDir(localDir);
+                else releases = await FetchFeedAsync();
             }
-            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or IOException)
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or IOException or UnauthorizedAccessException)
             {
                 MarkError($"update check failed: {ex.Message}");
                 return Status;
@@ -201,6 +196,17 @@ public sealed class UpdateService : IDisposable
             return Status;
         }
         finally { _op.Release(); }
+    }
+
+    private async Task<List<ReleaseInfo>> FetchFeedAsync()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, FeedUrl);
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var resp = await _http.SendAsync(req, cts.Token);
+        var body = await resp.Content.ReadAsStringAsync(cts.Token);
+        if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)resp.StatusCode} from {FeedUrl}");
+        return ReleaseFeed.Parse(body);
     }
 
     /// <summary>Makes sure the newest known release is downloaded, verified and staged. Returns the staging dir or null (State=error/none).</summary>
@@ -261,6 +267,9 @@ public sealed class UpdateService : IDisposable
             TryDeleteDir(dir);
             Directory.CreateDirectory(dir);
             string actual;
+            if (ReleaseFeed.TryLocalDir(FeedUrl, out _))
+                File.Copy(asset.Url, zip, overwrite: true); // local folder feed: the asset URL is a file path
+            else
             using (var resp = await _http.GetAsync(asset.Url, HttpCompletionOption.ResponseHeadersRead))
             {
                 if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"download {asset.Url}: HTTP {(int)resp.StatusCode}");

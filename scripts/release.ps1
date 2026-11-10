@@ -12,6 +12,10 @@
   4. SHA256SUMS.txt ("<sha256>  <name>")
   5. git commit + tag v<Version> + push, then `gh release create` (prerelease when the version has a '-')
 
+  -Local (no GitHub): after steps 1-4 the host zip goes to <repo>\build\host (the host's local update folder,
+  config.json "updateUrl"; three newest kept) and only version.properties is committed and pushed: no tag, no release.
+  Apply it with `psh update`; paired phones take the APK from the PC.
+
   -DryRun performs steps 1-4 into a temp folder only: version.properties is restored afterwards and nothing is
   committed, tagged, pushed or released.
 
@@ -22,6 +26,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [switch]$DryRun,
+    [switch]$Local,
     [string]$OutDir
 )
 
@@ -98,7 +103,7 @@ if (-not (Test-Path $DebugKeystore)) { throw "signing keystore not found: $Debug
 if (-not $DryRun) {
     $dirty = (& git -C $Root status --porcelain) | Out-String
     if ($dirty.Trim().Length -gt 0) { throw "working tree is not clean; commit or stash first:`n$dirty" }
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "GitHub CLI (gh) not found on PATH" }
+    if (-not $Local -and -not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "GitHub CLI (gh) not found on PATH" }
     & git -C $Root rev-parse -q --verify "refs/tags/v$Version" *> $null
     if ($LASTEXITCODE -eq 0) { throw "tag v$Version already exists" }
 }
@@ -193,6 +198,20 @@ if ($DryRun) {
     [System.IO.File]::WriteAllText($VersionFile, $originalVersionText, $Utf8NoBom)
     Step "dry run complete: version.properties restored; no commit/tag/push/release"
     Get-ChildItem $OutDir | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+    return
+}
+
+if ($Local) {
+    Step "local: host zip -> build\host; commit + push version.properties (no tag, no GitHub release)"
+    $localHost = Join-Path $Root 'build\host'
+    New-Item -ItemType Directory -Force -Path $localHost | Out-Null
+    Copy-Item -Force $hostZip (Join-Path $localHost $hostZipName)
+    Get-ChildItem $localHost -Filter 'pocketshell-host-win-x64-v*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 3 | Remove-Item -Force
+    Write-Host "    copied to $localHost\$hostZipName"
+    Invoke-Checked 'git' @('-C', $Root, 'add', 'version.properties')
+    Invoke-Checked 'git' @('-C', $Root, 'commit', '-m', "local build v$Version")
+    Invoke-Checked 'git' @('-C', $Root, 'push')
+    Step "local build v$Version ready (apply: psh update)"
     return
 }
 
