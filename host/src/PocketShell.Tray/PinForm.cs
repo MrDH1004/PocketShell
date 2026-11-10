@@ -127,22 +127,8 @@ internal sealed class PinForm : Form
 
     private async Task<JsonElement> StartPinAsync()
     {
-        var token = File.ReadAllText(PkshellPaths.LocalTokenFile(_home), Encoding.UTF8).Trim();
-        var fp = File.ReadAllText(PkshellPaths.CertFingerprintFile(_home), Encoding.UTF8).Trim().ToLowerInvariant();
-        using var handler = new SocketsHttpHandler();
-        handler.SslOptions.RemoteCertificateValidationCallback =
-            (object _, X509Certificate? cert, X509Chain? _, SslPolicyErrors _) =>
-                cert != null && string.Equals(CertManager.Fingerprint(cert), fp, StringComparison.Ordinal);
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"https://127.0.0.1:{_port}/api/pair/start")
-        {
-            Content = new StringContent("{\"mode\":\"pin\"}", Encoding.UTF8, "application/json"),
-        };
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var resp = await http.SendAsync(req);
-        var text = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"HTTP {(int)resp.StatusCode} {text}");
-        using var doc = JsonDocument.Parse(text);
-        return doc.RootElement.Clone();
+        var (status, body) = await LocalApi.SendAsync(_home, _port, HttpMethod.Post, "api/pair/start", "{\"mode\":\"pin\"}");
+        if (status != 200) throw new InvalidOperationException($"HTTP {status} {LocalApi.Str(body, "error")}");
+        return body;
     }
 }

@@ -108,12 +108,11 @@ class SessionListActivity : AppCompatActivity() {
         hostUpdateText = findViewById(R.id.hostUpdateText)
         hostUpdateApply = findViewById(R.id.hostUpdateApply)
         hostUpdateApply.setOnClickListener { confirmHostUpdate() }
-
-        if (savedInstanceState == null) appUpdate.autoCheck()
     }
 
     override fun onResume() {
         super.onResume()
+        appUpdate.autoCheck() // at most every 3 hours (UpdatePolicy), silent unless an update is found
         if ((application as PkshellApp).pairing() != null) refresh()
     }
 

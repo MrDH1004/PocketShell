@@ -71,9 +71,9 @@ data class HostUpdateStatus(
 
 /** App-start update check is limited to once per day (DESIGN.md §11.4). */
 object UpdatePolicy {
-    const val AUTO_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
+    const val AUTO_CHECK_INTERVAL_MS = 3L * 60 * 60 * 1000
 
-    /** True if never checked, a day has passed, or the clock went backwards. */
+    /** True if never checked, 3 hours have passed, or the clock went backwards. */
     fun shouldAutoCheck(lastCheckMillis: Long, nowMillis: Long): Boolean =
         lastCheckMillis <= 0 || nowMillis < lastCheckMillis || nowMillis - lastCheckMillis >= AUTO_CHECK_INTERVAL_MS
 }

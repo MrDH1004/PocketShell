@@ -158,14 +158,14 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 무결성: 자산의 `digest`(`sha256:<hex>`) 필드와 다운로드 파일 SHA-256 일치 필수. digest 없으면 같은 릴리스의 `SHA256SUMS.txt`(`<hex>  <name>`)로 대체, 둘 다 없으면 업데이트 거부.
 
 ### 11.3 PC 호스트
-- `serve` 시작 시 + 6시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
+- `serve` 시작 시 + 3시간마다 확인. 트레이 메뉴 "업데이트 확인…"으로 수동 확인·설치(새 버전이 있으면 "업데이트 설치 (vX)…"로 바뀌고 알림 1회, PC 세션 실행 중이면 종료 후 설치할지 물음). 폰 앱도 세션 목록이 보일 때 3시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
 - 새 버전 발견 → `%PKSHELL_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
 - 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
 - `POST /api/update/apply {force?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions}`. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
 - 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `psh serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 업데이트가 커밋된 뒤(기존 프로세스 종료 후)에만 `*.old` 삭제.
 - CLI: `psh update [--check] [--force]`.
 - 구현 확정 사항(host):
-  - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `PKSHELL_UPDATE_URL`이 우선), 확인 주기는 환경변수 `PKSHELL_UPDATE_INTERVAL_SEC`(기본 6시간, QA용).
+  - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `PKSHELL_UPDATE_URL`이 우선), 확인 주기는 환경변수 `PKSHELL_UPDATE_INTERVAL_SEC`(기본 3시간, QA용).
   - 모드: `auto` = 발견 즉시 다운로드·검증 후 유휴 시 자동 적용, `notify` = `available`까지만(다운로드는 apply 시), `off` = 백그라운드 확인 없음(명시적 check/apply는 동작).
   - `POST /api/update/check` → 즉시 피드 확인 후 `GET /api/update`와 같은 객체. `POST /api/update/apply` 성공 = 200 + 같은 객체(적용은 비동기), 더 새 버전 없음 = 400. 피드는 호스트 자산(`pocketshell-host-win-x64-v<ver>.zip`)이 있는 릴리스 중 최고 버전을 고른다.
   - staging: `%PKSHELL_HOME%\updates\<ver>\app\` + 다운로드한 zip + `.ready`(검증된 sha256). `.ready` staging 재사용 시 보관된 zip을 다시 해시해 일치할 때만 그 zip에서 `app\`을 다시 풀어 사용(불일치·zip 없음 → 재다운로드). psh.exe 위치는 zip 루트 또는 단일 최상위 폴더(최초·재사용 동일 규칙). 현재 버전 이하의 staging은 시작 시 삭제.

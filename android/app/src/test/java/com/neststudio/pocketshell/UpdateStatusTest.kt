@@ -60,8 +60,9 @@ class UpdateStatusTest {
     }
 
     @Test
-    fun autoCheckOncePerDay() {
+    fun autoCheckEveryThreeHours() {
         val day = UpdatePolicy.AUTO_CHECK_INTERVAL_MS
+        assertEquals(3L * 60 * 60 * 1000, day)
         val now = 1_000_000_000_000L
         assertTrue(UpdatePolicy.shouldAutoCheck(0, now))
         assertFalse(UpdatePolicy.shouldAutoCheck(now - day + 1, now))

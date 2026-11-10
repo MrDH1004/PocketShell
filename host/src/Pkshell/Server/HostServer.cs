@@ -163,7 +163,7 @@ public sealed class HostServer : IDisposable
         var envUrl = Pkshell.Core.Util.EnvVars.Get("UPDATE_URL");
         var feed = !string.IsNullOrWhiteSpace(envUrl) ? envUrl.Trim() : !string.IsNullOrWhiteSpace(cfg.UpdateUrl) ? cfg.UpdateUrl.Trim() : ReleaseFeed.DefaultUrl;
         var interval = int.TryParse(Pkshell.Core.Util.EnvVars.Get("UPDATE_INTERVAL_SEC"), out var isec) && isec > 0
-            ? TimeSpan.FromSeconds(isec) : TimeSpan.FromHours(6);
+            ? TimeSpan.FromSeconds(isec) : TimeSpan.FromHours(3);
         var current = SemVer.TryParse(Version, out var cv) ? cv : SemVer.Parse("0.0.0");
         _update = new UpdateService(_home, current, feed, cfg.AutoUpdate, interval, RunningSessions);
         _update.AutoApply = () => { TryBeginApply(force: false); return Task.CompletedTask; };

@@ -48,7 +48,7 @@ class AppUpdateController(private val activity: AppCompatActivity) {
             }
         }
 
-    /** App start: at most once per day, silent unless an update is found. */
+    /** Session list shown: at most every 3 hours, silent unless an update is found. */
     fun autoCheck() {
         if (updater.shouldAutoCheck()) check(manual = false)
     }

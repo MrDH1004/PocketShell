@@ -19,6 +19,13 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _start;
     private readonly ToolStripMenuItem _stop;
     private readonly ToolStripMenuItem _autoStart;
+    /// <summary>"업데이트 확인…", or "업데이트 설치 (vX)…" once the host knows a newer release.</summary>
+    private readonly ToolStripMenuItem _updateItem;
+    private string? _updateLatest;
+    private string? _notifiedVersion;
+    private bool _updateBusy;
+    private DateTime _nextUpdatePoll = DateTime.MinValue;
+    private static readonly TimeSpan UpdatePollEvery = TimeSpan.FromMinutes(5);
     private readonly System.Windows.Forms.Timer _timer;
     private readonly string _version;
     /// <summary>Full informational version of this build (incl. +commit), compared with the installed PocketShell.dll.</summary>
@@ -53,6 +60,7 @@ internal sealed class TrayApp : ApplicationContext
         _stop = new ToolStripMenuItem("서버 중지", null, async (_, _) => await StopAsync());
         var pair = new ToolStripMenuItem("휴대폰 연결 (PIN)…", null, (_, _) => ShowPin()) { Font = new Font(SystemFonts.MenuFont ?? Control.DefaultFont, FontStyle.Bold) };
         _autoStart = new ToolStripMenuItem("Windows 시작 시 자동 실행", null, (_, _) => ToggleAutoStart());
+        _updateItem = new ToolStripMenuItem("업데이트 확인…", null, async (_, _) => await CheckUpdateAsync());
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
@@ -60,10 +68,10 @@ internal sealed class TrayApp : ApplicationContext
             pair, new ToolStripMenuItem("프로젝트 폴더…", null, (_, _) => ShowProjects()), _start, _stop, new ToolStripSeparator(),
             new ToolStripMenuItem("데이터 폴더 열기", null, (_, _) => OpenFolder(_home)),
             new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(PkshellPaths.LogsDir(_home))),
-            _autoStart, new ToolStripSeparator(),
+            _autoStart, _updateItem, new ToolStripSeparator(),
             new ToolStripMenuItem("종료 (서버도 중지)", null, async (_, _) => await ExitAsync()),
         });
-        menu.Opening += (_, _) => Refresh();
+        menu.Opening += (_, _) => { Refresh(); _ = PollUpdateAsync(); };
 
         _icon = new NotifyIcon { Icon = _stoppedIcon, ContextMenuStrip = menu, Visible = true, Text = Brand.Name };
         _icon.DoubleClick += (_, _) => ShowPin();
@@ -104,6 +112,9 @@ internal sealed class TrayApp : ApplicationContext
         _start.Enabled = !running && !_busy;
         _stop.Enabled = running && !_busy;
         _autoStart.Checked = AutoStart.IsEnabled;
+        _updateItem.Enabled = running && !_updateBusy;
+        _updateItem.Text = _updateLatest != null ? $"업데이트 설치 (v{_updateLatest})…" : "업데이트 확인…";
+        _updateItem.Font = new Font(SystemFonts.MenuFont ?? Control.DefaultFont, _updateLatest != null ? FontStyle.Bold : FontStyle.Regular);
         _icon.Icon = running ? _runningIcon : _stoppedIcon;
         _icon.Text = $"{Brand.Name} — {(running ? "실행 중" : "중지됨")}";
         _lastRunning = running;
@@ -119,6 +130,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         var running = _server.IsRunning;
         if (running != _lastRunning) Refresh();
+        if (running && DateTime.UtcNow >= _nextUpdatePoll) _ = PollUpdateAsync();
         if (running || !_wantRunning) { _downTicks = 0; return; }
         // Down while wanted (crash, or an update handoff that failed): restart after ~4 s, at most 3 times in 5 min.
         if (++_downTicks < 2) return;
@@ -209,6 +221,92 @@ internal sealed class TrayApp : ApplicationContext
         _projectsForm.Show();
         _projectsForm.Activate();
     }
+
+    // ------------------------------------------------------------ updates (the host checks every 3 hours, DESIGN §11.3)
+
+    /// <summary>Reads GET /api/update: menu text, and one balloon per new version the host has found.</summary>
+    private async Task PollUpdateAsync()
+    {
+        _nextUpdatePoll = DateTime.UtcNow + UpdatePollEvery;
+        try
+        {
+            var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Get, "api/update");
+            if (status != 200) return;
+            ApplyUpdateStatus(body);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException) { /* server starting/stopping */ }
+    }
+
+    private void ApplyUpdateStatus(System.Text.Json.JsonElement st, bool notify = true)
+    {
+        var state = LocalApi.Str(st, "state");
+        var latest = LocalApi.Str(st, "latest");
+        _updateLatest = state is "available" or "downloading" or "ready" && latest.Length > 0 ? latest : null;
+        if (_updateLatest != null && _updateLatest != _notifiedVersion && notify)
+        {
+            _notifiedVersion = _updateLatest;
+            _icon.ShowBalloonTip(5000, Brand.Name, $"새 버전 v{_updateLatest}이 있습니다. 트레이 메뉴의 '업데이트 설치'로 바로 적용할 수 있습니다.", ToolTipIcon.Info);
+        }
+        Refresh();
+    }
+
+    /// <summary>Menu "업데이트 확인…": asks the host to check now, then offers to install a newer release.</summary>
+    private async Task CheckUpdateAsync()
+    {
+        if (_updateBusy) return;
+        _updateBusy = true;
+        Refresh();
+        try
+        {
+            var (status, st) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Post, "api/update/check", timeout: TimeSpan.FromSeconds(60));
+            if (status != 200) { ShowError($"업데이트를 확인하지 못했습니다 (HTTP {status}). 잠시 후 다시 시도하세요."); return; }
+            ApplyUpdateStatus(st, notify: false); // the dialog below says it
+            var current = LocalApi.Str(st, "current");
+            var state = LocalApi.Str(st, "state");
+            if (state == "error" && _updateLatest == null)
+            {
+                ShowError($"업데이트를 확인하지 못했습니다: {LocalApi.Str(st, "error")}\n인터넷 연결을 확인하고 다시 시도하세요. 자세한 내용은 로그 폴더에 있습니다.");
+                return;
+            }
+            if (_updateLatest == null)
+            {
+                MessageBox.Show($"최신 버전을 사용 중입니다 (v{current}).", $"{Brand.Name} 업데이트", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            var ask = MessageBox.Show(
+                $"새 버전 v{_updateLatest}이 있습니다 (현재 v{current}).\n\n지금 설치할까요? 서버가 몇 초 동안 다시 시작되고, 휴대폰은 자동으로 다시 연결됩니다.",
+                $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (ask == DialogResult.Yes) await ApplyUpdateAsync(force: false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            ShowError($"서버에 연결하지 못했습니다: {ex.Message}\n서버가 실행 중인지 확인하세요.");
+        }
+        finally
+        {
+            _updateBusy = false;
+            Refresh();
+        }
+    }
+
+    private async Task ApplyUpdateAsync(bool force)
+    {
+        var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Post, "api/update/apply", force ? "{\"force\":true}" : "{}");
+        if (status == 409)
+        {
+            var n = body.TryGetProperty("runningSessions", out var r) && r.TryGetInt32(out var c) ? c : 0;
+            var ask = MessageBox.Show(
+                $"이 PC에서 연 세션 {n}개가 실행 중입니다. 지금 설치하면 이 세션들이 종료됩니다.\n\n세션을 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
+                $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (ask == DialogResult.Yes) await ApplyUpdateAsync(force: true);
+            return;
+        }
+        if (status != 200) { ShowError($"업데이트를 시작하지 못했습니다: {LocalApi.Str(body, "error")}\n잠시 후 다시 시도하세요."); return; }
+        _icon.ShowBalloonTip(4000, Brand.Name, $"v{_updateLatest} 설치 중입니다. 잠시 후 서버가 다시 시작됩니다.", ToolTipIcon.Info);
+    }
+
+    private static void ShowError(string text) =>
+        MessageBox.Show(text, $"{Brand.Name} 업데이트", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
     private void ToggleAutoStart()
     {
