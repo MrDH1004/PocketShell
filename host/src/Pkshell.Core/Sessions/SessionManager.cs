@@ -148,8 +148,10 @@ public sealed class SessionManager : IDisposable
         {
             if (s.ShellPid is not int pid) continue;
             var agent = External.ExternalConsoles.AgentUnder(pid, procs);
-            s.NoteAgent(agent);
-            if (agent != null) Log.Info($"session {s.Id}: {agent} was running; resume will continue it");
+            // Called every 20 s for running sessions: log only when the agent changes, not on every pass.
+            if (s.NoteAgent(agent)) Log.Info(agent != null
+                ? $"session {s.Id}: {agent} is running; resume will continue it"
+                : $"session {s.Id}: AI CLI no longer running");
         }
     }
 
