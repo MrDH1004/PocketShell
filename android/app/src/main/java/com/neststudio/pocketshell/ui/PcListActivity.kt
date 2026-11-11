@@ -91,7 +91,9 @@ class PcListActivity : AppCompatActivity() {
         val app = application as PkshellApp
         val pcs = app.pcs()
         probes.forEach { it.cancel() }
-        adapter.submit(pcs.map { PcRow(it, PcState.CHECKING) })
+        // Keep what the last probe showed while the new one runs, so cards do not flash back to "checking" every
+        // time the list comes back (return from a PC, alias saved); only PCs not seen yet start as checking.
+        adapter.submit(pcs.map { p -> adapter.rowOf(p.id)?.copy(pc = p) ?: PcRow(p, PcState.CHECKING) })
         empty.visibility = if (pcs.isEmpty()) View.VISIBLE else View.GONE
         findViewById<View>(R.id.fab).visibility = if (pcs.isEmpty()) View.GONE else View.VISIBLE
         swipe.isRefreshing = false
@@ -244,6 +246,8 @@ private class PcAdapter(
         @Suppress("NotifyDataSetChanged")
         notifyDataSetChanged()
     }
+
+    fun rowOf(id: String): PcRow? = rows.firstOrNull { it.pc.id == id }
 
     fun update(row: PcRow) {
         val i = rows.indexOfFirst { it.pc.id == row.pc.id }

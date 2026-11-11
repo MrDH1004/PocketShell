@@ -165,6 +165,7 @@ public sealed class HostServer : IDisposable
         Environment.SetEnvironmentVariable(UpdateParentPidEnv, null); // not inherited by shells / later children
         if (parentPid == null) CleanupOldInstallFiles("startup");
         else _ = Task.Run(() => CleanupAfterParentExit(parentPid.Value));
+        SyncInstalledVersion();
 
         var cfg = PkshellConfig.LoadOrCreate(_home);
         var envUrl = Pkshell.Core.Util.EnvVars.Get("UPDATE_URL");
@@ -413,6 +414,28 @@ public sealed class HostServer : IDisposable
     {
         _discovery?.Dispose();
         _discovery = null;
+    }
+
+    /// <summary>
+    /// Installed with PocketShell-Setup: Windows' app list shows the version the installer wrote. Auto-updates replace
+    /// the files without the installer, so keep that entry's version current (only when it is this install folder).
+    /// </summary>
+    private void SyncInstalledVersion()
+    {
+        const string key = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{6B0E4C1F-6A63-4C8B-9B53-5C2E1E7A9D41}_is1"; // AppId in installer\PocketShell.iss
+        try
+        {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(key, writable: true);
+            if (k?.GetValue("InstallLocation") is not string location) return;
+            if (!string.Equals(location.TrimEnd('\\'), _installDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return;
+            if (k.GetValue("DisplayVersion") as string == Version) return;
+            k.SetValue("DisplayVersion", Version);
+            Log.Info($"installed apps entry: version set to {Version}");
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            Log.Warn("installed apps entry not updated: " + ex.Message);
+        }
     }
 
     /// <summary>Returns how many backups are still locked.</summary>
@@ -671,6 +694,9 @@ public sealed class HostServer : IDisposable
         app.MapPost("/api/update/apply", async (HttpContext ctx) =>
         {
             var req = await ReadBody<ApplyRequest>(ctx);
+            var auth = AuthOf(ctx);
+            // Who asked matters afterwards: a forced apply ends the running sessions.
+            Log.Info($"update: apply requested by {(auth.IsLocal ? "this PC (tray / psh update)" : $"device {auth.DeviceId}")} (force={req?.Force == true})");
             var (status, body) = TryBeginApply(req?.Force == true);
             return Json(body, status);
         });
