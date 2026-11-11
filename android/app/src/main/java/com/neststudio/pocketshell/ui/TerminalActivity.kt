@@ -290,6 +290,60 @@ class TerminalActivity : AppCompatActivity() {
         quickBar.visibility = View.VISIBLE
     }
 
+    // ---------------------------------------------------------------- saved phrases
+
+    /** The user's phrases as a menu on [anchor]: a tap types the phrase and sends it (Enter). */
+    private fun showSnippets(anchor: View) {
+        val snippets = uiPrefs.snippets
+        val menu = android.widget.PopupMenu(this, anchor)
+        snippets.forEachIndexed { i, s -> menu.menu.add(0, i, i, s) }
+        if (snippets.isEmpty()) menu.menu.add(0, SNIPPET_NONE, 0, R.string.snippets_empty).isEnabled = false
+        menu.menu.add(1, SNIPPET_EDIT, snippets.size + 1, R.string.snippets_edit)
+        androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
+        menu.setOnMenuItemClickListener {
+            if (it.itemId == SNIPPET_EDIT) editSnippets() else snippets.getOrNull(it.itemId)?.let(::sendSnippet)
+            true
+        }
+        menu.show()
+    }
+
+    private fun sendSnippet(text: String) {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        session.write(bytes, 0, bytes.size)
+        // Enter goes separately, a moment later: a TUI reading text and Enter in one chunk may take it for a paste.
+        main.postDelayed({ sendSpecial(SpecialKey.ENTER) }, ENTER_DELAY_MS)
+        terminalView.resetImeLine()
+    }
+
+    /** All phrases in one text field, one per line. */
+    private fun editSnippets() {
+        val d = resources.displayMetrics.density
+        val input = android.widget.EditText(this).apply {
+            setText(com.neststudio.pocketshell.core.Snippets.toText(uiPrefs.snippets))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 4
+            gravity = android.view.Gravity.TOP
+        }
+        val hint = TextView(this).apply {
+            setText(R.string.snippets_edit_hint)
+            setPadding(0, 0, 0, (8 * d).toInt())
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            addView(hint)
+            addView(input)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.snippets_title)
+            .setView(box)
+            .setPositiveButton(R.string.save) { _, _ ->
+                uiPrefs.snippets = com.neststudio.pocketshell.core.Snippets.parse(input.text.toString())
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     /** Screen and history as text in [TerminalTextActivity]: select / copy, or search when [search]. */
     private fun openText(search: Boolean) {
         val text = if (sessionKind == SessionInfo.KIND_EXTERNAL) history.plainText()
@@ -341,6 +395,10 @@ class TerminalActivity : AppCompatActivity() {
         }
         menu.menu.add(2, OPT_SELECT, 100, R.string.term_select_copy)
         menu.menu.add(2, OPT_SEARCH, 100, R.string.term_search)
+        menu.menu.add(4, OPT_SNIPPETS, 100, R.string.snippets_title)
+        if (sessionKind != SessionInfo.KIND_HISTORY && pcId.isNotEmpty() && sessionId.isNotEmpty()) {
+            menu.menu.add(4, OPT_MUTE, 100, if (uiPrefs.isMuted(pcId, sessionId)) R.string.notify_unmute_session else R.string.notify_mute_session)
+        }
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
@@ -348,6 +406,12 @@ class TerminalActivity : AppCompatActivity() {
             when (it.itemId) {
                 OPT_SELECT -> openText(search = false)
                 OPT_SEARCH -> openText(search = true)
+                OPT_SNIPPETS -> showSnippets(anchor)
+                OPT_MUTE -> {
+                    val muted = !uiPrefs.isMuted(pcId, sessionId)
+                    uiPrefs.setMuted(pcId, sessionId, muted)
+                    Toast.makeText(this, if (muted) R.string.notify_muted_toast else R.string.notify_unmuted_toast, Toast.LENGTH_LONG).show()
+                }
                 OPT_VIEW -> {
                     val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
                     ViewSettingsDialog.show(this, note) { applyViewSettings() }
@@ -744,6 +808,8 @@ class TerminalActivity : AppCompatActivity() {
             return tv
         }
         for (k in listOf(SpecialKey.ESC, SpecialKey.TAB)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
+        lateinit var snippetKey: TextView
+        snippetKey = keyButton(getString(R.string.snippets_key)) { showSnippets(snippetKey) }
         keyButton("", spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
             // A drawn return icon (like the system keyboard's), not the font's tiny "↵" glyph.
             val icon = ContextCompat.getDrawable(context, R.drawable.ic_key_enter)
@@ -915,6 +981,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val OPT_VIEW = 2
         private const val OPT_SELECT = 3
         private const val OPT_SEARCH = 4
+        private const val OPT_SNIPPETS = 5
+        private const val OPT_MUTE = 6
+        private const val SNIPPET_EDIT = 10_000
+        private const val SNIPPET_NONE = 10_001
         private const val STATE_POLL_MS = 2000L
         private const val ENTER_DELAY_MS = 150L
         /** PC to select before opening (a notification may be for another PC than the open one). */

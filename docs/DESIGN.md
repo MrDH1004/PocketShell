@@ -115,7 +115,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - `psh new [--shell pwsh] [--cwd D] [--title T] [--attach]` (기본: 생성 후 현재 콘솔에서 attach)
 - `psh attach <id>` 현재 콘솔을 VT 입력/출력 모드로 전환(`ENABLE_VIRTUAL_TERMINAL_PROCESSING`, `ENABLE_VIRTUAL_TERMINAL_INPUT`, raw 입력), 콘솔 크기 보고(창 크기 변경 시 resize 전송), 출력 바이트 그대로 stdout에 쓰기. `client=cli`. 분리 단축키: `Ctrl+]` 후 `d`. 세션 exit 시 메시지 출력 후 종료.
 - `psh pair` → PIN 발급(12.1절). `--pin`은 호환용으로 허용(효과 없음).
-- `psh update [--check] [--force]` → 11.3절.
+- `psh update [--check] [--force [--kill-working]]` → 11.3절.
+- `psh firewall-cleanup [--list]`: Windows가 실행 파일 경로마다 만든 방화벽 허용 규칙 중, 프로그램이 이 앱(`mpta.exe`/`psh.exe`/`PocketShell.exe`)이면서 파일이 없어졌거나 옛 이름 `mpta.exe`인 것을 지운다. 목록 읽기는 권한 불필요, 삭제는 PowerShell을 `runas`로 띄움(UAC). 지금 설치의 규칙은 파일이 있으므로 대상이 아니다.
 - `psh devices`, `psh revoke <id>`
 - CLI는 `local.token`과 `cert.sha256`을 읽어 `wss://127.0.0.1:<port>`로 접속(핀닝).
 - 클라이언트 verb 공통 옵션: `--port N`(우선순위: `--port` > 환경변수 `PKSHELL_PORT` > config.json port), `--home DIR`(> `PKSHELL_HOME` > `%APPDATA%\PocketShell`). `psh serve --port N`은 config.json을 바꾸지 않는다.
@@ -161,9 +162,9 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - `serve` 시작 시 + 3시간마다 확인. 트레이 메뉴 "업데이트 확인…"으로 수동 확인·설치(새 버전이 있으면 "업데이트 설치 (vX)…"로 바뀌고 알림 1회, PC 세션 실행 중이면 종료 후 설치할지 물음). 폰 앱도 세션 목록이 보일 때 3시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
 - 새 버전 발견 → `%PKSHELL_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
 - 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
-- `POST /api/update/apply {force?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions}`. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
+- `POST /api/update/apply {force?:bool, killWorking?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions, workingAgents, sessions[{id, title, agent, agentState}]}`. force여도 AI CLI가 작업 중(`working`)인 세션이 있으면 killWorking 없이는 같은 409(확인을 한 번 더 받기 위함). 트레이·폰·CLI는 끝날 세션 목록을 보여 주고, 작업 중인 세션이 있으면 별도 확인을 한 번 더 받는다. 자동 적용은 force 없이 호출하므로 세션이 있으면 기다린다. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.
 - 적용 절차: 설치 폴더의 기존 파일을 `*.old`로 rename(실행 중 exe/dll도 rename 가능) → staging 파일 복사 → 같은 인자로 새 `psh serve` 실행 → 새 프로세스가 `/api/info` 응답하면 기존 프로세스 종료. 새 프로세스 시작 실패 시 `*.old` 복원 후 기존 프로세스 유지(롤백). 업데이트가 커밋된 뒤(기존 프로세스 종료 후)에만 `*.old` 삭제.
-- CLI: `psh update [--check] [--force]`.
+- CLI: `psh update [--check] [--force [--kill-working]]`.
 - 구현 확정 사항(host):
   - 설정: `config.json`의 `autoUpdate`, `updateUrl`(피드 URL, 환경변수 `PKSHELL_UPDATE_URL`이 우선), 확인 주기는 환경변수 `PKSHELL_UPDATE_INTERVAL_SEC`(기본 3시간, QA용).
   - 모드: `auto` = 발견 즉시 다운로드·검증 후 유휴 시 자동 적용, `notify` = `available`까지만(다운로드는 apply 시), `off` = 백그라운드 확인 없음(명시적 check/apply는 동작).
@@ -212,18 +213,26 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 상태(`agentState`): `working`(작업 중) / `waiting`(선택지를 묻고 멈춤) / `done`(질문 없이 멈춤) / 없음(모름).
 - 판정(`ActivityTracker`): 문구가 아니라 화면 변화로 본다(CLI 버전마다 문구가 다름).
   - 화면이 3초 이상, 3번 이상 계속 바뀌면 working. 6초 동안 안 바뀌면 멈춤.
+  - 호스트 세션에서 "바뀜"은 화면의 글자가 실제로 달라진 것만(`VtScreen.Fingerprint`). 창 제목만 깜박이는 출력(Codex가 승인을 기다리며 `[ ! ] Action Required`를 반복)이나 색만 바꾸는 출력은 세지 않는다.
+  - 멈췄는데 마지막 작업 뒤에 입력이 있었으면(사용자가 벌써 다음 지시를 치는 중) 알리지 않고 상태만 비운다.
   - 입력 직후 1.5초 안의 변화는 입력 반향이라 작업으로 세지 않는다. 호스트를 거친 입력(폰, PC 탭)과, 외부 콘솔은 이 PC에서 터미널 앱이 앞에 있고 키보드·마우스 입력이 방금 있었던 경우.
   - 멈춘 순간 화면을 읽어 선택지가 있으면 waiting, 없으면 done. 작업 구간 없이 바로 뜬 질문은 화면이 2초 잠잠해진 뒤 읽는다.
-- 화면 읽기: 외부 콘솔은 콘솔 버퍼(`ConsoleScrollback.WindowText`). 호스트 세션은 ConPTY 출력이 커서 이동·지우기로 그려지므로 `VtScreen`이 격자에 재생해 글자를 얻는다(색·모드는 무시).
+- 화면 읽기: 외부 콘솔은 콘솔 버퍼(`ConsoleScrollback.WindowText`). 호스트 세션은 ConPTY 출력이 커서 이동·지우기로 그려지므로 `VtScreen`이 격자에 재생해 글자를 얻는다(색·모드는 무시). 줄이 끝 칸까지 찬 뒤의 줄바꿈 보류는 커서 이동·지우기만 풀고 색 변경은 풀지 않는다(Codex가 긴 선택지를 터미널 줄바꿈에 맡김).
+- `GET /api/sessions/{id}/screen`: 호스트가 읽은 화면(글자 줄, text/plain). 질문이 어떻게 보였는지 확인하는 용도.
 - 선택지(`PromptDetector`): 강조 표시(❯ › ▶ ▸)가 붙은 줄과, 그 글자 열에 맞춰 위아래로 붙은 줄들. 2개 이상.
   - 번호형(`1. Yes`): 키 = 그 번호, Enter 불필요.
   - 화살표형(번호 없음, 아래에 `Enter to confirm` 같은 키 안내 필요): 키 = 강조된 줄에서 그 줄까지의 화살표, `enter=true`.
+  - 긴 선택지가 접혀 더 깊이 들여쓴 줄(`(shift+tab)`)은 바로 위 선택지에 붙인다(끊기면 그 아래 선택지를 놓침).
+  - 질문 문구: 선택지 위 12줄 안에서 `?`로 끝나는 가장 가까운 줄, 없으면 가장 가까운 글자 줄.
   - 선택지 아래에 글자 있는 줄이 6줄 넘으면 예전 출력으로 본다. 답한 질문이 화면에 남아 아래에 새 출력이 쌓인 경우도 다시 묻는 것으로 보지 않는다.
 - API
   - `GET /api/sessions`, `/api/sessions/{id}`: `agentState`, `agentStateSince`, `prompt{question, options[{key, enter, label}]}`.
   - `GET /api/info`: `agents{working, waiting, done}`.
-  - `GET /api/events?after=<seq>&wait=<초, 최대 50>`: 멈춤 이벤트 롱폴. 응답 `{epoch, seq, events[{seq, sessionId, title, agent, state, prompt, time}]}`. `after=-1`은 현재 seq만 알려 준다. `epoch`이 바뀌면 호스트가 재시작한 것(seq가 처음부터).
+  - `GET /api/events?after=<seq>&wait=<초, 최대 50>`: 멈춤 이벤트 롱폴. 응답 `{epoch, seq, events[{seq, sessionId, title, agent, state, prompt, preview?, time}]}`. `preview`는 done일 때 에이전트가 마지막에 쓴 줄들(`AgentPreview`: 입력 칸 위에서 마지막 글머리표(● • ⏺)부터 최대 5줄·400자, 구분선·소요 시간 줄·오른쪽 정렬 안내·사용자 입력 줄 제외). `after=-1`은 현재 seq만 알려 준다. `epoch`이 바뀌면 호스트가 재시작한 것(seq가 처음부터).
   - `POST /api/sessions/{id}/input {text, enter}`: 세션을 열지 않고 입력. Enter는 150ms 뒤 따로 보낸다(TUI가 한 덩어리를 붙여넣기로 보고 줄바꿈으로 처리하는 것을 막음). 외부 콘솔은 이미 읽고 있는 것만.
 - 폰
-  - `AgentWatchService`(포그라운드 서비스, specialUse): PC마다 `/api/events` 롱폴 1개. waiting은 선택지 버튼(최대 3), done은 답장(RemoteInput) 알림. 보고 있는 세션의 알림은 띄우지 않는다. 푸시 서버가 없어 폰이 직접 기다리는 구조라 고정 알림이 필요하고, Doze 중에는 늦을 수 있다.
+  - `AgentWatchService`(포그라운드 서비스, specialUse): PC마다 `/api/events` 롱폴 1개. waiting은 선택지 버튼(3개까지; 4개 이상이면 앞의 2개 + 세션을 여는 "선택지 n개 보기"), done은 미리보기 + 답장(RemoteInput, 자주 쓰는 문구가 칩으로 붙음) + "이 세션 알림 끄기". 보고 있는 세션과 알림을 끈 세션은 띄우지 않는다. 푸시 서버가 없어 폰이 직접 기다리는 구조라 고정 알림이 필요하고, Doze 중에는 늦을 수 있다.
+  - 고정 알림은 PC별 마지막 롱폴 결과를 보여 준다: 모두 성공 "PC n대 연결됨", 실패 "연결 안 됨: 이름", 404(0.2.59 미만) "PC 업데이트 필요: 이름", 401 "다시 연결(PIN) 필요: 이름".
+  - 방해 금지 시간(`UiPrefs.quiet*`, 분 단위, 자정을 넘을 수 있음): 그 시간대에는 같은 알림을 소리 없는 채널(`agent_quiet`, IMPORTANCE_LOW)로 보낸다.
+  - 자주 쓰는 문구(`UiPrefs.snippets`, 최대 20개·200자): 터미널 키 바 "문구" 키와 ⋮ 메뉴. 누르면 문구를 입력하고 150ms 뒤 Enter.
   - 세션 카드 상태 칩, PC 카드 합계, 터미널 빠른 응답 바(2초마다 `GET /api/sessions/{id}`).

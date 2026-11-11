@@ -176,7 +176,7 @@ public sealed class HostServer : IDisposable
             ? TimeSpan.FromSeconds(isec) : TimeSpan.FromHours(3);
         var current = SemVer.TryParse(Version, out var cv) ? cv : SemVer.Parse("0.0.0");
         _update = new UpdateService(_home, current, feed, cfg.AutoUpdate, interval, RunningSessions);
-        _update.AutoApply = () => { TryBeginApply(force: false); return Task.CompletedTask; };
+        _update.AutoApply = () => { TryBeginApply(force: false, killWorking: false); return Task.CompletedTask; };
 
         Log.Info($"{Brand.Name} {Version} data dir: {_home}");
         Log.Info($"cert fingerprint (sha256): {fp} (short {_fpShort})");
@@ -346,7 +346,8 @@ public sealed class HostServer : IDisposable
         if (s.AgentState == null) return;
         _events.Add(new AgentEventDto
         {
-            SessionId = s.Id, Title = s.Title, Agent = s.Agent, State = s.AgentState, Prompt = s.Prompt, Time = Ids.IsoNow(),
+            SessionId = s.Id, Title = s.Title, Agent = s.Agent, State = s.AgentState, Prompt = s.Prompt, Preview = s.AgentPreview,
+            Time = Ids.IsoNow(),
         });
         Log.Info($"agent {s.Id} ({s.Agent}): {s.AgentState}{(s.Prompt != null ? $" [{s.Prompt.Options.Count} choices]" : "")}");
     }
@@ -552,12 +553,25 @@ public sealed class HostServer : IDisposable
     // ------------------------------------------------------------------ update apply / handoff (DESIGN §11.3)
 
     /// <summary>Validates and starts an apply in the background. Returns the HTTP status + body for POST /api/update/apply.</summary>
-    private (int Status, object Body) TryBeginApply(bool force)
+    /// <remarks>
+    /// Applying ends the running host sessions, so it is refused (409, with the sessions it would end) unless
+    /// <paramref name="force"/> is set; and when an AI CLI is in the middle of a turn in one of them, unless
+    /// <paramref name="killWorking"/> is set too: a second, separate yes.
+    /// </remarks>
+    private (int Status, object Body) TryBeginApply(bool force, bool killWorking)
     {
         if (!_update.HasNewer) return (400, new { error = "no update available", update = _update.Status });
-        int running = RunningSessions();
-        if (running > 0 && !force)
-            return (409, new { error = $"{running} host session(s) running; close them or use force", runningSessions = running });
+        var running = _sessions.All.Where(s => s.IsRunning).Select(s => s.Snapshot()).ToList();
+        int working = running.Count(s => s.AgentState == AgentStates.Working);
+        object Refused(string error) => new
+        {
+            error,
+            runningSessions = running.Count,
+            workingAgents = working,
+            sessions = running.Select(s => new { id = s.Id, title = s.Title, agent = s.Agent, agentState = s.AgentState }),
+        };
+        if (running.Count > 0 && !force) return (409, Refused($"{running.Count} host session(s) running; close them or use force"));
+        if (working > 0 && !killWorking) return (409, Refused($"{working} AI session(s) are in the middle of a turn; wait for them or confirm with killWorking"));
         if (Interlocked.CompareExchange(ref _applyBusy, 1, 0) != 0) return (200, _update.Status);
         _ = Task.Run(() => ApplyFlowAsync(force));
         return (200, _update.Status);
@@ -763,8 +777,8 @@ public sealed class HostServer : IDisposable
             var req = await ReadBody<ApplyRequest>(ctx);
             var auth = AuthOf(ctx);
             // Who asked matters afterwards: a forced apply ends the running sessions.
-            Log.Info($"update: apply requested by {(auth.IsLocal ? "this PC (tray / psh update)" : $"device {auth.DeviceId}")} (force={req?.Force == true})");
-            var (status, body) = TryBeginApply(req?.Force == true);
+            Log.Info($"update: apply requested by {(auth.IsLocal ? "this PC (tray / psh update)" : $"device {auth.DeviceId}")} (force={req?.Force == true}, killWorking={req?.KillWorking == true})");
+            var (status, body) = TryBeginApply(req?.Force == true, req?.KillWorking == true);
             return Json(body, status);
         });
 
@@ -789,6 +803,13 @@ public sealed class HostServer : IDisposable
             }
             var s = _sessions.Get(id);
             return s != null ? Json(s.Snapshot()) : Error(404, "session not found");
+        });
+
+        // The screen as the host reads it for the agent state: plain text rows (to check what a prompt looked like).
+        app.MapGet("/api/sessions/{id}/screen", (string id) =>
+        {
+            string? text = TryExtPid(id, out var pid) ? _externals.ScreenText(pid) : _sessions.Get(id)?.ScreenText();
+            return text != null ? Results.Text(text, "text/plain", Encoding.UTF8) : Error(404, "session not found (or a console that is not being read)");
         });
 
         // Quick reply without opening the terminal (notification buttons): text typed into the session, optional Enter.
@@ -1063,6 +1084,8 @@ public sealed class HostServer : IDisposable
     private sealed class ApplyRequest
     {
         public bool Force { get; set; }
+        /// <summary>With <see cref="Force"/>: also end sessions whose AI CLI is working right now.</summary>
+        public bool KillWorking { get; set; }
     }
 
     private sealed class InputRequest

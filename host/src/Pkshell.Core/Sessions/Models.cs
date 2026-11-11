@@ -36,6 +36,9 @@ public sealed class SessionDto
     /// <summary>The question shown while <see cref="AgentState"/> is "waiting".</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public PromptDto? Prompt { get; set; }
+    /// <summary>What the agent wrote last (for the "done" event); not part of the session JSON.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? AgentPreview { get; set; }
 
     public SessionDto Clone() => new()
     {
@@ -52,6 +55,7 @@ public sealed class SessionDto
         AgentState = t.State;
         AgentStateSince = t.State == null ? null : Util.Ids.IsoUtc(t.StateSince);
         Prompt = t.Prompt;
+        AgentPreview = t.Preview;
         return this;
     }
 }

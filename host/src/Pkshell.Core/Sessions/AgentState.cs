@@ -46,7 +46,69 @@ public sealed class AgentEventDto
     public string? Agent { get; set; }
     public string State { get; set; } = "";
     public PromptDto? Prompt { get; set; }
+    /// <summary>"done" only: the last lines the agent wrote (<see cref="AgentPreview"/>).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Preview { get; set; }
     public string Time { get; set; } = "";
+}
+
+/// <summary>
+/// The last lines an AI CLI wrote before it stopped, for the "done" notification: the rows right above its input box,
+/// without rules, the turn timer ("✻ Cooked for 19s") and the user's own message.
+/// </summary>
+public static partial class AgentPreview
+{
+    public const int MaxLines = 5;
+    public const int MaxChars = 400;
+    /// <summary>Text rows looked at above the input area.</summary>
+    private const int LookBack = 30;
+    /// <summary>A row starting this far right is a right-aligned hint ("◐ medium · /effort"), not part of the reply.</summary>
+    private const int HintIndent = 30;
+    private const string RuleChars = "─━═╭╮╰╯┌┐└┘-";
+    private const string PromptMarks = "❯›>";
+    private const string Bullets = "●•⏺";
+
+    [GeneratedRegex(@"^(?:[^\w\s]\s+)?\S+ for \d+\s*[smh]")]
+    private static partial Regex TurnTime();
+
+    public static string? From(string screenText)
+    {
+        var rows = screenText.Split('\n').Select(r => r.TrimEnd()).ToList();
+        var lines = new List<string>(); // bottom first
+        for (int i = InputTop(rows) - 1; i >= 0 && lines.Count < LookBack; i--)
+        {
+            var row = rows[i].TrimStart();
+            if (row.Length == 0 || IsRule(row) || TurnTime().IsMatch(row) || rows[i].Length - row.Length >= HintIndent) continue;
+            if (IsInput(row)) break; // the user's message: the reply is what came after it
+            lines.Add(row);
+        }
+        if (lines.Count == 0) return null;
+        lines.Reverse();
+        // The agent's last message starts at its last bullet; what is above it belongs to earlier steps.
+        int start = lines.FindLastIndex(l => l.Length > 2 && Bullets.Contains(l[0]) && l[1] == ' ');
+        var picked = start >= 0 ? lines.Skip(start).Take(MaxLines).ToList() : lines.Skip(Math.Max(0, lines.Count - MaxLines)).ToList();
+        if (start >= 0) picked[0] = picked[0][2..].TrimStart();
+        var text = string.Join('\n', picked);
+        return text.Length > MaxChars ? text[..MaxChars].TrimEnd() + "…" : text;
+    }
+
+    /// <summary>Row where the CLI's input area starts (a box of rules around a prompt, or a bare prompt row near the bottom).</summary>
+    private static int InputTop(List<string> rows)
+    {
+        int first = Math.Max(0, rows.Count - 12);
+        for (int i = rows.Count - 1; i >= first; i--)
+        {
+            if (!IsInput(rows[i].TrimStart())) continue;
+            return i > 0 && IsRule(rows[i - 1].Trim()) ? i - 1 : i;
+        }
+        return rows.Count;
+    }
+
+    /// <summary>A horizontal rule (a prompt mark may sit at its end).</summary>
+    private static bool IsRule(string row) =>
+        row.Count(c => RuleChars.Contains(c)) >= 8 && row.All(c => RuleChars.Contains(c) || PromptMarks.Contains(c));
+
+    private static bool IsInput(string row) => row.Length > 0 && PromptMarks.Contains(row[0]) && (row.Length == 1 || row[1] == ' ' || row[1] == '\u00a0');
 }
 
 /// <summary>Plain text of terminal output: escape sequences and control characters removed.</summary>
@@ -101,12 +163,31 @@ public static partial class PromptDetector
             var marked = MarkedRow().Match(rows[m]);
             if (!marked.Success) continue;
             int textCol = marked.Groups["text"].Index;
-            // Choices: rows right above and below whose text starts in the same column as the highlighted one.
+            // Choices: rows right above and below whose text starts in the same column as the highlighted one. A long
+            // choice wraps onto rows indented further ("(shift+tab)"): those belong to the choice above them.
             int top = m, bottom = m;
-            while (top - 1 >= first && StartsAt(rows[top - 1], textCol)) top--;
-            while (bottom + 1 < rows.Count && StartsAt(rows[bottom + 1], textCol)) bottom++;
-            var texts = new List<string>();
-            for (int r = top; r <= bottom; r++) texts.Add(r == m ? marked.Groups["text"].Value.Trim() : rows[r].Trim());
+            var texts = new List<string> { marked.Groups["text"].Value.Trim() };
+            for (int r = m + 1; r < rows.Count; r++)
+            {
+                if (StartsAt(rows[r], textCol)) texts.Add(rows[r].Trim());
+                else if (Indent(rows[r]) > textCol) texts[^1] += " " + rows[r].Trim();
+                else break;
+                bottom = r;
+            }
+            int at = 0; // index of the highlighted choice
+            var wrapped = "";
+            for (int r = m - 1; r >= first; r--)
+            {
+                if (StartsAt(rows[r], textCol))
+                {
+                    texts.Insert(0, (rows[r].Trim() + " " + wrapped).Trim());
+                    wrapped = "";
+                    at++;
+                    top = r;
+                }
+                else if (Indent(rows[r]) > textCol) wrapped = (rows[r].Trim() + " " + wrapped).Trim();
+                else break;
+            }
             if (texts.Count < 2) return null;
             var below = rows.Skip(bottom + 1).Where(HasText).ToList();
             if (below.Count > MaxRowsBelow) return null;
@@ -124,18 +205,22 @@ public static partial class PromptDetector
                 // Picked with arrows: only a list that says so (the key hint under it) is taken for a prompt.
                 if (!below.Take(3).Any(b => KeyHint().IsMatch(b))) return null;
                 options.Clear();
-                int at = m - top;
                 for (int i = 0; i < texts.Count; i++)
                 {
                     var keys = i >= at ? string.Concat(Enumerable.Repeat(ArrowDown, i - at)) : string.Concat(Enumerable.Repeat(ArrowUp, at - i));
                     options.Add(new PromptOptionDto { Key = keys, Enter = true, Label = Short(texts[i]) });
                 }
             }
+            // The question: the nearest row above that ends in "?" (details such as a file path may sit between it
+            // and the choices), else the nearest row with text.
             string question = "";
-            for (int q = top - 1; q >= Math.Max(first, top - 8); q--)
+            for (int q = top - 1; q >= Math.Max(first, top - 12); q--)
             {
                 if (!HasText(rows[q])) continue;
-                question = Short(rows[q].Trim(), 160);
+                var text = rows[q].Trim();
+                if (question.Length == 0) question = Short(text, 160);
+                if (!text.EndsWith('?')) continue;
+                question = Short(text, 160);
                 break;
             }
             return new PromptDto { Question = question, Options = options, RowsBelow = below.Count };
@@ -146,6 +231,14 @@ public static partial class PromptDetector
     private static string Short(string s, int max = MaxLabel) => s.Length > max ? s[..max].TrimEnd() + "…" : s.Trim();
 
     private static bool StartsAt(string row, int col) => row.Length > col && row[col] != ' ' && row[..col].All(c => c == ' ');
+
+    /// <summary>Leading blanks of a row with text; -1 for a blank row.</summary>
+    private static int Indent(string row)
+    {
+        int i = 0;
+        while (i < row.Length && row[i] == ' ') i++;
+        return i < row.Length ? i : -1;
+    }
 
     /// <summary>A row with words on it (not blank, not just the lines of a box).</summary>
     private static bool HasText(string row) => row.Any(c => char.IsLetterOrDigit(c));
@@ -189,6 +282,8 @@ public sealed class ActivityTracker
     public string? State { get; private set; }
     public DateTime StateSince { get; private set; }
     public PromptDto? Prompt { get; private set; }
+    /// <summary>What the agent wrote last, read when it stopped without a question ("done").</summary>
+    public string? Preview { get; private set; }
     /// <summary>The prompt that was answered last. A CLI that only scrolls leaves it on screen above what follows.</summary>
     private PromptDto? _answered;
 
@@ -230,8 +325,15 @@ public sealed class ActivityTracker
         if (State == AgentStates.Working)
         {
             _lastRead = _lastChange;
-            var prompt = ReadPrompt(screenText());
-            Set(prompt != null ? AgentStates.Waiting : AgentStates.Done, now, prompt);
+            // Someone typed after the agent's last move (the next request, already): they are at it, nothing to tell.
+            if (_lastInput > _lastWork)
+            {
+                Set(null, now, null);
+                return false;
+            }
+            var screen = screenText();
+            var prompt = ReadPrompt(screen);
+            Set(prompt != null ? AgentStates.Waiting : AgentStates.Done, now, prompt, prompt == null ? AgentPreview.From(screen) : null);
             return true;
         }
         // A question can also come at once, with no working spell before it (a quick approval prompt, the folder
@@ -261,11 +363,12 @@ public sealed class ActivityTracker
         _lastWork = DateTime.MinValue;
     }
 
-    private void Set(string? state, DateTime now, PromptDto? prompt)
+    private void Set(string? state, DateTime now, PromptDto? prompt, string? preview = null)
     {
         State = state;
         StateSince = now;
         Prompt = prompt;
+        Preview = preview;
     }
 }
 

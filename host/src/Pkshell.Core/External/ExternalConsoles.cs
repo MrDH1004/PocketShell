@@ -330,6 +330,9 @@ public sealed class ExternalConsoles : IDisposable
         return true;
     }
 
+    /// <summary>The window of a console that is being read, as plain text rows; null when it is not.</summary>
+    public string? ScreenText(int pid) => _bridges.TryGetValue(pid, out var b) ? b.ScreenText() : null;
+
     /// <summary>Agent state of every watched AI console (for the per-PC summary).</summary>
     public List<string?> AgentStates()
     {
@@ -469,6 +472,8 @@ public sealed class ExternalBridge
     {
         lock (_hub.SyncRoot) return dto.WithAgentState(_activity);
     }
+
+    public string ScreenText() => _scrollback.WindowText();
 
     /// <summary>True when the agent in this console just stopped (the moment to notify).</summary>
     public bool EvaluateAgent(DateTime now)

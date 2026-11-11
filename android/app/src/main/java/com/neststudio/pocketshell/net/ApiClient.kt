@@ -225,9 +225,13 @@ class ApiClient(
     /** Raw `GET /api/info` JSON (`{name, version, fp, port, hosts, update?}`). */
     suspend fun info(): String = request("GET", "/api/info")
 
-    /** `POST /api/update/apply {force}`; throws [ApiException] 409 while host sessions are running and !force. */
-    suspend fun applyHostUpdate(force: Boolean) {
-        request("POST", "/api/update/apply", JSONObject().put("force", force))
+    /**
+     * `POST /api/update/apply {force, killWorking}`; throws [ApiException] 409 while host sessions are running and
+     * ![force], and (hosts from 0.2.61) while an AI CLI is mid-turn in one of them and ![killWorking]. The 409 body
+     * lists the sessions (UpdateRefusal).
+     */
+    suspend fun applyHostUpdate(force: Boolean, killWorking: Boolean = false) {
+        request("POST", "/api/update/apply", JSONObject().put("force", force).put("killWorking", killWorking))
     }
 
     /**

@@ -17,15 +17,21 @@ import java.io.IOException
 
 /**
  * A notification action: types the chosen key ("1") or the typed reply into the session on its PC
- * (`POST /api/sessions/{id}/input`) and clears the notification.
+ * (`POST /api/sessions/{id}/input`) and clears the notification; or turns that session's notifications off.
  */
 class AgentReplyReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_REPLY) return
+        if (intent.action != ACTION_REPLY && intent.action != ACTION_MUTE) return
         val pcId = intent.getStringExtra(EXTRA_PC_ID) ?: return
         val sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: return
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
+        if (intent.action == ACTION_MUTE) {
+            com.neststudio.pocketshell.data.UiPrefs(context).setMuted(pcId, sessionId, true)
+            context.getSystemService(NotificationManager::class.java).cancel(notificationId)
+            Toast.makeText(context, R.string.notify_muted_toast, Toast.LENGTH_LONG).show()
+            return
+        }
         val typed = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_TEXT)?.toString()
         val text = (typed ?: intent.getStringExtra(EXTRA_TEXT)).orEmpty()
         val enter = intent.getBooleanExtra(EXTRA_ENTER, false)
@@ -56,6 +62,7 @@ class AgentReplyReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "AgentReply"
         const val ACTION_REPLY = "com.neststudio.pocketshell.AGENT_REPLY"
+        const val ACTION_MUTE = "com.neststudio.pocketshell.AGENT_MUTE"
         const val EXTRA_PC_ID = "pcId"
         const val EXTRA_SESSION_ID = "sessionId"
         const val EXTRA_NOTIFICATION_ID = "notificationId"

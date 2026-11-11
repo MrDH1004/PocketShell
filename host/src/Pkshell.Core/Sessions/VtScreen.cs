@@ -58,6 +58,17 @@ public sealed class VtScreen
         return sb.ToString();
     }
 
+    /// <summary>
+    /// A hash of the characters on screen (not colours, not the window title): tells output that changed what is
+    /// shown from output that did not.
+    /// </summary>
+    public int Fingerprint()
+    {
+        var h = new HashCode();
+        foreach (var row in _cells) h.AddBytes(System.Runtime.InteropServices.MemoryMarshal.AsBytes(row.AsSpan()));
+        return h.ToHashCode();
+    }
+
     private static bool IsBlank(char[] line)
     {
         foreach (var c in line) if (c != ' ' && c != '\0') return false;
@@ -151,7 +162,9 @@ public sealed class VtScreen
             if (i >= parts.Length || !int.TryParse(parts[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v)) return def;
             return v == 0 ? def : v;
         }
-        if (_col >= Cols) _col = Cols - 1;
+        // Only what moves the cursor or erases ends a deferred wrap. Colours do not: a row filled to the last column
+        // and followed by a colour change still continues on the next row.
+        if (_col >= Cols && "HfABCDEFGdJKXSLM".Contains(final)) _col = Cols - 1;
         switch (final)
         {
             case 'H' or 'f':

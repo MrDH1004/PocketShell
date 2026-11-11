@@ -21,6 +21,7 @@ import com.neststudio.pocketshell.core.AgentEvent
 import com.neststudio.pocketshell.core.AgentState
 import com.neststudio.pocketshell.core.Backoff
 import com.neststudio.pocketshell.core.EventCursor
+import com.neststudio.pocketshell.core.PromptActions
 import com.neststudio.pocketshell.core.SessionInfo
 import com.neststudio.pocketshell.data.Pairing
 import com.neststudio.pocketshell.data.UiPrefs
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit
  * Tells the user when an AI CLI on a paired PC stops: waiting on an approval prompt, or done (DESIGN.md §14).
  * A foreground service holds one long poll (`GET /api/events`) per PC, since there is no push server between the
  * phone and the PC. Notifications carry the prompt's choices (or a reply field) so they can be answered in place.
+ * The ongoing notification says which PCs the phone cannot reach: from those nothing can arrive.
  */
 class AgentWatchService : Service() {
 
@@ -50,6 +52,11 @@ class AgentWatchService : Service() {
 
     /** Poll job per PC id, with the pairing it was started for (a changed pairing restarts it). */
     private val watches = HashMap<String, Pair<Pairing, Job>>()
+
+    /** How the last poll of each PC went. */
+    private val links = HashMap<String, Link>()
+
+    private enum class Link { CHECKING, CONNECTED, OFFLINE, OLD_HOST, UNPAIRED }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -65,7 +72,8 @@ class AgentWatchService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val ongoing = ongoingNotification(pcs.size)
+        links.keys.retainAll(pcs.map { it.id }.toSet())
+        val ongoing = ongoingNotification(pcs)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(ID_ONGOING, ongoing, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -89,6 +97,7 @@ class AgentWatchService : Service() {
             if (byId[id]?.copy(alias = "") != pairing.copy(alias = "")) {
                 job.cancel()
                 watches.remove(id)
+                links.remove(id)
             }
         }
         for (p in pcs) {
@@ -107,6 +116,7 @@ class AgentWatchService : Service() {
             try {
                 val reply = api.events(cursor.seq, if (cursor == EventCursor.START) 0 else WAIT_SECONDS, client)
                 backoff.reset()
+                setLink(p.id, Link.CONNECTED)
                 val step = cursor.accept(reply)
                 cursor = step.cursor
                 // The alias may have changed since this poll started.
@@ -114,12 +124,23 @@ class AgentWatchService : Service() {
                 step.announce.forEach { announce(current, it) }
             } catch (e: ApiException) {
                 when (e.code) {
-                    401 -> { Log.w(TAG, "${p.pcName}: token no longer valid, stopping"); return }
-                    404 -> delay(OLD_HOST_RETRY_MS) // host older than 0.2.59: no /api/events yet
-                    else -> delay(backoff.nextDelayMillis())
+                    401 -> {
+                        Log.w(TAG, "${p.pcName}: token no longer valid, stopping")
+                        setLink(p.id, Link.UNPAIRED)
+                        return
+                    }
+                    404 -> { // host older than 0.2.59: no /api/events yet
+                        setLink(p.id, Link.OLD_HOST)
+                        delay(OLD_HOST_RETRY_MS)
+                    }
+                    else -> {
+                        setLink(p.id, Link.OFFLINE)
+                        delay(backoff.nextDelayMillis())
+                    }
                 }
             } catch (e: IOException) {
-                delay(backoff.nextDelayMillis()) // PC off, other network: keep trying quietly
+                setLink(p.id, Link.OFFLINE) // PC off, other network: keep trying quietly
+                delay(backoff.nextDelayMillis())
             } catch (e: JSONException) {
                 Log.w(TAG, "${p.pcName}: unreadable events reply: ${e.message}")
                 delay(backoff.nextDelayMillis())
@@ -127,9 +148,19 @@ class AgentWatchService : Service() {
         }
     }
 
+    /** Records how a PC's poll went and redraws the ongoing notification when that changed. */
+    private fun setLink(pcId: String, link: Link) {
+        if (links.put(pcId, link) == link) return
+        val pcs = (application as PkshellApp).pcs()
+        if (pcs.isEmpty()) return
+        getSystemService(NotificationManager::class.java).notify(ID_ONGOING, ongoingNotification(pcs))
+    }
+
     private fun announce(p: Pairing, e: AgentEvent) {
         if (e.state != AgentState.WAITING && e.state != AgentState.DONE) return
         if (Foreground.isViewing(p.id, e.sessionId)) return // already looking at it
+        val prefs = UiPrefs(this)
+        if (prefs.isMuted(p.id, e.sessionId)) return
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -138,15 +169,17 @@ class AgentWatchService : Service() {
         val name = e.title.ifBlank { e.sessionId }
         val text = when {
             waiting -> e.prompt?.question?.ifBlank { null } ?: getString(R.string.notify_waiting_text)
-            else -> getString(R.string.notify_done_text)
+            else -> e.preview?.ifBlank { null } ?: getString(R.string.notify_done_text)
         }
-        val b = NotificationCompat.Builder(this, CHANNEL_AGENT)
+        // Quiet hours: it still arrives, without sound or a pop-up.
+        val quiet = prefs.quietNow()
+        val b = NotificationCompat.Builder(this, if (quiet) CHANNEL_QUIET else CHANNEL_AGENT)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(getString(if (waiting) R.string.notify_waiting_title else R.string.notify_done_title, name))
-            .setContentText(text)
+            .setContentText(text.lineSequence().firstOrNull().orEmpty())
             .setSubText(p.displayName)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (quiet) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             // Its own group: Android otherwise bundles it with the ongoing "waiting" notification and hides the buttons.
             .setGroup("agent-$id")
@@ -154,18 +187,26 @@ class AgentWatchService : Service() {
         if (waiting && e.prompt != null) {
             val lines = e.prompt.options.withIndex().joinToString("\n") { (i, o) -> "${i + 1}. ${o.label}" }
             b.setStyle(NotificationCompat.BigTextStyle().bigText(if (text.isEmpty()) lines else "$text\n$lines"))
-            // Android shows at most three actions: one per choice.
-            e.prompt.options.take(MAX_ACTIONS).forEachIndexed { i, o ->
+            val plan = PromptActions.plan(e.prompt.options)
+            for ((i, o) in plan.options) {
                 val label = "${i + 1}. ${o.label}".let { if (it.length > ACTION_LABEL_MAX) it.take(ACTION_LABEL_MAX - 1) + "…" else it }
                 b.addAction(0, label, replyIntent(p, e, id, o.key, enter = o.enter, requestSalt = "o$i"))
             }
+            // More choices than buttons: the last button opens the session, where all of them are offered.
+            if (plan.openForMore) b.addAction(0, getString(R.string.notify_more_choices, e.prompt.options.size), openIntent(p, e, id))
         } else {
+            b.setStyle(NotificationCompat.BigTextStyle().bigText(text))
             // Finished (or a question we could not read): answer with the next instruction from the notification.
-            val remote = RemoteInput.Builder(AgentReplyReceiver.KEY_TEXT).setLabel(getString(R.string.notify_reply_hint)).build()
+            // The user's saved phrases are offered as one-tap replies.
+            val remote = RemoteInput.Builder(AgentReplyReceiver.KEY_TEXT)
+                .setLabel(getString(R.string.notify_reply_hint))
+                .setChoices(prefs.snippets.take(REPLY_CHOICES_MAX).toTypedArray())
+                .build()
             val action = NotificationCompat.Action.Builder(0, getString(R.string.notify_reply), replyIntent(p, e, id, null, enter = true, requestSalt = "r", mutable = true))
                 .addRemoteInput(remote)
                 .build()
             b.addAction(action)
+            b.addAction(0, getString(R.string.notify_mute_session), muteIntent(p, e, id))
         }
         getSystemService(NotificationManager::class.java).notify(id, b.build())
     }
@@ -196,16 +237,43 @@ class AgentWatchService : Service() {
         return PendingIntent.getBroadcast(this, (id.toString() + requestSalt).hashCode(), intent, flags)
     }
 
-    private fun ongoingNotification(pcCount: Int): Notification {
+    private fun muteIntent(p: Pairing, e: AgentEvent, id: Int): PendingIntent {
+        val intent = Intent(this, AgentReplyReceiver::class.java)
+            .setAction(AgentReplyReceiver.ACTION_MUTE)
+            .putExtra(AgentReplyReceiver.EXTRA_PC_ID, p.id)
+            .putExtra(AgentReplyReceiver.EXTRA_SESSION_ID, e.sessionId)
+            .putExtra(AgentReplyReceiver.EXTRA_NOTIFICATION_ID, id)
+        return PendingIntent.getBroadcast(this, (id.toString() + "m").hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
+    /** "PC 2대 연결됨", or which ones cannot be reached / need an update / need pairing again. */
+    private fun ongoingText(pcs: List<Pairing>): String {
+        fun names(link: Link) = pcs.filter { links[it.id] == link }.joinToString(", ") { it.displayName }
+        val parts = ArrayList<String>()
+        val offline = names(Link.OFFLINE)
+        val old = names(Link.OLD_HOST)
+        val unpaired = names(Link.UNPAIRED)
+        if (offline.isNotEmpty()) parts.add(getString(R.string.notify_ongoing_offline, offline))
+        if (old.isNotEmpty()) parts.add(getString(R.string.notify_ongoing_old, old))
+        if (unpaired.isNotEmpty()) parts.add(getString(R.string.notify_ongoing_unpaired, unpaired))
+        if (parts.isNotEmpty()) return parts.joinToString(" · ")
+        val connected = pcs.count { links[it.id] == Link.CONNECTED }
+        return if (connected == pcs.size) getString(R.string.notify_ongoing_connected, pcs.size) else getString(R.string.notify_ongoing_text, pcs.size)
+    }
+
+    private fun ongoingNotification(pcs: List<Pairing>): Notification {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, PcListActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val text = ongoingText(pcs)
         return NotificationCompat.Builder(this, CHANNEL_WATCH)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(getString(R.string.notify_ongoing_title))
-            .setContentText(getString(R.string.notify_ongoing_text, pcCount))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setGroup("watch")
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentIntent(open)
@@ -215,14 +283,17 @@ class AgentWatchService : Service() {
     companion object {
         private const val TAG = "AgentWatch"
         const val CHANNEL_AGENT = "agent"
+        /** Same notifications during quiet hours: no sound, no pop-up. */
+        const val CHANNEL_QUIET = "agent_quiet"
         const val CHANNEL_WATCH = "watch"
         private const val ID_ONGOING = 1
         private const val WAIT_SECONDS = 40
         private const val OLD_HOST_RETRY_MS = 10 * 60 * 1000L
         private const val RETRY_FIRST_MS = 5_000L
         private const val RETRY_MAX_MS = 60_000L
-        private const val MAX_ACTIONS = 3
         private const val ACTION_LABEL_MAX = 24
+        /** Android shows a handful of reply chips; more would only be cut off. */
+        private const val REPLY_CHOICES_MAX = 5
 
         fun notificationId(pcId: String, sessionId: String): Int = ("$pcId/$sessionId").hashCode() or 0x10000
 
@@ -231,6 +302,10 @@ class AgentWatchService : Service() {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_AGENT, context.getString(R.string.notify_channel_agent), NotificationManager.IMPORTANCE_HIGH)
                     .apply { description = context.getString(R.string.notify_channel_agent_desc) },
+            )
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_QUIET, context.getString(R.string.notify_channel_quiet), NotificationManager.IMPORTANCE_LOW)
+                    .apply { description = context.getString(R.string.notify_channel_quiet_desc) },
             )
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_WATCH, context.getString(R.string.notify_channel_watch), NotificationManager.IMPORTANCE_MIN)

@@ -140,6 +140,158 @@ public class AgentStateTests
     }
 
     [Fact]
+    public void AChoiceWrappedOverTwoRowsDoesNotHideTheOnesAfterIt()
+    {
+        // Claude Code v2.1.322, file write approval (110 columns).
+        const string screen = """
+            ● Write(hello.txt)
+
+            ──────────────────────────────────────────────────────────────────────────────
+             Create file
+             hello.txt
+            ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+              1 hi
+            ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+             Do you want to create hello.txt?
+             ❯ 1. Yes
+               2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session
+                  (shift+tab)
+               3. No
+
+             Esc to cancel · Tab to amend
+            """;
+        var p = PromptDetector.Detect(screen);
+        Assert.NotNull(p);
+        Assert.Equal("Do you want to create hello.txt?", p!.Question);
+        Assert.Equal(new[] { "1", "2", "3" }, p.Options.Select(o => o.Key));
+        Assert.Equal("No", p.Options[2].Label);
+        Assert.StartsWith("Yes, and switch to accept edits", p.Options[1].Label);
+
+        // The highlighted choice is not the first one, and the one above it is wrapped.
+        const string second = """
+             Pick one
+               1. A long first choice that goes on
+                  and on
+             ❯ 2. Second
+               3. Third
+            """;
+        var q = PromptDetector.Detect(second);
+        Assert.NotNull(q);
+        Assert.Equal(new[] { "A long first choice that goes on and on", "Second", "Third" }, q!.Options.Select(o => o.Label));
+    }
+
+    [Fact]
+    public void CodexNumberedPromptIsReadFromItsScreen()
+    {
+        // Codex 0.166 writes the first choice as one long line and lets the terminal wrap it; the row is full, a
+        // colour change follows, and the next choice must still start on a new row.
+        var screen = new VtScreen(40, 8);
+        var first = "› 1. Update now (runs `" + new string('x', 17) + "     " + new string('y', 20) + "`)" + new string(' ', 13);
+        Assert.Equal(80, first.Length);
+        screen.Feed(Encoding.UTF8.GetBytes("\r\n\u001b[1m" + first + "\u001b[22m\u001b[27m  2. Skip\u001b[K\r\n  3. Skip until next version\u001b[K\r\n\u001b[K\r\n  enter continue · esc skip"));
+        var rows = screen.Text().Split('\n');
+        Assert.Equal("  2. Skip", rows[3]);
+        var p = PromptDetector.Detect(screen.Text());
+        Assert.NotNull(p);
+        Assert.Equal(new[] { "1", "2", "3" }, p!.Options.Select(o => o.Key));
+        Assert.Equal("Skip", p.Options[1].Label);
+
+        // Codex 0.166 file approval: the question is a few rows above the choices, a path in between.
+        const string approval = """
+              Would you like to make the following edits?
+
+              Description: Apply proposed file edits
+              Destination:
+              C:\work\hello.txt
+
+
+            › 1. Yes, proceed (y)
+              2. Yes, and don't ask again for these files (a)
+              3. No, and tell Codex what to do differently (esc)
+
+              Press enter to confirm or esc to cancel
+            """;
+        var a = PromptDetector.Detect(approval);
+        Assert.NotNull(a);
+        Assert.Equal("Would you like to make the following edits?", a!.Question);
+        Assert.Equal(3, a.Options.Count);
+    }
+
+    [Fact]
+    public void PreviewIsTheLastMessageAboveTheInputBox()
+    {
+        // Claude Code v2.1.322 right after a turn.
+        const string claude = """
+            ❯ Create a file named hello.txt containing the word hi. Do not do anything else.
+
+            ● Write(hello.txt)
+              ⎿  Wrote 1 line to hello.txt
+                  1 hi
+
+            ● hello.txt 만들었어. 내용은 hi.
+              다음 줄.
+
+            ✻ Cooked for 5s · done 오전 4:04
+                                                                              ◐ medium · /effort
+            ─────────────────────────────────────────────────────────────────────────────────────❯
+            ❯
+            ──────────────────────────────────────────────────────────────────────────────────────
+              [OMC#5.8.5L] | Model: Fable 5.2 | effort:medium
+              ⏸ manual mode on · ← 2 agents
+            """;
+        Assert.Equal("hello.txt 만들었어. 내용은 hi.\n다음 줄.", AgentPreview.From(claude));
+
+        // Codex 0.166: no box, the input row holds a placeholder.
+        const string codex = """
+            › Create a file named hello.txt containing the word hi.
+
+
+            • Added hello.txt (+1 -0)
+                1 +hi
+
+              Worked for 5s • 4:05 AM
+
+
+            › Ask Codex to do anything
+
+              GPT-5.6-Sol medium · weekly 4% left
+            """;
+        Assert.Equal("Added hello.txt (+1 -0)\n1 +hi", AgentPreview.From(codex));
+        Assert.Null(AgentPreview.From("❯ \n"));
+        Assert.Null(AgentPreview.From(""));
+    }
+
+    [Fact]
+    public void StoppingIsNotAnnouncedWhenTheUserAlreadyTypedTheNextThing()
+    {
+        var t = new ActivityTracker();
+        Work(t, 0, 10);
+        t.Evaluate(At(10), () => "");
+        t.Input(At(13)); // the agent stopped at 10; the user is typing the next request
+        Assert.False(t.Evaluate(At(17), () => "✻ Cooked for 10s"));
+        Assert.Null(t.State);
+        // A stop with the preview, when nobody typed.
+        var quiet = new ActivityTracker();
+        Work(quiet, 0, 10);
+        quiet.Evaluate(At(10), () => "");
+        Assert.True(quiet.Evaluate(At(17), () => "● All tests pass.\n\n❯ "));
+        Assert.Equal("All tests pass.", quiet.Preview);
+    }
+
+    [Fact]
+    public void OnlyTextOnScreenChangesTheFingerprint()
+    {
+        var s = new VtScreen(20, 4);
+        s.Feed(Encoding.UTF8.GetBytes("hello"));
+        int before = s.Fingerprint();
+        // Codex blinks the window title while it waits; colours and a redraw of the same text change nothing either.
+        s.Feed(Encoding.UTF8.GetBytes("\u001b]0;[ ! ] Action Required\a\u001b[1m\u001b[1;1Hhello\u001b[0m"));
+        Assert.Equal(before, s.Fingerprint());
+        s.Feed(Encoding.UTF8.GetBytes("!"));
+        Assert.NotEqual(before, s.Fingerprint());
+    }
+
+    [Fact]
     public void ResetForgetsEverything()
     {
         var t = new ActivityTracker();
@@ -199,7 +351,7 @@ public class AgentStateTests
         Assert.Equal("", p.Options[0].Key);
         Assert.Equal("\u001b[B", p.Options[1].Key);
         Assert.All(p.Options, o => Assert.True(o.Enter));
-        Assert.Equal("Security guide", p.Question);
+        Assert.Equal("Quick safety check: Is this a project you created or one you trust?", p.Question); // the row that asks, not the link above the choices
 
         // Highlight on the second choice: the first is one arrow up.
         var moved = PromptDetector.Detect("Pick one\n   No, exit\n ❯ Yes, I trust this folder\n\n Enter to confirm · Esc to cancel");

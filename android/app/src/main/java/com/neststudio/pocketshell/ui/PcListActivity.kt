@@ -64,6 +64,7 @@ class PcListActivity : AppCompatActivity() {
         prefs = com.neststudio.pocketshell.data.UiPrefs(this)
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         notifyItem = toolbar.menu.add(0, MENU_NOTIFY, 0, R.string.notify_menu_off)
+        toolbar.menu.add(0, MENU_QUIET, 0, R.string.quiet_title)
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_INSTALL, 1, R.string.pcs_install_menu)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 2, R.string.update_check)
@@ -71,6 +72,7 @@ class PcListActivity : AppCompatActivity() {
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_NOTIFY -> toggleNotifications()
+                MENU_QUIET -> showQuietHours()
                 MENU_REFRESH -> refresh()
                 MENU_INSTALL -> showInstallGuide()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
@@ -145,6 +147,30 @@ class PcListActivity : AppCompatActivity() {
         Toast.makeText(this, R.string.notify_enabled, Toast.LENGTH_SHORT).show()
         applyNotifications()
         offerBatteryExemption()
+    }
+
+    /** Quiet hours: on / off and the daily range. Each row changes one thing and shows the dialog again. */
+    private fun showQuietHours() {
+        val items = arrayOf(
+            getString(if (prefs.quietEnabled) R.string.quiet_on else R.string.quiet_off),
+            getString(R.string.quiet_start, com.neststudio.pocketshell.core.QuietHours.format(prefs.quietStart)),
+            getString(R.string.quiet_end, com.neststudio.pocketshell.core.QuietHours.format(prefs.quietEnd)),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.quiet_title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> { prefs.quietEnabled = !prefs.quietEnabled; showQuietHours() }
+                    1 -> pickTime(prefs.quietStart) { prefs.quietStart = it; showQuietHours() }
+                    else -> pickTime(prefs.quietEnd) { prefs.quietEnd = it; showQuietHours() }
+                }
+            }
+            .setPositiveButton(R.string.confirm, null)
+            .show()
+    }
+
+    private fun pickTime(minutes: Int, onPicked: (Int) -> Unit) {
+        android.app.TimePickerDialog(this, { _, hour, minute -> onPicked(hour * 60 + minute) }, minutes / 60, minutes % 60, true).show()
     }
 
     /** Doze delays the long poll on a phone left idle; offer the system setting that exempts the app (once). */
@@ -301,6 +327,7 @@ class PcListActivity : AppCompatActivity() {
         const val MENU_CHECK_UPDATE = 3
         const val MENU_VIEW_SETTINGS = 4
         const val MENU_NOTIFY = 5
+        const val MENU_QUIET = 6
         const val PROBE_TIMEOUT_MS = 8000L
         const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"

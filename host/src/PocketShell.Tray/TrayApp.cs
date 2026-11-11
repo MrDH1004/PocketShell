@@ -298,20 +298,54 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
-    private async Task ApplyUpdateAsync(bool force)
+    private async Task ApplyUpdateAsync(bool force, bool killWorking = false)
     {
-        var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Post, "api/update/apply", force ? "{\"force\":true}" : "{}");
+        var request = killWorking ? "{\"force\":true,\"killWorking\":true}" : force ? "{\"force\":true}" : "{}";
+        var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Post, "api/update/apply", request);
         if (status == 409)
         {
             var n = body.TryGetProperty("runningSessions", out var r) && r.TryGetInt32(out var c) ? c : 0;
+            var working = body.TryGetProperty("workingAgents", out var w) && w.TryGetInt32(out var wc) ? wc : 0;
+            var names = UpdateSessionLines(body);
+            if (force && working > 0)
+            {
+                // Second, separate question: an AI is in the middle of a turn and would be cut off.
+                var sure = MessageBox.Show(
+                    $"AI가 작업 중인 세션이 {working}개 있습니다. 지금 설치하면 작업이 중간에 끊깁니다.\n\n{names}\n\n그래도 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
+                    $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                if (sure == DialogResult.Yes) await ApplyUpdateAsync(force: true, killWorking: true);
+                return;
+            }
             var ask = MessageBox.Show(
-                $"이 PC에서 연 세션 {n}개가 실행 중입니다. 지금 설치하면 이 세션들이 종료됩니다.\n\n세션을 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
-                $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                $"이 PC에서 연 세션 {n}개가 실행 중입니다. 지금 설치하면 이 세션들이 종료됩니다.\n\n{names}\n\n세션을 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
+                $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
             if (ask == DialogResult.Yes) await ApplyUpdateAsync(force: true);
             return;
         }
         if (status != 200) { ShowError($"업데이트를 시작하지 못했습니다: {LocalApi.Str(body, "error")}\n잠시 후 다시 시도하세요."); return; }
         _icon.ShowBalloonTip(4000, Brand.Name, $"v{_updateLatest} 설치 중입니다. 잠시 후 서버가 다시 시작됩니다.", ToolTipIcon.Info);
+    }
+
+    /// <summary>The sessions an apply would end, one per line ("· title (AI 작업 중)"), at most eight.</summary>
+    private static string UpdateSessionLines(System.Text.Json.JsonElement body)
+    {
+        if (!body.TryGetProperty("sessions", out var list) || list.ValueKind != System.Text.Json.JsonValueKind.Array) return "";
+        var lines = new List<string>();
+        foreach (var s in list.EnumerateArray())
+        {
+            var title = LocalApi.Str(s, "title");
+            if (title.Length == 0) title = LocalApi.Str(s, "id");
+            var mark = LocalApi.Str(s, "agentState") switch
+            {
+                "working" => " (AI 작업 중)",
+                "waiting" => " (AI 입력 대기)",
+                _ => "",
+            };
+            lines.Add("· " + title + mark);
+        }
+        const int max = 8;
+        if (lines.Count > max) lines = lines.Take(max).Append($"· 외 {lines.Count - max}개").ToList();
+        return string.Join("\n", lines);
     }
 
     private static void ShowError(string text) =>

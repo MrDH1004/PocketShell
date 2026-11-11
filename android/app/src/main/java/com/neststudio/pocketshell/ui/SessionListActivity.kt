@@ -30,6 +30,7 @@ import com.neststudio.pocketshell.core.HostUpdateStatus
 import com.neststudio.pocketshell.core.ProjectOptions
 import com.neststudio.pocketshell.core.SessionInfo
 import com.neststudio.pocketshell.core.SessionSections
+import com.neststudio.pocketshell.core.UpdateRefusal
 import com.neststudio.pocketshell.data.UiPrefs
 import com.neststudio.pocketshell.net.ApiException
 import kotlinx.coroutines.delay
@@ -212,21 +213,23 @@ class SessionListActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun applyHostUpdate(force: Boolean) {
+    private fun applyHostUpdate(force: Boolean, killWorking: Boolean = false) {
         val api = (application as PkshellApp).api() ?: return
         hostUpdateApply.isEnabled = false
         lifecycleScope.launch {
             try {
-                api.applyHostUpdate(force)
+                api.applyHostUpdate(force, killWorking)
                 showMessage(getString(R.string.host_update_applying_message))
                 // The host restarts; give it a moment before reloading the list.
                 delay(HOST_RESTART_WAIT_MS)
                 refresh()
             } catch (e: ApiException) {
-                if (e.code == 409 && !force) {
-                    confirmForceHostUpdate(HostUpdateStatus.runningSessionsFrom409(e.body))
-                } else {
-                    showMessage(getString(R.string.host_update_failed, e.message ?: ""))
+                val refusal = if (e.code == 409) UpdateRefusal.parse(e.body) else null
+                when {
+                    refusal != null && !force -> confirmForceHostUpdate(refusal)
+                    // Forced, and an AI is in the middle of a turn: the host wants a second, separate yes.
+                    refusal != null && !killWorking && refusal.working > 0 -> confirmKillWorking(refusal)
+                    else -> showMessage(getString(R.string.host_update_failed, e.message ?: ""))
                 }
             } catch (e: IOException) {
                 showMessage(getString(R.string.host_update_failed, e.message ?: ""))
@@ -236,16 +239,42 @@ class SessionListActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmForceHostUpdate(running: Int?) {
+    private fun confirmForceHostUpdate(refusal: UpdateRefusal) {
         if (isFinishing) return
+        val running = refusal.running
         val msg = if (running != null) getString(R.string.host_update_running_n, running)
         else getString(R.string.host_update_running)
         AlertDialog.Builder(this)
             .setTitle(R.string.host_update_running_title)
-            .setMessage(msg)
+            .setMessage(withSessionLines(msg, refusal))
             .setPositiveButton(R.string.host_update_force) { _, _ -> applyHostUpdate(force = true) }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    private fun confirmKillWorking(refusal: UpdateRefusal) {
+        if (isFinishing) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.host_update_working_title)
+            .setMessage(withSessionLines(getString(R.string.host_update_working_n, refusal.working), refusal))
+            .setPositiveButton(R.string.host_update_kill_working) { _, _ -> applyHostUpdate(force = true, killWorking = true) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** [message] followed by the sessions the update would end, one per line (at most eight). */
+    private fun withSessionLines(message: String, refusal: UpdateRefusal): String {
+        if (refusal.sessions.isEmpty()) return message
+        val lines = refusal.sessions.take(UPDATE_SESSION_LINES).map { s ->
+            "· " + when (s.agentState) {
+                com.neststudio.pocketshell.core.AgentState.WORKING -> getString(R.string.host_update_session_working, s.title)
+                com.neststudio.pocketshell.core.AgentState.WAITING -> getString(R.string.host_update_session_waiting, s.title)
+                else -> s.title
+            }
+        }.toMutableList()
+        val more = refusal.sessions.size - UPDATE_SESSION_LINES
+        if (more > 0) lines.add("· " + getString(R.string.host_update_more, more))
+        return message + "\n\n" + lines.joinToString("\n")
     }
 
     private fun showMessage(text: String?) {
@@ -573,3 +602,6 @@ private class SessionAdapter(
         val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }
 }
+
+/** Sessions listed in the update confirmation before "and n more". */
+private const val UPDATE_SESSION_LINES = 8

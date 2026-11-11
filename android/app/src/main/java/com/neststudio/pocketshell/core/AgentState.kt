@@ -44,6 +44,8 @@ data class AgentEvent(
     val agent: String?,
     val state: String,
     val prompt: AgentPrompt?,
+    /** "done" only: the last lines the agent wrote (hosts from 0.2.61). */
+    val preview: String? = null,
 )
 
 /** Reply of `GET /api/events`: where the host's log is now and the events after the `after` we sent. */
@@ -65,6 +67,7 @@ data class AgentEvents(val epoch: String, val seq: Long, val events: List<AgentE
                     agent = if (e.isNull("agent")) null else e.optString("agent"),
                     state = state,
                     prompt = AgentPrompt.fromJson(e.optJSONObject("prompt")),
+                    preview = if (e.isNull("preview")) null else e.optString("preview").ifBlank { null },
                 )
             }
             return AgentEvents(o.optString("epoch", ""), o.optLong("seq", 0), events)

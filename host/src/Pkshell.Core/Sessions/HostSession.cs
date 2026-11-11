@@ -18,6 +18,7 @@ public sealed class HostSession : IDisposable
     private readonly ActivityTracker _activity = new();   // guarded by Hub.SyncRoot
     /// <summary>What the output leaves on screen, for reading what the agent shows when it stops (AI sessions only).</summary>
     private VtScreen? _screen;
+    private int _screenPrint;
 
     public string Id { get; }
     public string Dir { get; }
@@ -92,10 +93,17 @@ public sealed class HostSession : IDisposable
         {
             Hub.Publish(chunk);
             _meta.LastActivity = Ids.IsoNow();
-            _activity.Change(DateTime.UtcNow);
             // The pseudoconsole repaints everything after a resize, so a screen of the new size starts empty.
             if (_screen == null || _screen.Cols != _meta.Cols || _screen.Rows != _meta.Rows) _screen = new VtScreen(_meta.Cols, _meta.Rows);
             _screen.Feed(chunk);
+            // Only output that changes the text on screen is activity: a CLI that blinks its window title while it
+            // waits (Codex: "[ ! ] Action Required") writes all the time and shows the same screen.
+            int print = _screen.Fingerprint();
+            if (print != _screenPrint)
+            {
+                _screenPrint = print;
+                _activity.Change(DateTime.UtcNow);
+            }
             var cwd = _cwdParser.Feed(chunk);
             if (cwd != null && cwd != _meta.Cwd) _meta.Cwd = cwd;
             _dirty = true;
@@ -202,6 +210,12 @@ public sealed class HostSession : IDisposable
     }
 
     public void Kill() => _pty?.Kill();
+
+    /// <summary>The screen as plain text rows, as the host reads it for the agent state (DESIGN §14).</summary>
+    public string ScreenText()
+    {
+        lock (Hub.SyncRoot) return _screen?.Text() ?? "";
+    }
 
     /// <summary>
     /// Re-evaluates what the AI CLI in this session is doing. Returns the snapshot when it just stopped (the moment to

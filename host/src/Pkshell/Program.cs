@@ -21,7 +21,9 @@ public static class Program
           psh pair                       (one-time PIN for phone pairing; --pin is accepted as a no-op)
           psh devices
           psh revoke <deviceId>
-          psh update [--check] [--force]
+          psh update [--check] [--force [--kill-working]]
+                                         (--force ends running host sessions; --kill-working also those where an AI is mid-turn)
+          psh firewall-cleanup [--list]  (remove Windows Firewall rules of earlier copies; asks for administrator rights)
           psh console-info <pid>...      (internal helper)
           psh console-reader <pid>       (internal helper)
 
@@ -48,6 +50,9 @@ public static class Program
                     return ConsoleHelpers.RunConsoleReader(rpid);
                 case "serve":
                     return await Serve(rest);
+                case "firewall-cleanup":
+                    if (rest.Any(a => a != "--list")) { Console.Error.WriteLine("usage: psh firewall-cleanup [--list]"); return 2; }
+                    return FirewallCleanup.Run(listOnly: rest.Contains("--list"));
             }
 
             var opts = Options.Parse(rest);
@@ -95,7 +100,7 @@ public static class Program
         public string? Home;
         public string? Shell, Cwd, Title;
         public bool NoAttach;
-        public bool Check, Force;
+        public bool Check, Force, KillWorking;
         public int? DiscoveryPort;
         public List<string> Binds = new();
         public List<string> Positional = new();
@@ -119,6 +124,7 @@ public static class Program
                     case "--pin": break; // pair is always PIN; accepted for compatibility
                     case "--check": o.Check = true; break;
                     case "--force": o.Force = true; break;
+                    case "--kill-working": o.KillWorking = true; break;
                     case "--discovery-port": o.DiscoveryPort = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     default:
                         if (args[i].StartsWith("--", StringComparison.Ordinal)) throw new FormatException($"unknown option {args[i]}");
@@ -229,10 +235,22 @@ public static class Program
         if (o.Check) return state == "error" ? 1 : 0;
         if (state is "none") { Console.WriteLine("already up to date"); return 0; }
         if (state is "error" && (latest.Length == 0 || latest == current)) return 1;
-        var r = await api.SendRawAsync(HttpMethod.Post, "api/update/apply", new { force = o.Force });
+        var r = await api.SendRawAsync(HttpMethod.Post, "api/update/apply", new { force = o.Force, killWorking = o.KillWorking });
         if (r.Status == 409)
         {
-            Console.Error.WriteLine($"psh: {Str(r.Body, "error")} (use --force to terminate them)");
+            bool working = r.Body.TryGetProperty("workingAgents", out var w) && w.TryGetInt32(out var wn) && wn > 0;
+            Console.Error.WriteLine($"psh: {Str(r.Body, "error")}");
+            if (r.Body.TryGetProperty("sessions", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var s in list.EnumerateArray())
+                {
+                    var agentState = Str(s, "agentState");
+                    Console.Error.WriteLine($"  {Str(s, "id")}  {Str(s, "title")}{(agentState.Length > 0 ? $"  [{Str(s, "agent")} {agentState}]" : "")}");
+                }
+            }
+            Console.Error.WriteLine(o.Force && working
+                ? "these sessions would be terminated; add --kill-working to do it while an AI is mid-turn"
+                : "these sessions would be terminated; use --force to do it (it is installed by itself once they end)");
             return 1;
         }
         if (r.Status != 200) { Console.Error.WriteLine($"psh: apply failed: HTTP {r.Status} {r.Text}"); return 1; }
