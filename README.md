@@ -13,14 +13,19 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 | `host/src/Pkshell` | 서버 + CLI `psh.exe` (`psh serve`, `psh attach` …) |
 | `android/` | Kotlin Android 앱 `com.neststudio.pocketshell` (Termux terminal-emulator/view 기반, Apache-2.0) |
 | `qa/Pkshell.QA` | E2E QA 드라이버 |
+| `installer/PocketShell.iss` | Windows 원클릭 설치 파일(Inno Setup) 스크립트 |
 | `assets/` | 아이콘 (`scripts/make_icons.py`로 생성) |
 | `docs/DESIGN.md` | 프로토콜/구조 계약 |
 
 ## 빠른 시작
-1. PC: [Releases](../../releases)에서 `pocketshell-host-win-x64-*.zip`을 받아 압축 해제 (.NET 8 Desktop + ASP.NET Core 런타임 필요)
-2. `PocketShell.exe` 실행 → 트레이 아이콘이 생기고 서버가 백그라운드에서 실행됨 (포트 7380, LAN·Tailscale·루프백에만 바인딩, TLS). 처음 실행하면 Windows 로그인 시 자동 실행이 켜짐
+1. PC: [Releases](../../releases/latest)에서 `PocketShell-Setup-v*.exe`를 받아 실행 (원클릭 설치)
+   - `%LOCALAPPDATA%\Programs\PocketShell`에 설치(관리자 권한 불필요), 시작 메뉴 등록. .NET 8 Desktop + ASP.NET Core 런타임이 없으면 Microsoft에서 받아 설치함(이때만 관리자 권한 확인).
+   - 서명되지 않은 파일이라 Windows가 "PC 보호" 창을 띄우면 **추가 정보 → 실행**.
+   - 제거: Windows 설정 → 앱 → PocketShell. 데이터(`%APPDATA%\PocketShell`)는 물어보고 지움.
+   - 수동 설치: `pocketshell-host-win-x64-*.zip`을 풀고 `PocketShell.exe` 실행 (런타임은 직접 설치).
+2. 설치가 끝나면 트레이 아이콘이 생기고 서버가 백그라운드에서 실행됨 (포트 7380, LAN·Tailscale·루프백에만 바인딩, TLS). 휴대폰 연결 (PIN) 창이 바로 열리고, Windows 로그인 시 자동 실행이 켜짐
 3. 트레이 아이콘 더블클릭 또는 메뉴 **휴대폰 연결 (PIN)** → 6자리 PIN과 인증서 지문 표시
-4. 폰: `pocketshell-android-*.apk` 설치 → PIN 연결에서 이 PC 선택(또는 IP 입력) → PIN 입력 → 지문 확인
+4. 폰: `pocketshell-android-*.apk` 설치 → **PC 추가** → 이 PC 선택(또는 IP 입력) → PIN 입력 → 지문 확인
 5. 폰에서 세션 목록 선택 또는 새 세션 생성 → PC에는 Windows Terminal 탭이 자동으로 열림
 
 트레이 메뉴: 서버 시작/중지, 휴대폰 연결 (PIN), 프로젝트 폴더, 데이터·로그 폴더 열기, Windows 시작 시 자동 실행, 종료(서버도 중지).
@@ -78,7 +83,7 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 dotnet build host/Pkshell.sln && dotnet test host/Pkshell.sln
 cd android && gradlew.bat test assembleRelease   # JDK 17, Android SDK 35
 dotnet run --project qa/Pkshell.QA -c Release       # E2E QA
-powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releases → 자동 업데이트)
+powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releases → 자동 업데이트, Inno Setup 6 필요)
 ```
 
 ## 보안

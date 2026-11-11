@@ -9,6 +9,7 @@
   3. Android: gradlew assembleRelease (release is signed with the same key as v0.1.0, the default debug
      keystore %USERPROFILE%\.android\debug.keystore) -> pocketshell-android-v<Version>.apk; signer certificate is
      checked against that keystore so in-place app updates keep working
+     then PocketShell-Setup-v<Version>.exe (Inno Setup, installer\PocketShell.iss): one-click installer for a new PC
   4. SHA256SUMS.txt ("<sha256>  <name>")
   5. git commit + tag v<Version> + push, then `gh release create` (prerelease when the version has a '-')
 
@@ -100,6 +101,9 @@ function Get-ApkSignerSha256([string]$apkPath) {
 if (-not (Test-Path $VersionFile)) { throw "missing $VersionFile" }
 if (-not (Test-Path (Join-Path $JavaHome 'bin\java.exe'))) { throw "JDK 17 not found at $JavaHome" }
 if (-not (Test-Path $DebugKeystore)) { throw "signing keystore not found: $DebugKeystore (v0.1.0 was signed with it; a different key breaks in-place updates)" }
+$Iscc = @((Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'), (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'), (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe')) |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $Iscc) { throw "Inno Setup 6 (ISCC.exe) not found; install it (winget install JRSoftware.InnoSetup) to build the installer" }
 if (-not $DryRun) {
     $dirty = (& git -C $Root status --porcelain) | Out-String
     if ($dirty.Trim().Length -gt 0) { throw "working tree is not clean; commit or stash first:`n$dirty" }
@@ -123,6 +127,8 @@ $hostZipName = "pocketshell-host-win-x64-v$Version.zip"
 $apkName = "pocketshell-android-v$Version.apk"
 $hostZip = Join-Path $OutDir $hostZipName
 $apkOut = Join-Path $OutDir $apkName
+$setupName = "PocketShell-Setup-v$Version.exe"
+$setupOut = Join-Path $OutDir $setupName
 $sumsPath = Join-Path $OutDir 'SHA256SUMS.txt'
 
 try {
@@ -179,9 +185,18 @@ try {
     [System.IO.Compression.ZipFile]::CreateFromDirectory($pub, $hostZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
     Write-Host "    $hostZipName ($([math]::Round((Get-Item $hostZip).Length / 1MB, 2)) MB, includes android\$apkName)"
 
+    # One-click installer for a new PC (installer\PocketShell.iss): same files as the zip, installs the .NET 8
+    # runtimes when missing. Auto-update keeps using the zip.
+    Step "installer: $setupName (Inno Setup)"
+    Invoke-Checked $Iscc @('/Q', "/DAppVersion=$Version", "/DSourceDir=$pub", "/DOutDir=$OutDir", (Join-Path $Root 'installer\PocketShell.iss'))
+    if (-not (Test-Path $setupOut)) { throw "Inno Setup produced no $setupName" }
+    Copy-Item -Force $setupOut (Join-Path $localBuild $setupName)
+    Get-ChildItem $localBuild -Filter 'PocketShell-Setup-v*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -Skip 3 | Remove-Item -Force
+    Write-Host "    $setupName ($([math]::Round((Get-Item $setupOut).Length / 1MB, 2)) MB), copied to $localBuild\$setupName"
+
     # -------------------------------------------------------------- 4. SHA256SUMS.txt
     Step "SHA256SUMS.txt"
-    $lines = @("$(Get-Sha256 $hostZip)  $hostZipName", "$(Get-Sha256 $apkOut)  $apkName")
+    $lines = @("$(Get-Sha256 $hostZip)  $hostZipName", "$(Get-Sha256 $apkOut)  $apkName", "$(Get-Sha256 $setupOut)  $setupName")
     [System.IO.File]::WriteAllText($sumsPath, ($lines -join "`n") + "`n", $Utf8NoBom)
     $lines | ForEach-Object { Write-Host "    $_" }
 }
@@ -226,7 +241,7 @@ Invoke-Checked 'git' @('-C', $Root, 'push')
 Invoke-Checked 'git' @('-C', $Root, 'push', 'origin', "v$Version")
 
 Step "gh release create v$Version"
-$ghArgs = @('release', 'create', "v$Version", $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version", '--generate-notes')
+$ghArgs = @('release', 'create', "v$Version", $setupOut, $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version", '--generate-notes')
 if ($IsPrerelease) { $ghArgs += '--prerelease' }
 Invoke-Checked 'gh' $ghArgs
 Step "released v$Version (artifacts in $OutDir)"

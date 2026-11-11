@@ -198,12 +198,7 @@
     <string name="pcs_empty_title">연결된 PC가 없습니다</string>
     <string name="pcs_empty_body">PC에 PocketShell을 설치하고 트레이의 휴대폰 연결 (PIN)으로 연결하세요. PC는 여러 대 연결할 수 있습니다.</string>
     <string name="pcs_install_menu">다른 PC에 설치하는 방법</string>
-    <string name="pcs_install_body">1. 설치할 PC에서 아래 다운로드 페이지를 엽니다.
-2. pocketshell-host-win-x64 zip을 받아 압축을 풉니다. (.NET 8 Desktop + ASP.NET Core 런타임 필요)
-3. PocketShell.exe를 실행하면 트레이에 아이콘이 생깁니다.
-4. 트레이 메뉴 휴대폰 연결 (PIN)을 누르고, 이 앱에서 PC 추가로 PIN을 입력합니다.
-
-폰과 PC가 같은 Wi-Fi이거나 둘 다 Tailscale에 연결돼 있어야 합니다.</string>
+    <string name="pcs_install_body">1. 설치할 PC에서 아래 다운로드 페이지를 엽니다.\n2. PocketShell-Setup exe를 받아 실행합니다. 필요한 .NET 8 런타임이 없으면 함께 설치됩니다.\n3. 설치가 끝나면 PC에 휴대폰 연결 (PIN) 창이 열립니다.\n4. 이 앱에서 PC 추가를 누르고 PIN을 입력합니다.\n\n폰과 PC가 같은 Wi-Fi이거나 둘 다 Tailscale에 연결돼 있어야 합니다.</string>
     <string name="pcs_install_open">다운로드 페이지 열기</string>
     <string name="pcs_install_copy">링크 복사</string>
     <string name="pcs_link_copied">링크를 복사했습니다</string>

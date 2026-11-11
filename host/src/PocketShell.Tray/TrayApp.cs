@@ -46,7 +46,8 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Queue<DateTime> _restarts = new();
     private PinForm? _pinForm;
 
-    public TrayApp(string home)
+    /// <param name="openPin">`--pair` (installer's last step): open 휴대폰 연결 once the server is up.</param>
+    public TrayApp(string home, bool openPin = false)
     {
         _home = home;
         _server = new ServerControl(home);
@@ -81,7 +82,15 @@ internal sealed class TrayApp : ApplicationContext
         _timer =new System.Windows.Forms.Timer { Interval = 2000 };
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
-        _ = StartAsync(userAction: false);
+        _ = StartupAsync(openPin);
+    }
+
+    private async Task StartupAsync(bool openPin)
+    {
+        await StartAsync(userAction: false);
+        if (!openPin || !_server.IsRunning) return;
+        await Task.Delay(1000); // the serve mutex appears just before the listeners open
+        ShowPin();
     }
 
     private static Icon LoadIcon(string name)

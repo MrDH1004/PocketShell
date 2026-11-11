@@ -181,7 +181,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 세션 목록에 PC 호스트 업데이트 상태 표시(`/api/info.update`), "PC 업데이트 적용" 버튼(세션 실행 중이면 확인 후 force).
 
 ### 11.5 릴리스 스크립트
-- `scripts/release.ps1 -Version <x.y.z[-pre]>`: version.properties 갱신(versionCode+1) → host publish(win-x64, framework-dependent) zip → APK 빌드(같은 서명 키) → SHA256SUMS.txt → 커밋·태그·푸시 → `gh release create`(prerelease 여부는 버전에 `-`가 있으면 true).
+- `scripts/release.ps1 -Version <x.y.z[-pre]>`: version.properties 갱신(versionCode+1) → host publish(win-x64, framework-dependent) zip → APK 빌드(같은 서명 키) → 설치 파일 `PocketShell-Setup-v<ver>.exe`(Inno Setup 6, `installer/PocketShell.iss`: 사용자 폴더 설치, .NET 8 런타임 없으면 설치, 끝에 `PocketShell.exe --pair`로 PIN 창 열기; 자동 업데이트는 계속 zip 사용) → SHA256SUMS.txt → 커밋·태그·푸시 → `gh release create`(prerelease 여부는 버전에 `-`가 있으면 true).
 
 ## 12. PIN 페어링 + LAN 검색
 ### 12.1 PIN 페어링

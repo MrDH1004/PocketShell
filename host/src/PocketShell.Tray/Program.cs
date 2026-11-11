@@ -7,6 +7,9 @@ internal static class Program
     /// <summary>`PocketShell.exe --wait-pid N`: started by a tray restarting after an update; take over once N has exited.</summary>
     public const string WaitPidArg = "--wait-pid";
 
+    /// <summary>`PocketShell.exe --pair`: open 휴대폰 연결 (PIN) once the server is running (installer's finish step).</summary>
+    public const string PairArg = "--pair";
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -22,7 +25,8 @@ internal static class Program
         Directory.CreateDirectory(home);
         try
         {
-            Application.Run(new TrayApp(home));
+            bool openPin = args.Length == 1 && string.Equals(args[0], PairArg, StringComparison.Ordinal);
+            Application.Run(new TrayApp(home, openPin));
             return 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
