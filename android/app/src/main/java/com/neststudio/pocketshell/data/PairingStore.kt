@@ -13,7 +13,12 @@ data class Pairing(
     val fingerprint: String,
     val deviceId: String,
     val token: String,
+    /** Name the user gave this PC on the phone; blank = show [pcName]. */
+    val alias: String = "",
 ) {
+    /** What the UI calls this PC. */
+    val displayName: String get() = alias.ifBlank { pcName }
+
     /** One entry per PC: the host's certificate fingerprint (re-pairing the same PC replaces its entry). */
     val id: String get() = fingerprint
 }
@@ -28,7 +33,8 @@ object PairingCodec {
                 .put("port", p.port)
                 .put("fp", p.fingerprint)
                 .put("deviceId", p.deviceId)
-                .put("token", p.token),
+                .put("token", p.token)
+                .put("alias", p.alias),
         )
     }.toString()
 
@@ -44,7 +50,7 @@ object PairingCodec {
             val hosts = o.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it, "").trim() } }
                 .orEmpty().filter { it.isNotEmpty() }
             if (fp.isEmpty() || token.isEmpty() || hosts.isEmpty()) continue
-            out.add(Pairing(o.optString("name", "PC").ifBlank { "PC" }, hosts, o.optInt("port", 7380), fp, o.optString("deviceId", ""), token))
+            out.add(Pairing(o.optString("name", "PC").ifBlank { "PC" }, hosts, o.optInt("port", 7380), fp, o.optString("deviceId", ""), token, o.optString("alias", "").trim()))
         }
         return out.distinctBy { it.id }
     }

@@ -11,7 +11,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -106,10 +105,11 @@ class PcListActivity : AppCompatActivity() {
             val info = JSONObject(text)
             val advertised = info.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it, "").trim() } }
                 .orEmpty().filter { it.isNotEmpty() }
-            var current = p
-            val hosts = (p.hosts + advertised).distinct()
-            if (hosts != p.hosts) {
-                current = p.copy(hosts = hosts)
+            // Re-read: the alias may have been edited while this probe was running.
+            var current = app.store.get(p.id) ?: return PcRow(p, PcState.OFFLINE)
+            val hosts = (current.hosts + advertised).distinct()
+            if (hosts != current.hosts) {
+                current = current.copy(hosts = hosts)
                 app.store.save(current)
             }
             val updateState = info.optJSONObject("update")?.optString("state", "") ?: ""
@@ -134,32 +134,45 @@ class PcListActivity : AppCompatActivity() {
 
     private fun showActions(p: Pairing) {
         AlertDialog.Builder(this)
-            .setTitle(p.pcName)
-            .setItems(arrayOf(getString(R.string.pcs_actions_rename), getString(R.string.pcs_actions_remove))) { _, which ->
-                if (which == 0) rename(p) else confirmRemove(p)
+            .setTitle(p.displayName)
+            .setItems(arrayOf(getString(R.string.pcs_actions_alias), getString(R.string.pcs_actions_remove))) { _, which ->
+                if (which == 0) editAlias(p) else confirmRemove(p)
             }
             .show()
     }
 
-    private fun rename(p: Pairing) {
+    /** Alias shown instead of the PC's own name; saving it empty goes back to the PC name. */
+    private fun editAlias(p: Pairing) {
         val input = EditText(this).apply {
-            setText(p.pcName)
+            setText(p.alias)
             setSelection(text.length)
+            hint = p.pcName
             inputType = InputType.TYPE_CLASS_TEXT
             maxLines = 1
+            filters = arrayOf(android.text.InputFilter.LengthFilter(ALIAS_MAX))
+        }
+        val help = TextView(this).apply {
+            text = getString(R.string.pcs_alias_help, p.pcName)
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            textSize = 13f
+            // Line up with the text inside the field (the EditText insets its text by about 4dp).
+            val inset = (4 * resources.displayMetrics.density).toInt()
+            setPadding(inset, inset, inset, 0)
         }
         val pad = (20 * resources.displayMetrics.density).toInt()
-        val box = FrameLayout(this).apply { setPadding(pad, pad / 2, pad, 0); addView(input) }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+            addView(help)
+        }
         AlertDialog.Builder(this)
-            .setTitle(R.string.pcs_rename_title)
+            .setTitle(R.string.pcs_alias_title)
             .setView(box)
             .setPositiveButton(R.string.save) { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotEmpty()) {
-                    val app = application as PkshellApp
-                    app.store.get(p.id)?.let { app.store.save(it.copy(pcName = name)) }
-                    refresh()
-                }
+                val app = application as PkshellApp
+                app.store.get(p.id)?.let { app.store.save(it.copy(alias = input.text.toString().trim())) }
+                refresh()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -168,7 +181,7 @@ class PcListActivity : AppCompatActivity() {
     private fun confirmRemove(p: Pairing) {
         AlertDialog.Builder(this)
             .setTitle(R.string.pcs_actions_remove)
-            .setMessage(getString(R.string.pcs_remove_confirm, p.pcName))
+            .setMessage(getString(R.string.pcs_remove_confirm, p.displayName))
             .setPositiveButton(R.string.unpair) { _, _ ->
                 (application as PkshellApp).unpair(p.id)
                 refresh()
@@ -204,6 +217,7 @@ class PcListActivity : AppCompatActivity() {
         const val MENU_CHECK_UPDATE = 3
         const val MENU_VIEW_SETTINGS = 4
         const val PROBE_TIMEOUT_MS = 8000L
+        const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"
     }
 }
@@ -256,14 +270,17 @@ private class PcAdapter(
         val row = rows[position]
         val v = holder.itemView
         val ctx = v.context
-        v.findViewById<TextView>(R.id.name).text = row.pc.pcName
+        v.findViewById<TextView>(R.id.name).text = row.pc.displayName
         v.findViewById<TextView>(R.id.status).text = when (row.state) {
             PcState.CHECKING -> ctx.getString(R.string.pcs_checking)
             PcState.ONLINE -> ctx.getString(if (row.hostUpdate) R.string.pcs_online_update else R.string.pcs_online, row.version.ifBlank { "?" })
             PcState.OFFLINE -> ctx.getString(R.string.pcs_offline)
             PcState.UNAUTHORIZED -> ctx.getString(R.string.pcs_unauthorized)
         }
-        v.findViewById<TextView>(R.id.hosts).text = row.pc.hosts.joinToString("  ·  ")
+        // With an alias on top, the PC's own name leads the address line so the two stay tied together.
+        val own = if (row.pc.alias.isNotBlank()) listOf(row.pc.pcName) else emptyList()
+        v.findViewById<TextView>(R.id.hosts).text = (own + row.pc.hosts).joinToString("  ·  ")
+        v.findViewById<View>(R.id.more).setOnClickListener { onLongClick(row.pc) }
         val dotColor = when (row.state) {
             PcState.ONLINE -> R.color.live
             PcState.CHECKING -> R.color.text_secondary

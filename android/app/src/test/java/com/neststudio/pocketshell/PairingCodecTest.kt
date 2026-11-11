@@ -23,6 +23,16 @@ class PairingCodecTest {
     }
 
     @Test
+    fun aliasRoundTripsAndFallsBackToThePcName() {
+        val named = a.copy(alias = "거실 PC")
+        assertEquals("거실 PC", PairingCodec.decode(PairingCodec.encode(listOf(named))).single().displayName)
+        assertEquals("Desk", a.displayName)
+        // Lists saved before aliases existed have no "alias" key.
+        val old = PairingCodec.encode(listOf(b)).replace(",\"alias\":\"\"", "")
+        assertEquals(b, PairingCodec.decode(old).single())
+    }
+
+    @Test
     fun skipsBrokenEntriesAndBadJson() {
         val json = """[{"name":"x","hosts":[],"fp":"f","token":"t"},{"fp":"","token":"t","hosts":["1.2.3.4"]},""" +
             PairingCodec.encode(listOf(b)).removePrefix("[")

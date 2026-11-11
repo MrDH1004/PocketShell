@@ -70,7 +70,7 @@ class SessionListActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).applySystemInsets(includeIme = false)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.subtitle = app.pairing()?.pcName
+        toolbar.subtitle = app.pairing()?.displayName
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
         toolbar.setNavigationContentDescription(R.string.pcs_back)
         toolbar.setNavigationOnClickListener { finish() }

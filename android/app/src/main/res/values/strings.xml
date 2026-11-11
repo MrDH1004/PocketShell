@@ -205,11 +205,13 @@
     <string name="pcs_checking">연결 확인 중…</string>
     <string name="pcs_online">연결됨 · v%1$s</string>
     <string name="pcs_online_update">연결됨 · v%1$s · PC 업데이트 있음</string>
-    <string name="pcs_offline">연결 안 됨 · PC가 켜져 있고 같은 네트워크인지 확인하세요</string>
+    <string name="pcs_offline">연결 안 됨 · PC와 네트워크를 확인하세요</string>
     <string name="pcs_unauthorized">연결 해제됨 · 다시 PIN으로 연결하세요</string>
-    <string name="pcs_actions_rename">이름 바꾸기</string>
+    <string name="pcs_actions_alias">별칭 설정</string>
+    <string name="pcs_alias_title">PC 별칭</string>
+    <string name="pcs_alias_help">목록에 PC 이름 대신 표시됩니다. 비워 두면 PC 이름(%1$s)이 표시됩니다.</string>
+    <string name="pcs_more">별칭 설정, 연결 해제</string>
     <string name="pcs_actions_remove">이 PC 연결 해제</string>
-    <string name="pcs_rename_title">PC 이름</string>
     <string name="pcs_remove_confirm">%1$s 연결 정보를 이 폰에서 지울까요? 다시 쓰려면 PIN으로 다시 연결해야 합니다.</string>
     <string name="pcs_back">PC 목록</string>
     <string name="save">저장</string>
