@@ -55,10 +55,15 @@ class SessionListActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (intent?.action == Intent.ACTION_MAIN) {
+            // App icon: start at the PC list (this activity remains the launcher component for existing icons).
+            startActivity(Intent(this, PcListActivity::class.java))
+            finish()
+            return
+        }
         val app = application as PkshellApp
         if (app.pairing() == null) {
-            startActivity(Intent(this, PairingActivity::class.java))
-            finish()
+            finish() // back to the PC list
             return
         }
         setContentView(R.layout.activity_sessions)
@@ -66,6 +71,9 @@ class SessionListActivity : AppCompatActivity() {
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.subtitle = app.pairing()?.pcName
+        toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
+        toolbar.setNavigationContentDescription(R.string.pcs_back)
+        toolbar.setNavigationOnClickListener { finish() }
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
@@ -399,7 +407,6 @@ class SessionListActivity : AppCompatActivity() {
             .setMessage(R.string.unpair_confirm)
             .setPositiveButton(R.string.unpair) { _, _ ->
                 (application as PkshellApp).unpair()
-                startActivity(Intent(this, PairingActivity::class.java))
                 finish()
             }
             .setNegativeButton(R.string.cancel, null)

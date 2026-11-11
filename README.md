@@ -31,6 +31,14 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 
 ## 폰 앱 사용법
 
+**PC 목록 (첫 화면)**
+- 앱을 열면 연결한 PC 목록이 나옴. PC는 여러 대 연결 가능. 카드마다 연결 상태(연결됨·버전 / 연결 안 됨)와 주소 표시.
+- PC를 누르면 그 PC의 세션 목록으로 들어감. 세션 목록 왼쪽 위 뒤로가기(←)로 PC 목록에 돌아옴.
+- **PC 추가**: 다른 PC를 PIN으로 연결. 같은 PC를 다시 연결하면 기존 항목을 갱신함.
+- PC 카드를 길게 누르면 이름 바꾸기 / 연결 해제.
+- 메뉴 **다른 PC에 설치하는 방법**: 설치 순서와 다운로드 페이지(GitHub Releases) 링크.
+- PC가 나중에 주소를 추가하면(예: Tailscale을 켬) 목록을 열 때 자동으로 저장함.
+
 **세션 목록**
 - **실행 중**: 폰이나 `psh new`로 만든 PocketShell 세션.
 - **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴.

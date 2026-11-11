@@ -17,6 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Pkshell">
 
+        <!-- Stays the launcher component so existing home-screen icons keep working; it hands off to the PC list. -->
         <activity
             android:name=".ui.SessionListActivity"
             android:exported="true">
@@ -25,6 +26,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.PcListActivity"
+            android:exported="false" />
 
         <activity
             android:name=".ui.PairingActivity"

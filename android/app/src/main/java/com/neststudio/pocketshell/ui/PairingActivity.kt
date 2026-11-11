@@ -58,6 +58,11 @@ class PairingActivity : AppCompatActivity() {
         setContentView(R.layout.activity_pairing)
         WideScreen.limitWidth(findViewById(R.id.content), 560)
         findViewById<android.view.View>(R.id.root).applySystemInsets(includeIme = true)
+        findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar).apply {
+            setNavigationIcon(R.drawable.ic_arrow_back)
+            setNavigationContentDescription(R.string.pcs_back)
+            setNavigationOnClickListener { finish() }
+        }
 
         status = findViewById(R.id.status)
         deviceName = findViewById(R.id.deviceName)
@@ -212,11 +217,12 @@ class PairingActivity : AppCompatActivity() {
             Log.w(TAG, "info after PIN pairing unreadable: ${e.message}")
         }
 
-        (application as PkshellApp).store.save(
-            Pairing(pcName, hosts.distinct(), addr.port, observed, claim.deviceId, claim.token)
-        )
-        startActivity(Intent(this, SessionListActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK))
+        val pairing = Pairing(pcName, hosts.distinct(), addr.port, observed, claim.deviceId, claim.token)
+        val app = application as PkshellApp
+        app.store.save(pairing) // adds this PC, or replaces it when re-pairing
+        app.select(pairing.id)
+        // Opened from the PC list, which stays below: back from the sessions returns to it.
+        startActivity(Intent(this, SessionListActivity::class.java))
         finish()
         return true
     }
