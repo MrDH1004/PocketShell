@@ -132,14 +132,23 @@ public static class Log
     private static readonly object Gate = new();
     private static StreamWriter? _file;
     public static bool Quiet { get; set; }
+    private const long MaxLogBytes = 2 * 1024 * 1024;
 
     public static void InitFile(string home)
     {
         var dir = PkshellPaths.LogsDir(home);
         Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "host.log");
+        // Keep the log bounded: past MaxLogBytes the old file becomes host.log.1 (one generation) at the next start.
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).Length > MaxLogBytes) File.Move(path, path + ".1", overwrite: true);
+        }
+        catch (IOException) { /* still open in the process that is handing over (update): rotate next start */ }
+        catch (UnauthorizedAccessException) { }
         lock (Gate)
         {
-            _file = new StreamWriter(new FileStream(Path.Combine(dir, "host.log"), FileMode.Append, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false))
+            _file = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false))
             {
                 AutoFlush = true,
             };
