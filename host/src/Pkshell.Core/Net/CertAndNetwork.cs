@@ -81,6 +81,10 @@ public static class HostAddresses
         return list.OrderBy(ip => IsCgnat(ip) ? 1 : 0).ToList();
     }
 
+    /// <summary>True when both lists hold the same addresses, in any order.</summary>
+    public static bool SameSet(IReadOnlyCollection<IPAddress> a, IReadOnlyCollection<IPAddress> b) =>
+        a.Count == b.Count && a.All(b.Contains);
+
     /// <summary>Bind set: explicit --bind list if given, else 127.0.0.1 + private/CGNAT interface addresses. Never 0.0.0.0.</summary>
     public static List<IPAddress> ResolveBindAddresses(IReadOnlyList<string> explicitBinds)
     {

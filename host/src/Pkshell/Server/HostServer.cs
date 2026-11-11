@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
@@ -79,7 +80,13 @@ public sealed class HostServer : IDisposable
 
     private readonly string _home;
     private readonly int _port;
-    private readonly List<IPAddress> _binds;
+    /// <summary>Replaced (never mutated) when the interface addresses change, see WatchAddressesAsync.</summary>
+    private volatile List<IPAddress> _binds;
+    /// <summary>No --bind given: follow the interface addresses (e.g. Tailscale coming up after the host started).</summary>
+    private readonly bool _autoBinds;
+    private volatile bool _rebindPending;
+    private volatile List<IPAddress>? _rebindFrom;
+    private readonly SemaphoreSlim _addressChanged = new(0, 1);
     private readonly IReadOnlyList<string> _serveArgs;
     private readonly int _discoveryPort;
     private readonly ConcurrentDictionary<WsConn, byte> _conns = new();
@@ -113,11 +120,12 @@ public sealed class HostServer : IDisposable
     private bool _disposed;
 
     /// <param name="serveArgs">Arguments after `serve`, replayed verbatim to the new process on update.</param>
-    public HostServer(string home, int port, List<IPAddress> binds, IReadOnlyList<string> serveArgs, int discoveryPort)
+    public HostServer(string home, int port, List<IPAddress> binds, IReadOnlyList<string> serveArgs, int discoveryPort, bool autoBinds = false)
     {
         _home = home;
         _port = port;
         _binds = binds;
+        _autoBinds = autoBinds;
         _serveArgs = serveArgs;
         _discoveryPort = discoveryPort;
     }
@@ -183,13 +191,29 @@ public sealed class HostServer : IDisposable
         try
         {
             _update.Start();
+            if (_autoBinds)
+            {
+                NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+                _ = Task.Run(() => WatchAddressesAsync(_bgCts.Token));
+            }
             // Normally one iteration. An update handoff stops Kestrel (releasing the port) and, if the new process
             // fails, rolls the files back and loops to re-open the listeners in this same process (sessions kept).
+            // An address change (WatchAddressesAsync) also loops here to re-open the listeners on the new set.
             bool retryBind = parentPid != null;
+            List<IPAddress>? previousBinds = null;
             while (true)
             {
                 var app = BuildApp();
-                var startErr = await StartWithRetry(app, retryBind ? TimeSpan.FromSeconds(20) : TimeSpan.Zero);
+                var startErr = await StartWithRetry(app, retryBind ? TimeSpan.FromSeconds(previousBinds != null ? 5 : 20) : TimeSpan.Zero);
+                if (startErr != null && previousBinds != null)
+                {
+                    Log.Warn($"cannot listen on the new addresses ({startErr}); keeping {string.Join(", ", previousBinds)}");
+                    await app.DisposeAsync();
+                    _binds = previousBinds;
+                    previousBinds = null;
+                    continue;
+                }
+                previousBinds = null;
                 if (startErr != null)
                 {
                     Log.Error($"cannot listen on port {_port}: {startErr}");
@@ -205,7 +229,15 @@ public sealed class HostServer : IDisposable
                 StopDiscovery();
                 _app = null;
                 await app.DisposeAsync();
-                if (!_handoffPending || _stopRequested) break;
+                if (_stopRequested) break;
+                if (_rebindPending && !_handoffPending)
+                {
+                    _rebindPending = false;
+                    previousBinds = _rebindFrom;
+                    retryBind = true;
+                    continue;
+                }
+                if (!_handoffPending) break;
                 _handoffPending = false;
                 if (await HandoffAsync()) break;
                 retryBind = true; // rolled back: re-open listeners (port was just released by us)
@@ -225,6 +257,7 @@ public sealed class HostServer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (_autoBinds) NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
         StopDiscovery();
         _bgCts.Cancel();
         _bgCts.Dispose();
@@ -233,6 +266,45 @@ public sealed class HostServer : IDisposable
         _update?.Dispose();
         _externals?.Dispose();
         _sessions?.Dispose();
+    }
+
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        try { _addressChanged.Release(); }
+        catch (SemaphoreFullException) { /* a check is already queued */ }
+    }
+
+    /// <summary>
+    /// Listeners are bound per address, so an interface that comes up after start (Tailscale connecting after login,
+    /// Wi-Fi changing) is unreachable until they are re-opened. On an address change (or every 30 s as a fallback),
+    /// re-resolve the bind set and, if it differs, stop Kestrel so RunAsync re-opens it on the new set. Sessions keep
+    /// running; phones reconnect.
+    /// </summary>
+    private async Task WatchAddressesAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                await _addressChanged.WaitAsync(TimeSpan.FromSeconds(30), ct);
+                await Task.Delay(TimeSpan.FromSeconds(3), ct); // let DHCP / Tailscale settle
+                var app = _app;
+                if (app == null || _handoffPending || _rebindPending || _stopRequested) continue;
+                var current = _binds;
+                List<IPAddress> fresh;
+                try { fresh = HostAddresses.ResolveBindAddresses(Array.Empty<string>()); }
+                catch (NetworkInformationException ex) { Log.Warn($"address check failed: {ex.Message}"); continue; }
+                if (HostAddresses.SameSet(current, fresh)) continue;
+                Log.Info($"network addresses changed: {string.Join(", ", current)} -> {string.Join(", ", fresh)}; re-opening listeners");
+                _rebindFrom = current;
+                _binds = fresh;
+                _rebindPending = true;
+                await Task.WhenAll(_conns.Keys.ToList().Select(c => c.CloseAsync(1012, "host network changed")));
+                app.Lifetime.StopApplication();
+            }
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+        catch (ObjectDisposedException) { /* shutting down */ }
     }
 
     /// <summary>Keeps the 최근 list current while no phone is polling: a light console snapshot every 20 s.</summary>

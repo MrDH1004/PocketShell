@@ -564,3 +564,17 @@ public class DiscoveryTests
         Assert.False(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("PKSHELL?2")));
     }
 }
+
+public class HostAddressesTests
+{
+    [Fact]
+    public void SameSetIgnoresOrderAndSeesANewTailscaleAddress()
+    {
+        var lan = IPAddress.Parse("192.168.18.49");
+        var ts = IPAddress.Parse("100.80.34.88");
+        Assert.True(HostAddresses.IsCgnat(ts));
+        Assert.True(HostAddresses.SameSet(new[] { IPAddress.Loopback, lan }, new[] { lan, IPAddress.Loopback }));
+        Assert.False(HostAddresses.SameSet(new[] { IPAddress.Loopback, lan }, new[] { IPAddress.Loopback, lan, ts }));
+        Assert.False(HostAddresses.SameSet(new[] { IPAddress.Loopback, lan }, new[] { IPAddress.Loopback, ts }));
+    }
+}

@@ -142,7 +142,7 @@ public static class Program
         try { binds = HostAddresses.ResolveBindAddresses(opts.Binds); }
         catch (ArgumentException ex) { Console.Error.WriteLine("psh: " + ex.Message); return 2; }
         int discoveryPort = opts.DiscoveryPort ?? cfg.DiscoveryPort;
-        using var server = new HostServer(home, port, binds, args, discoveryPort);
+        using var server = new HostServer(home, port, binds, args, discoveryPort, autoBinds: opts.Binds.Count == 0);
         return await server.RunAsync();
     }
 
