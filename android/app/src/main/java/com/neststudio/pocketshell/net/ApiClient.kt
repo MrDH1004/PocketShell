@@ -1,6 +1,7 @@
 package com.neststudio.pocketshell.net
 
 import android.util.Log
+import com.neststudio.pocketshell.core.AgentEvents
 import com.neststudio.pocketshell.core.ClaimResult
 import com.neststudio.pocketshell.core.ClientProtocol
 import com.neststudio.pocketshell.core.FileListing
@@ -164,6 +165,18 @@ class ApiClient(
         val slow = http.newBuilder().writeTimeout(120, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()
         val ow = if (overwrite) "&overwrite=1" else ""
         request("POST", "/api/files/upload?dir=${q(dir)}&name=${q(name)}$ow", rawBody = body, client = slow)
+    }
+
+    /**
+     * Long poll for "an agent stopped" events after [after] (-1 = only ask where the log is). The host answers as soon
+     * as there is one, or after [waitSeconds]; [client] must allow a read that long.
+     */
+    suspend fun events(after: Long, waitSeconds: Int, client: OkHttpClient): AgentEvents =
+        AgentEvents.parse(request("GET", "/api/events?after=$after&wait=$waitSeconds", client = client))
+
+    /** Types [text] into a session without opening it (quick reply); [enter] adds the Enter key. */
+    suspend fun sendInput(id: String, text: String, enter: Boolean) {
+        request("POST", "/api/sessions/$id/input", JSONObject().put("text", text).put("enter", enter))
     }
 
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))

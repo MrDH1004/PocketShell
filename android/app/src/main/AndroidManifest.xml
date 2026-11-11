@@ -8,6 +8,10 @@
     <!-- LAN discovery broadcast replies (DESIGN.md §12.2) -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- "An AI CLI stopped" notifications (DESIGN.md §14): a foreground service long-polls each paired PC. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".PkshellApp"
@@ -44,6 +48,11 @@
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
         <activity
+            android:name=".ui.TerminalTextActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.FileBrowserActivity"
             android:exported="false" />
 
@@ -61,5 +70,18 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <!-- No push server sits between phone and PC, so the phone itself waits on the PCs it is paired with. -->
+        <service
+            android:name=".notify.AgentWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Waits for the user's own PCs on the LAN / VPN to report that a terminal session needs attention" />
+        </service>
+
+        <receiver
+            android:name=".notify.AgentReplyReceiver"
+            android:exported="false" />
     </application>
 </manifest>

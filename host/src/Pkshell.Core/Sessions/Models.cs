@@ -27,6 +27,15 @@ public sealed class SessionDto
     /// <summary>AI CLI ("claude" | "gpt"): running in an external console, or running in a host session when the host
     /// ended it (history; resume continues it). Else null.</summary>
     public string? Agent { get; set; }
+    /// <summary>Live AI CLI sessions only: "working" | "waiting" | "done" (<see cref="AgentStates"/>), null when unknown.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? AgentState { get; set; }
+    /// <summary>When <see cref="AgentState"/> began (ISO UTC).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? AgentStateSince { get; set; }
+    /// <summary>The question shown while <see cref="AgentState"/> is "waiting".</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public PromptDto? Prompt { get; set; }
 
     public SessionDto Clone() => new()
     {
@@ -34,7 +43,17 @@ public sealed class SessionDto
         CreatedAt = CreatedAt, LastActivity = LastActivity, Cols = Cols, Rows = Rows,
         Clients = Clients.Select(c => new ClientDto { Id = c.Id, Type = c.Type, Cols = c.Cols, Rows = c.Rows }).ToList(),
         Pid = Pid, ResumedFrom = ResumedFrom, Agent = Agent,
+        AgentState = AgentState, AgentStateSince = AgentStateSince, Prompt = Prompt,
     };
+
+    /// <summary>Copies a tracker's state into this snapshot.</summary>
+    public SessionDto WithAgentState(ActivityTracker t)
+    {
+        AgentState = t.State;
+        AgentStateSince = t.State == null ? null : Util.Ids.IsoUtc(t.StateSince);
+        Prompt = t.Prompt;
+        return this;
+    }
 }
 
 public sealed class CreateSessionRequest

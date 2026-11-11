@@ -135,6 +135,18 @@
             android:focusableInTouchMode="true" />
     </com.neststudio.pocketshell.ui.ZoomPanLayout>
 
+    <!-- Quick replies while the AI CLI waits on a numbered question (built in TerminalActivity.showQuickReplies) -->
+    <LinearLayout
+        android:id="@+id/quickBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_keybar"
+        android:orientation="vertical"
+        android:paddingStart="8dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone" />
+
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

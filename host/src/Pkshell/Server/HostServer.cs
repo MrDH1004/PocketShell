@@ -94,6 +94,7 @@ public sealed class HostServer : IDisposable
     private SessionManager _sessions = null!;
     private ExternalConsoles _externals = null!;
     private RecentExternals _recent = null!;
+    private readonly AgentEventLog _events = new();
     private readonly CancellationTokenSource _bgCts = new();
     private TokenAuthenticator _auth = null!;
     private PairingManager _pairing = null!;
@@ -155,6 +156,7 @@ public sealed class HostServer : IDisposable
         _externals = new ExternalConsoles(_exe, Path.Combine(_home, "external-scrollback")) { TabNames = TerminalTabs.Read };
         _recent = new RecentExternals(RecentExternals.FileIn(_home));
         _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
+        _ = Task.Run(() => WatchAgentsAsync(_bgCts.Token));
         var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Pkshell.Core.Util.EnvVars.Get("HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
@@ -305,6 +307,60 @@ public sealed class HostServer : IDisposable
         }
         catch (OperationCanceledException) { /* shutting down */ }
         catch (ObjectDisposedException) { /* shutting down */ }
+    }
+
+    /// <summary>
+    /// Follows what the AI CLIs are doing (DESIGN §14): once a second re-evaluates every AI session and records an event
+    /// when one stops (waiting on a question, or done), which phones pick up from GET /api/events.
+    /// </summary>
+    private async Task WatchAgentsAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        int tick = 0;
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                try
+                {
+                    if (tick++ % 10 == 0) _externals.WatchNewAgents();
+                    var now = DateTime.UtcNow;
+                    foreach (var s in _sessions.All)
+                    {
+                        var stopped = s.EvaluateAgent(now);
+                        if (stopped != null) RecordAgentEvent(stopped);
+                    }
+                    foreach (var stopped in _externals.EvaluateAgents(now)) RecordAgentEvent(stopped);
+                }
+                catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+                {
+                    Log.Error($"agent watch: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+    }
+
+    private void RecordAgentEvent(SessionDto s)
+    {
+        if (s.AgentState == null) return;
+        _events.Add(new AgentEventDto
+        {
+            SessionId = s.Id, Title = s.Title, Agent = s.Agent, State = s.AgentState, Prompt = s.Prompt, Time = Ids.IsoNow(),
+        });
+        Log.Info($"agent {s.Id} ({s.Agent}): {s.AgentState}{(s.Prompt != null ? $" [{s.Prompt.Options.Count} choices]" : "")}");
+    }
+
+    /// <summary>How many AI sessions are working / waiting / done right now.</summary>
+    private object AgentSummary()
+    {
+        var states = _sessions.All.Select(s => s.Snapshot().AgentState).Concat(_externals.AgentStates()).ToList();
+        return new
+        {
+            working = states.Count(s => s == AgentStates.Working),
+            waiting = states.Count(s => s == AgentStates.Waiting),
+            done = states.Count(s => s == AgentStates.Done),
+        };
     }
 
     /// <summary>Keeps the 최근 list current while no phone is polling: a light console snapshot every 20 s.</summary>
@@ -687,7 +743,18 @@ public sealed class HostServer : IDisposable
 
     private void MapApi(WebApplication app)
     {
-        app.MapGet("/api/info", () => Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status }));
+        app.MapGet("/api/info", () => Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status, agents = AgentSummary() }));
+
+        // Long poll: events after `after` (a seq from an earlier reply), waiting up to `wait` seconds for the first one.
+        // A different `epoch` than the caller remembers means the host restarted and seq started over.
+        app.MapGet("/api/events", async (HttpContext ctx) =>
+        {
+            long after = long.TryParse(ctx.Request.Query["after"].ToString(), out var a) ? a : -1;
+            int wait = int.TryParse(ctx.Request.Query["wait"].ToString(), out var w) ? Math.Clamp(w, 0, 50) : 0;
+            // First call (after < 0): only tell where the log is now, never replay old events.
+            var events = after < 0 ? new List<AgentEventDto>() : await _events.WaitAfterAsync(after, TimeSpan.FromSeconds(wait), ctx.RequestAborted);
+            return Json(new { epoch = _events.Epoch, seq = _events.LastSeq, events });
+        });
 
         app.MapGet("/api/update", () => Json(_update.Status));
         app.MapPost("/api/update/check", async () => Json(await _update.CheckAsync()));
@@ -722,6 +789,32 @@ public sealed class HostServer : IDisposable
             }
             var s = _sessions.Get(id);
             return s != null ? Json(s.Snapshot()) : Error(404, "session not found");
+        });
+
+        // Quick reply without opening the terminal (notification buttons): text typed into the session, optional Enter.
+        app.MapPost("/api/sessions/{id}/input", async (HttpContext ctx, string id) =>
+        {
+            var req = await ReadBody<InputRequest>(ctx);
+            var text = req?.Text ?? "";
+            bool enter = req?.Enter == true;
+            if ((text.Length == 0 && !enter) || text.Length > 4000) return Error(400, "text must be 0..4000 characters (or enter)");
+            Func<byte[], bool> write;
+            if (TryExtPid(id, out var pid)) write = d => _externals.TryWriteInput(pid, d);
+            else
+            {
+                var s = _sessions.Get(id);
+                if (s == null || !s.IsRunning) return Error(404, "session not found");
+                write = d => { s.WriteInput(d); return true; };
+            }
+            if (text.Length > 0 && !write(Encoding.UTF8.GetBytes(text))) return Error(404, "session not found");
+            if (enter)
+            {
+                // Enter goes separately, a moment later: a TUI reading "text + CR" in one chunk takes it for a paste and
+                // keeps the line break instead of submitting.
+                if (text.Length > 0) await Task.Delay(150);
+                if (!write(Encoding.UTF8.GetBytes("\r"))) return Error(404, "session not found");
+            }
+            return Results.NoContent();
         });
 
         app.MapPost("/api/sessions", async (HttpContext ctx) =>
@@ -970,6 +1063,12 @@ public sealed class HostServer : IDisposable
     private sealed class ApplyRequest
     {
         public bool Force { get; set; }
+    }
+
+    private sealed class InputRequest
+    {
+        public string? Text { get; set; }
+        public bool Enter { get; set; }
     }
 
     private static async Task<T?> ReadBody<T>(HttpContext ctx) where T : class

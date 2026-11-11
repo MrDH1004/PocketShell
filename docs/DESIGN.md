@@ -206,3 +206,24 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 감시: 사용자가 중지하지 않았는데 서버가 없으면 약 4초 뒤 재시작, 5분에 3회 넘으면 중단하고 풍선 알림.
 - 메뉴: 상태, 휴대폰 연결 (PIN)…(`POST /api/pair/start {mode:pin}`을 local.token + cert.sha256 핀닝으로 호출해 PIN·지문·주소·만료 카운트다운 표시), 서버 시작/중지, 데이터·로그 폴더, Windows 시작 시 자동 실행(HKCU Run `PocketShell`, 첫 실행 때 켬), 종료(서버도 중지).
 - 로그: `%APPDATA%\PocketShell\logs\tray.log`.
+
+## 14. AI CLI 상태와 작업 알림
+- 대상: AI CLI(claude, codex)가 도는 실행 중 세션. 호스트 세션과 외부 콘솔 모두.
+- 상태(`agentState`): `working`(작업 중) / `waiting`(선택지를 묻고 멈춤) / `done`(질문 없이 멈춤) / 없음(모름).
+- 판정(`ActivityTracker`): 문구가 아니라 화면 변화로 본다(CLI 버전마다 문구가 다름).
+  - 화면이 3초 이상, 3번 이상 계속 바뀌면 working. 6초 동안 안 바뀌면 멈춤.
+  - 입력 직후 1.5초 안의 변화는 입력 반향이라 작업으로 세지 않는다. 호스트를 거친 입력(폰, PC 탭)과, 외부 콘솔은 이 PC에서 터미널 앱이 앞에 있고 키보드·마우스 입력이 방금 있었던 경우.
+  - 멈춘 순간 화면을 읽어 선택지가 있으면 waiting, 없으면 done. 작업 구간 없이 바로 뜬 질문은 화면이 2초 잠잠해진 뒤 읽는다.
+- 화면 읽기: 외부 콘솔은 콘솔 버퍼(`ConsoleScrollback.WindowText`). 호스트 세션은 ConPTY 출력이 커서 이동·지우기로 그려지므로 `VtScreen`이 격자에 재생해 글자를 얻는다(색·모드는 무시).
+- 선택지(`PromptDetector`): 강조 표시(❯ › ▶ ▸)가 붙은 줄과, 그 글자 열에 맞춰 위아래로 붙은 줄들. 2개 이상.
+  - 번호형(`1. Yes`): 키 = 그 번호, Enter 불필요.
+  - 화살표형(번호 없음, 아래에 `Enter to confirm` 같은 키 안내 필요): 키 = 강조된 줄에서 그 줄까지의 화살표, `enter=true`.
+  - 선택지 아래에 글자 있는 줄이 6줄 넘으면 예전 출력으로 본다. 답한 질문이 화면에 남아 아래에 새 출력이 쌓인 경우도 다시 묻는 것으로 보지 않는다.
+- API
+  - `GET /api/sessions`, `/api/sessions/{id}`: `agentState`, `agentStateSince`, `prompt{question, options[{key, enter, label}]}`.
+  - `GET /api/info`: `agents{working, waiting, done}`.
+  - `GET /api/events?after=<seq>&wait=<초, 최대 50>`: 멈춤 이벤트 롱폴. 응답 `{epoch, seq, events[{seq, sessionId, title, agent, state, prompt, time}]}`. `after=-1`은 현재 seq만 알려 준다. `epoch`이 바뀌면 호스트가 재시작한 것(seq가 처음부터).
+  - `POST /api/sessions/{id}/input {text, enter}`: 세션을 열지 않고 입력. Enter는 150ms 뒤 따로 보낸다(TUI가 한 덩어리를 붙여넣기로 보고 줄바꿈으로 처리하는 것을 막음). 외부 콘솔은 이미 읽고 있는 것만.
+- 폰
+  - `AgentWatchService`(포그라운드 서비스, specialUse): PC마다 `/api/events` 롱폴 1개. waiting은 선택지 버튼(최대 3), done은 답장(RemoteInput) 알림. 보고 있는 세션의 알림은 띄우지 않는다. 푸시 서버가 없어 폰이 직접 기다리는 구조라 고정 알림이 필요하고, Doze 중에는 늦을 수 있다.
+  - 세션 카드 상태 칩, PC 카드 합계, 터미널 빠른 응답 바(2초마다 `GET /api/sessions/{id}`).

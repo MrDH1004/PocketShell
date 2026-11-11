@@ -313,6 +313,41 @@ public static class Win32
     public static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    /// <summary>winuser.h LASTINPUTINFO: cbSize (UINT), dwTime (DWORD, GetTickCount of the last input event).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    /// <summary>
+    /// Exe name ("WindowsTerminal.exe") of the foreground window's process when this PC's keyboard or mouse was used
+    /// within <paramref name="within"/>; null otherwise or when it cannot be read.
+    /// </summary>
+    public static string? ForegroundExeIfInputWithin(TimeSpan within)
+    {
+        var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref lii)) return null;
+        uint idleMs = unchecked((uint)Environment.TickCount - lii.dwTime);
+        if (idleMs > within.TotalMilliseconds) return null;
+        var hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero || GetWindowThreadProcessId(hwnd, out uint pid) == 0 || pid == 0) return null;
+        try
+        {
+            using var p = System.Diagnostics.Process.GetProcessById((int)pid);
+            return p.ProcessName + ".exe";
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception) { return null; }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 

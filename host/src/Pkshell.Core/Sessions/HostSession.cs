@@ -15,6 +15,9 @@ public sealed class HostSession : IDisposable
     private PseudoConsoleProcess? _pty;
     private int? _exitCode;
     private volatile bool _dirty;
+    private readonly ActivityTracker _activity = new();   // guarded by Hub.SyncRoot
+    /// <summary>What the output leaves on screen, for reading what the agent shows when it stops (AI sessions only).</summary>
+    private VtScreen? _screen;
 
     public string Id { get; }
     public string Dir { get; }
@@ -89,6 +92,10 @@ public sealed class HostSession : IDisposable
         {
             Hub.Publish(chunk);
             _meta.LastActivity = Ids.IsoNow();
+            _activity.Change(DateTime.UtcNow);
+            // The pseudoconsole repaints everything after a resize, so a screen of the new size starts empty.
+            if (_screen == null || _screen.Cols != _meta.Cols || _screen.Rows != _meta.Rows) _screen = new VtScreen(_meta.Cols, _meta.Rows);
+            _screen.Feed(chunk);
             var cwd = _cwdParser.Feed(chunk);
             if (cwd != null && cwd != _meta.Cwd) _meta.Cwd = cwd;
             _dirty = true;
@@ -121,6 +128,7 @@ public sealed class HostSession : IDisposable
         {
             var dto = _meta.Clone();
             dto.Kind = dto.State == "running" ? "host" : "history";
+            if (dto.State == "running" && dto.Agent != null) dto.WithAgentState(_activity);
             dto.Clients = _clients.Select(c => new ClientDto { Id = c.Id, Type = c.Type, Cols = c.Cols, Rows = c.Rows }).ToList();
             return dto;
         }
@@ -190,10 +198,28 @@ public sealed class HostSession : IDisposable
         var pty = _pty;
         if (pty == null || !IsRunning) return;
         pty.Write(data);
-        lock (Hub.SyncRoot) { _meta.LastActivity = Ids.IsoNow(); _dirty = true; }
+        lock (Hub.SyncRoot) { _meta.LastActivity = Ids.IsoNow(); _dirty = true; _activity.Input(DateTime.UtcNow); }
     }
 
     public void Kill() => _pty?.Kill();
+
+    /// <summary>
+    /// Re-evaluates what the AI CLI in this session is doing. Returns the snapshot when it just stopped (the moment to
+    /// notify), else null.
+    /// </summary>
+    public SessionDto? EvaluateAgent(DateTime now)
+    {
+        lock (Hub.SyncRoot)
+        {
+            if (_meta.State != "running" || _meta.Agent == null)
+            {
+                _activity.Reset(now);
+                return null;
+            }
+            if (!_activity.Evaluate(now, () => _screen?.Text() ?? "")) return null;
+            return _meta.Clone().WithAgentState(_activity);
+        }
+    }
 
     /// <summary>Remembers the AI CLI running in this session (resume continues it). Returns true when it changed.</summary>
     public bool NoteAgent(string? agent)

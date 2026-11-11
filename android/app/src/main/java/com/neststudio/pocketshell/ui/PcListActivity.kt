@@ -42,6 +42,18 @@ class PcListActivity : AppCompatActivity() {
     private val adapter = PcAdapter(::open, ::showActions)
     private val appUpdate = AppUpdateController(this)
     private var probes: List<Job> = emptyList()
+    private lateinit var prefs: com.neststudio.pocketshell.data.UiPrefs
+    private var notifyItem: android.view.MenuItem? = null
+    private val askNotifications = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            Toast.makeText(this, R.string.notify_enabled, Toast.LENGTH_SHORT).show()
+            offerBatteryExemption()
+        } else {
+            prefs.agentNotify = false
+            Toast.makeText(this, R.string.notify_denied, Toast.LENGTH_LONG).show()
+        }
+        applyNotifications()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -49,13 +61,16 @@ class PcListActivity : AppCompatActivity() {
         setContentView(R.layout.activity_pcs)
         findViewById<View>(R.id.root).applySystemInsets(includeIme = false)
 
+        prefs = com.neststudio.pocketshell.data.UiPrefs(this)
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        notifyItem = toolbar.menu.add(0, MENU_NOTIFY, 0, R.string.notify_menu_off)
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_INSTALL, 1, R.string.pcs_install_menu)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 2, R.string.update_check)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
+                MENU_NOTIFY -> toggleNotifications()
                 MENU_REFRESH -> refresh()
                 MENU_INSTALL -> showInstallGuide()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
@@ -85,6 +100,70 @@ class PcListActivity : AppCompatActivity() {
         super.onResume()
         appUpdate.autoCheck() // at most every 3 hours (UpdatePolicy), silent unless an update is found
         refresh()
+        ensureNotifications()
+    }
+
+    // ---- "an AI CLI stopped" notifications (AgentWatchService) ----
+
+    private fun canPost(): Boolean = android.os.Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** On by default: with a PC paired, ask for the notification permission once, then keep the service in step. */
+    private fun ensureNotifications() {
+        val hasPc = (application as PkshellApp).pcs().isNotEmpty()
+        if (prefs.agentNotify && hasPc && !canPost()) {
+            if (!prefs.notifyPermissionAsked && android.os.Build.VERSION.SDK_INT >= 33) {
+                prefs.notifyPermissionAsked = true
+                askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+            prefs.agentNotify = false // asked before and refused: reflect that in the menu
+        }
+        applyNotifications()
+    }
+
+    private fun applyNotifications() {
+        notifyItem?.setTitle(if (prefs.agentNotify) R.string.notify_menu_off else R.string.notify_menu_on)
+        com.neststudio.pocketshell.notify.AgentWatchService.apply(this)
+    }
+
+    private fun toggleNotifications() {
+        if (prefs.agentNotify) {
+            prefs.agentNotify = false
+            Toast.makeText(this, R.string.notify_disabled, Toast.LENGTH_SHORT).show()
+            applyNotifications()
+            return
+        }
+        prefs.agentNotify = true
+        if (!canPost()) {
+            // Android shows its dialog only the first couple of times; after that it answers "denied" at once and
+            // the denied message points to the system settings.
+            prefs.notifyPermissionAsked = true
+            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        Toast.makeText(this, R.string.notify_enabled, Toast.LENGTH_SHORT).show()
+        applyNotifications()
+        offerBatteryExemption()
+    }
+
+    /** Doze delays the long poll on a phone left idle; offer the system setting that exempts the app (once). */
+    private fun offerBatteryExemption() {
+        val pm = getSystemService(android.os.PowerManager::class.java) ?: return
+        if (prefs.batteryHintShown || pm.isIgnoringBatteryOptimizations(packageName)) return
+        prefs.batteryHintShown = true
+        AlertDialog.Builder(this)
+            .setTitle(R.string.notify_battery_title)
+            .setMessage(R.string.notify_battery_body)
+            .setPositiveButton(R.string.notify_battery_open) { _, _ ->
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                } catch (e: android.content.ActivityNotFoundException) {
+                    Toast.makeText(this, R.string.notify_denied, Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton(R.string.notify_battery_later, null)
+            .show()
     }
 
     private fun refresh() {
@@ -115,7 +194,10 @@ class PcListActivity : AppCompatActivity() {
                 app.store.save(current)
             }
             val updateState = info.optJSONObject("update")?.optString("state", "") ?: ""
-            PcRow(current, PcState.ONLINE, info.optString("version", ""), updateState == "available" || updateState == "ready")
+            PcRow(
+                current, PcState.ONLINE, info.optString("version", ""), updateState == "available" || updateState == "ready",
+                com.neststudio.pocketshell.core.AgentSummary.fromJson(info.optJSONObject("agents")),
+            )
         } catch (e: ApiException) {
             PcRow(p, if (e.code == 401) PcState.UNAUTHORIZED else PcState.OFFLINE)
         } catch (e: IOException) {
@@ -218,6 +300,7 @@ class PcListActivity : AppCompatActivity() {
         const val MENU_INSTALL = 2
         const val MENU_CHECK_UPDATE = 3
         const val MENU_VIEW_SETTINGS = 4
+        const val MENU_NOTIFY = 5
         const val PROBE_TIMEOUT_MS = 8000L
         const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"
@@ -231,6 +314,8 @@ private data class PcRow(
     val state: PcState,
     val version: String = "",
     val hostUpdate: Boolean = false,
+    /** AI sessions per state; null from a host that does not report it (older than 0.2.59). */
+    val agents: com.neststudio.pocketshell.core.AgentSummary? = null,
 )
 
 private class PcAdapter(
@@ -275,12 +360,24 @@ private class PcAdapter(
         val v = holder.itemView
         val ctx = v.context
         v.findViewById<TextView>(R.id.name).text = row.pc.displayName
-        v.findViewById<TextView>(R.id.status).text = when (row.state) {
+        val status = when (row.state) {
             PcState.CHECKING -> ctx.getString(R.string.pcs_checking)
             PcState.ONLINE -> ctx.getString(if (row.hostUpdate) R.string.pcs_online_update else R.string.pcs_online, row.version.ifBlank { "?" })
             PcState.OFFLINE -> ctx.getString(R.string.pcs_offline)
             PcState.UNAUTHORIZED -> ctx.getString(R.string.pcs_unauthorized)
         }
+        // What needs the user first: sessions waiting on an answer, then working, then finished.
+        val a = row.agents?.takeIf { row.state == PcState.ONLINE && !it.isEmpty }
+        val agentParts = if (a == null) emptyList() else listOfNotNull(
+            if (a.waiting > 0) ctx.getString(R.string.pcs_agents_waiting, a.waiting) else null,
+            if (a.working > 0) ctx.getString(R.string.pcs_agents_working, a.working) else null,
+            if (a.done > 0) ctx.getString(R.string.pcs_agents_done, a.done) else null,
+        )
+        val agentsView = v.findViewById<TextView>(R.id.agents)
+        agentsView.visibility = if (agentParts.isEmpty()) View.GONE else View.VISIBLE
+        agentsView.text = agentParts.joinToString("  ·  ")
+        agentsView.setTextColor(ContextCompat.getColor(ctx, if ((a?.waiting ?: 0) > 0) R.color.attention else R.color.accent))
+        v.findViewById<TextView>(R.id.status).text = status
         // With an alias on top, the PC's own name leads the address line so the two stay tied together.
         val own = if (row.pc.alias.isNotBlank()) listOf(row.pc.pcName) else emptyList()
         v.findViewById<TextView>(R.id.hosts).text = (own + row.pc.hosts).joinToString("  ·  ")

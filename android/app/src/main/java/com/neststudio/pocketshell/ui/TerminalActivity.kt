@@ -52,6 +52,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -81,6 +82,10 @@ class TerminalActivity : AppCompatActivity() {
     private var viewCols = 0
     private var viewRows = 0
     private var resumed = false
+    private var pcId = ""
+    private lateinit var quickBar: LinearLayout
+    private var quickPrompt: com.neststudio.pocketshell.core.AgentPrompt? = null
+    private var statePoll: kotlinx.coroutines.Job? = null
 
     // Special key bar toggles.
     private var ctrlOn = false
@@ -123,6 +128,8 @@ class TerminalActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).applySystemInsets(includeIme = true)
 
         val app = application as PkshellApp
+        // Opened from a notification: it names the PC, which may not be the one that was open last.
+        intent.getStringExtra(EXTRA_PC_ID)?.let { id -> if (app.store.get(id) != null) app.select(id) }
         val pairing = app.pairing()
         val apiClient = app.api()
         if (pairing == null || apiClient == null) {
@@ -131,6 +138,8 @@ class TerminalActivity : AppCompatActivity() {
             return
         }
         api = apiClient
+        pcId = pairing.id
+        quickBar = findViewById(R.id.quickBar)
 
         sessionId = intent.getStringExtra(EXTRA_ID).orEmpty()
         sessionKind = intent.getStringExtra(EXTRA_KIND) ?: SessionInfo.KIND_HOST
@@ -191,11 +200,105 @@ class TerminalActivity : AppCompatActivity() {
         // AC-18: reconnect immediately when coming back (screen on / app switch).
         maybeConnect()
         terminalView.requestFocus()
+        // Looking at the session: its "stopped" notification is answered by being here.
+        com.neststudio.pocketshell.notify.Foreground.enter(pcId, sessionId)
+        getSystemService(android.app.NotificationManager::class.java)
+            ?.cancel(com.neststudio.pocketshell.notify.AgentWatchService.notificationId(pcId, sessionId))
+        startStatePoll()
     }
 
     override fun onPause() {
         super.onPause()
         resumed = false
+        com.neststudio.pocketshell.notify.Foreground.leave(pcId, sessionId)
+        statePoll?.cancel()
+        statePoll = null
+    }
+
+    // ---------------------------------------------------------------- quick replies (DESIGN.md §14)
+
+    /** Asks the host what the AI CLI is doing every [STATE_POLL_MS] and offers its choices as buttons while it waits. */
+    private fun startStatePoll() {
+        statePoll?.cancel()
+        if (sessionKind == SessionInfo.KIND_HISTORY) return
+        statePoll = lifecycleScope.launch {
+            while (true) {
+                val client = api
+                if (client != null && sessionId.isNotEmpty()) {
+                    try {
+                        val s = client.session(sessionId)
+                        showQuickReplies(s.prompt.takeIf { s.agentState == com.neststudio.pocketshell.core.AgentState.WAITING })
+                    } catch (e: IOException) {
+                        // offline or the session ended: the connection status already says so
+                    } catch (e: org.json.JSONException) {
+                    }
+                }
+                delay(STATE_POLL_MS)
+            }
+        }
+    }
+
+    private fun showQuickReplies(prompt: com.neststudio.pocketshell.core.AgentPrompt?) {
+        if (prompt == quickPrompt) return
+        quickPrompt = prompt
+        quickBar.removeAllViews()
+        if (prompt == null) {
+            quickBar.visibility = View.GONE
+            return
+        }
+        val d = resources.displayMetrics.density
+        fun button(label: String, action: () -> Unit) = TextView(this).apply {
+            text = label
+            setTextColor(ContextCompat.getColor(context, R.color.keybar_text))
+            textSize = 15f
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_keycap)
+            minHeight = (48 * d).toInt()
+            setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                action()
+                showQuickReplies(null) // answered: the bar goes at once, the next poll confirms
+            }
+            quickBar.addView(this, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = (6 * d).toInt()
+            })
+        }
+        if (prompt.question.isNotBlank()) {
+            quickBar.addView(TextView(this).apply {
+                text = prompt.question
+                setTextColor(ContextCompat.getColor(context, R.color.attention))
+                textSize = 13f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding((4 * d).toInt(), 0, (4 * d).toInt(), (6 * d).toInt())
+            })
+        }
+        prompt.options.forEachIndexed { i, o ->
+            button("${i + 1}.  ${o.label}") {
+                val bytes = o.key.toByteArray(Charsets.UTF_8)
+                if (bytes.isNotEmpty()) session.write(bytes, 0, bytes.size)
+                // Enter goes separately, a moment later: a TUI reading keys and Enter in one chunk may take it for a paste.
+                if (o.enter) main.postDelayed({ sendSpecial(SpecialKey.ENTER) }, if (bytes.isEmpty()) 0L else ENTER_DELAY_MS)
+                terminalView.resetImeLine()
+            }
+        }
+        button(getString(R.string.quick_reply_escape)) { sendSpecial(SpecialKey.ESC) }
+        quickBar.visibility = View.VISIBLE
+    }
+
+    /** Screen and history as text in [TerminalTextActivity]: select / copy, or search when [search]. */
+    private fun openText(search: Boolean) {
+        val text = if (sessionKind == SessionInfo.KIND_EXTERNAL) history.plainText()
+        else com.neststudio.pocketshell.core.TerminalText.join(terminalView.mEmulator?.screen?.transcriptText.orEmpty().split('\n'))
+        if (text.isBlank()) {
+            Toast.makeText(this, R.string.term_search_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(TerminalTextActivity.intent(this, titleView.text.toString(), text, search))
     }
 
     override fun onStop() {
@@ -236,11 +339,15 @@ class TerminalActivity : AppCompatActivity() {
         statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
             info.add(10 + i, Menu.NONE, i + 1, part).isEnabled = false
         }
+        menu.menu.add(2, OPT_SELECT, 100, R.string.term_select_copy)
+        menu.menu.add(2, OPT_SEARCH, 100, R.string.term_search)
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
         menu.setOnMenuItemClickListener {
             when (it.itemId) {
+                OPT_SELECT -> openText(search = false)
+                OPT_SEARCH -> openText(search = true)
                 OPT_VIEW -> {
                     val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
                     ViewSettingsDialog.show(this, note) { applyViewSettings() }
@@ -806,6 +913,12 @@ class TerminalActivity : AppCompatActivity() {
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
         private const val OPT_VIEW = 2
+        private const val OPT_SELECT = 3
+        private const val OPT_SEARCH = 4
+        private const val STATE_POLL_MS = 2000L
+        private const val ENTER_DELAY_MS = 150L
+        /** PC to select before opening (a notification may be for another PC than the open one). */
+        const val EXTRA_PC_ID = "pcId"
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val EXTRA_ID = "id"
         private const val EXTRA_KIND = "kind"

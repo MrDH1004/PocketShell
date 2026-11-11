@@ -20,6 +20,10 @@ data class SessionInfo(
     val resumedFrom: String?,
     /** External only: AI CLI running in the console ("claude" | "gpt"). */
     val agent: String? = null,
+    /** Live AI sessions: [AgentState] value, null when the host does not know (or is older than 0.2.59). */
+    val agentState: String? = null,
+    /** The question shown while [agentState] is waiting. */
+    val prompt: AgentPrompt? = null,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
     /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
@@ -49,6 +53,8 @@ data class SessionInfo(
             pid = if (o.has("pid") && !o.isNull("pid")) o.optInt("pid") else null,
             resumedFrom = if (o.has("resumedFrom") && !o.isNull("resumedFrom")) o.optString("resumedFrom") else null,
             agent = if (o.has("agent") && !o.isNull("agent")) o.optString("agent") else null,
+            agentState = if (o.has("agentState") && !o.isNull("agentState")) o.optString("agentState") else null,
+            prompt = AgentPrompt.fromJson(o.optJSONObject("prompt")),
         )
 
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */

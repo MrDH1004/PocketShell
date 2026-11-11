@@ -45,6 +45,21 @@
                 android:maxLines="1"
                 android:textColor="@color/text_primary"
                 android:textSize="16sp" />
+
+            <!-- What the AI CLI is doing: 작업 중 / 입력 대기 / 끝남 -->
+            <TextView
+                android:id="@+id/agentState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_badge"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="8dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="2dp"
+                android:textSize="12sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <TextView

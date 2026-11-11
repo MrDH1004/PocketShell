@@ -48,6 +48,17 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
 
+        <!-- AI sessions on this PC: 입력 대기 n · 작업 중 n · 끝남 n -->
+        <TextView
+            android:id="@+id/agents"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/hosts"
             android:layout_width="match_parent"

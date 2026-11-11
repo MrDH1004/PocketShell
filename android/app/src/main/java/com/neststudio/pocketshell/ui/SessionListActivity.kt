@@ -51,6 +51,8 @@ class SessionListActivity : AppCompatActivity() {
     private var hostUpdateStatus: HostUpdateStatus? = null
     private val adapter = SessionAdapter(::openSession, ::confirmDelete, ::newTerminalHere)
     private val appUpdate = AppUpdateController(this)
+    private var autoRefresh: kotlinx.coroutines.Job? = null
+    private var loading = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -122,13 +124,42 @@ class SessionListActivity : AppCompatActivity() {
         super.onResume()
         appUpdate.autoCheck() // at most every 3 hours (UpdatePolicy), silent unless an update is found
         if ((application as PkshellApp).pairing() != null) refresh()
+        // A PC paired just now lands here without passing the PC list: make sure its notifications are being watched.
+        com.neststudio.pocketshell.notify.AgentWatchService.apply(this)
+        // Agent states (작업 중 / 입력 대기) change on their own: keep the cards current while the list is shown.
+        autoRefresh = lifecycleScope.launch {
+            while (true) {
+                delay(AUTO_REFRESH_MS)
+                refresh(silent = true)
+            }
+        }
     }
 
-    private fun refresh() {
+    override fun onPause() {
+        super.onPause()
+        autoRefresh?.cancel()
+        autoRefresh = null
+    }
+
+    /** [silent]: the periodic refresh. No spinner, no host update check, and a failure leaves the list as it is. */
+    private fun refresh(silent: Boolean = false) {
         val api = (application as PkshellApp).api() ?: return
-        swipe.isRefreshing = true
+        if (loading) return
+        loading = true
+        if (!silent) swipe.isRefreshing = true
         lifecycleScope.launch {
             try {
+                if (silent) {
+                    try {
+                        val sections = SessionSections.of(api.sessions(), UiPrefs(this@SessionListActivity).recentLimit)
+                        adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
+                    } catch (e: IOException) {
+                        // keep showing what we have
+                    } catch (e: org.json.JSONException) {
+                    }
+                    return@launch
+                }
+
                 val sections = SessionSections.of(api.sessions(), UiPrefs(this@SessionListActivity).recentLimit)
                 adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
                 showMessage(if (adapter.itemCount == 0) getString(R.string.sessions_empty) else null)
@@ -140,6 +171,7 @@ class SessionListActivity : AppCompatActivity() {
             } catch (e: org.json.JSONException) {
                 showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } finally {
+                loading = false
                 swipe.isRefreshing = false
             }
         }
@@ -421,6 +453,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_RECENT_LIMIT = 5
         const val MENU_VIEW_SETTINGS = 6
         const val HOST_RESTART_WAIT_MS = 5000L
+        const val AUTO_REFRESH_MS = 5000L
     }
 }
 
@@ -451,6 +484,7 @@ private class SessionAdapter(
         section(running, s.running)
         section(external, s.external)
         section(recent, s.recent)
+        if (out == rows) return // periodic refresh with nothing new: leave the list (and any press in progress) alone
         rows = out
         @Suppress("NotifyDataSetChanged")
         notifyDataSetChanged()
@@ -499,6 +533,20 @@ private class SessionAdapter(
                     if (s.cwd.isNotBlank()) add(s.cwd)
                 }.joinToString(" · ")
                 v.findViewById<TextView>(R.id.detail).text = detail
+                val state = v.findViewById<TextView>(R.id.agentState)
+                val (label, color) = when (s.agentState) {
+                    com.neststudio.pocketshell.core.AgentState.WAITING -> R.string.agent_waiting to R.color.attention
+                    com.neststudio.pocketshell.core.AgentState.WORKING -> R.string.agent_working to R.color.accent
+                    com.neststudio.pocketshell.core.AgentState.DONE -> R.string.agent_done to R.color.text_secondary
+                    else -> 0 to 0
+                }
+                if (label == 0 || !live) {
+                    state.visibility = View.GONE
+                } else {
+                    state.visibility = View.VISIBLE
+                    state.setText(label)
+                    state.setTextColor(androidx.core.content.ContextCompat.getColor(v.context, color))
+                }
                 val time = v.findViewById<TextView>(R.id.time)
                 // External consoles: the host reports the last title/folder/screen change (older hosts: always now).
                 time.text = formatTime(s.lastActivity)

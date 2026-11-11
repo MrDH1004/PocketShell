@@ -304,8 +304,72 @@ public sealed class ExternalConsoles : IDisposable
 
     private SessionDto WithClients(SessionDto s)
     {
-        if (s.Pid is int pid && _bridges.TryGetValue(pid, out var b)) s.Clients = b.Clients();
+        if (s.Pid is int pid && _bridges.TryGetValue(pid, out var b))
+        {
+            s.Clients = b.Clients();
+            if (s.Agent != null) b.WithAgentState(s);
+        }
         return s;
+    }
+
+    /// <summary>
+    /// Starts watching AI consoles opened since the last listing, so their state is tracked with no phone polling.
+    /// Cheap unless there is a new one (then one full <see cref="List"/>).
+    /// </summary>
+    public void WatchNewAgents()
+    {
+        var candidates = FindCandidates(SnapshotProcesses(), Environment.ProcessId, IncludeAll);
+        if (candidates.Any(c => c.Agent != null && !_bridges.ContainsKey(c.Proc.Pid))) List();
+    }
+
+    /// <summary>Sends input to a console that is already being read (watched or open on a phone). False if it is not.</summary>
+    public bool TryWriteInput(int pid, ReadOnlySpan<byte> data)
+    {
+        if (!_bridges.TryGetValue(pid, out var b)) return false;
+        b.WriteInput(data);
+        return true;
+    }
+
+    /// <summary>Agent state of every watched AI console (for the per-PC summary).</summary>
+    public List<string?> AgentStates()
+    {
+        var list = new List<string?>();
+        foreach (var (_, bridge) in _bridges) list.Add(bridge.WithAgentState(new SessionDto()).AgentState);
+        return list;
+    }
+
+    /// <summary>PKSHELL_IGNORE_LOCAL_INPUT=1: track AI consoles even while this PC's keyboard / mouse is in use (QA).</summary>
+    private static bool IgnoreLocalInput => EnvVars.Get("IGNORE_LOCAL_INPUT") == "1";
+
+    /// <summary>True when the person at this PC is typing in a terminal right now (so console changes are their echo).</summary>
+    public static bool LocalTerminalInput()
+    {
+        if (IgnoreLocalInput) return false;
+        var exe = Win32.ForegroundExeIfInputWithin(ActivityTracker.EchoWindow);
+        if (exe == null || exe.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) return false;
+        return TerminalLaunchers.Contains(exe) || exe.Equals("conhost.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Re-evaluates every watched AI console (call about once a second). Returns the consoles whose agent just stopped,
+    /// as snapshots with state and prompt: the moment to notify.
+    /// </summary>
+    public List<SessionDto> EvaluateAgents(DateTime now)
+    {
+        var stopped = new List<SessionDto>();
+        if (_bridges.IsEmpty) return stopped;
+        bool typing = LocalTerminalInput();
+        List<SessionDto> cache;
+        lock (_cacheGate) cache = _cache;
+        foreach (var (pid, bridge) in _bridges)
+        {
+            if (typing) bridge.NoteLocalInput(now);
+            if (!bridge.EvaluateAgent(now)) continue;
+            var info = cache.FirstOrDefault(s => s.Pid == pid) ?? bridge.Info;
+            if (info.Agent == null) continue;
+            stopped.Add(bridge.WithAgentState(info.Clone()));
+        }
+        return stopped;
     }
 
     private static string? TryStartTime(int pid)
@@ -391,8 +455,26 @@ public sealed class ExternalBridge
     /// <summary>Keep reading with no client (agent consoles, for the scrollback); stops only when the helper exits.</summary>
     private bool _keepAlive;
     private readonly ConsoleScrollback _scrollback;
+    private readonly ActivityTracker _activity = new();   // guarded by _hub.SyncRoot
 
     public SessionDto Info { get; }
+
+    /// <summary>The console's own keyboard (not ours) was used just now: screen changes are the echo of typing.</summary>
+    public void NoteLocalInput(DateTime now)
+    {
+        lock (_hub.SyncRoot) _activity.Input(now);
+    }
+
+    public SessionDto WithAgentState(SessionDto dto)
+    {
+        lock (_hub.SyncRoot) return dto.WithAgentState(_activity);
+    }
+
+    /// <summary>True when the agent in this console just stopped (the moment to notify).</summary>
+    public bool EvaluateAgent(DateTime now)
+    {
+        lock (_hub.SyncRoot) return _exitCode == null && _activity.Evaluate(now, _scrollback.WindowText);
+    }
 
     public ExternalBridge(string helperExe, int pid, SessionDto info, ConsoleScrollback scrollback, Action onStopped)
     {
@@ -475,9 +557,12 @@ public sealed class ExternalBridge
                     Log.Error($"ext-{_pid}: bad frame header ({len} bytes)");
                     break;
                 }
+                var changedBefore = _scrollback.LastChange;
                 _scrollback.Accept(frame);
+                bool changed = !ReferenceEquals(changedBefore, _scrollback.LastChange);
                 lock (_hub.SyncRoot)
                 {
+                    if (changed) _activity.Change(DateTime.UtcNow);
                     // Clients render at the console's size (their own size cannot resize it): announce changes before the frame.
                     if (_size != (cols, rows))
                     {
@@ -542,6 +627,7 @@ public sealed class ExternalBridge
     {
         var p = _proc;
         if (p == null || data.Length == 0) return;
+        lock (_hub.SyncRoot) _activity.Input(DateTime.UtcNow);
         var len = new byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(len, data.Length);
         try

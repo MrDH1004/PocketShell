@@ -16,6 +16,9 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
     private var cursor: Pair<Int, Int>? = null
 
     val historySize: Int get() = history.size
+
+    /** History and the current window as plain text (for copy / search). */
+    fun plainText(): String = TerminalText.join((history + window).map(TerminalText::strip))
     val hasFrame: Boolean get() = window.isNotEmpty()
 
     /**

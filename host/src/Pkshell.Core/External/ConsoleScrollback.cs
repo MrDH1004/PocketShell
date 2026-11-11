@@ -112,6 +112,12 @@ public sealed partial class ConsoleScrollback
         }
     }
 
+    /// <summary>The window as plain text, one row per line (what the console shows now).</summary>
+    public string WindowText()
+    {
+        lock (_lock) return string.Join('\n', _window.Select(Pkshell.Core.Sessions.AnsiText.Strip));
+    }
+
     public List<string> Snapshot()
     {
         lock (_lock) return _lines.ToList();

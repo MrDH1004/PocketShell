@@ -22,6 +22,8 @@
     <color name="accent_on_container">#D5E3F4</color>
 
     <color name="live">#5CC48D</color>
+    <!-- Needs the user: an agent waiting on an answer. -->
+    <color name="attention">#E3B55A</color>
     <color name="ripple">#1FFFFFFF</color>
 
     <color name="keybar_bg">@color/ink_1</color>
