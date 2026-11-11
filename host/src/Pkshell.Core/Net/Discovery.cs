@@ -13,8 +13,6 @@ namespace Pkshell.Core.Net;
 public sealed class DiscoveryResponder : IDisposable
 {
     public const string Request = "PKSHELL?1";
-    /// <summary>Request sent by apps from before the rename (mpta).</summary>
-    public const string LegacyRequest = "MPTA?1";
     public const int DefaultPort = 7381;
 
     private readonly List<UdpClient> _sockets = new();
@@ -73,7 +71,7 @@ public sealed class DiscoveryResponder : IDisposable
         }
     }
 
-    public static bool IsRequest(byte[] data) => Encoding.ASCII.GetString(data).Trim() is Request or LegacyRequest;
+    public static bool IsRequest(byte[] data) => Encoding.ASCII.GetString(data).Trim() == Request;
 
     public void Dispose()
     {

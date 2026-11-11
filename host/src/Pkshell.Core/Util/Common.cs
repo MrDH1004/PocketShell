@@ -5,17 +5,12 @@ using System.Text.Json.Serialization;
 
 namespace Pkshell.Core.Util;
 
-/// <summary>
-/// PKSHELL_* environment variables. The project was called mpta, so the legacy MPTA_* name is read when the new one
-/// is not set (scripts, and an older host handing MPTA_UPDATE_PARENT_PID to the updated one).
-/// </summary>
+/// <summary>PKSHELL_* environment variables.</summary>
 public static class EnvVars
 {
     public const string Prefix = "PKSHELL_";
-    public const string LegacyPrefix = "MPTA_";
 
-    public static string? Get(string name) =>
-        Environment.GetEnvironmentVariable(Prefix + name) ?? Environment.GetEnvironmentVariable(LegacyPrefix + name);
+    public static string? Get(string name) => Environment.GetEnvironmentVariable(Prefix + name);
 }
 
 /// <summary>Product names (the exe names are also part of the update asset contract).</summary>

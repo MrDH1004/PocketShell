@@ -130,6 +130,32 @@ public sealed class InstallTransaction
         return (deleted, remaining);
     }
 
+    /// <summary>
+    /// Deletes program files an earlier version shipped and the current one no longer does: libraries and runtime
+    /// configs in the install folder and APKs under android\ that the manifest does not list (a renamed library, the
+    /// previous releases' APKs). Nothing is touched without a manifest. Returns how many were deleted.
+    /// </summary>
+    public static int RemoveObsolete(string installDir)
+    {
+        var manifest = Path.Combine(installDir, ManifestName);
+        if (!File.Exists(manifest)) return 0;
+        var listed = new HashSet<string>(
+            File.ReadAllLines(manifest).Select(l => l.Trim().Replace('/', Path.DirectorySeparatorChar)).Where(l => l.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var candidates = new List<string>();
+        foreach (var pattern in new[] { "*.dll", "*.deps.json", "*.runtimeconfig.json" })
+            candidates.AddRange(Directory.EnumerateFiles(installDir, pattern, SearchOption.TopDirectoryOnly));
+        var apkDir = Path.Combine(installDir, "android");
+        if (Directory.Exists(apkDir)) candidates.AddRange(Directory.EnumerateFiles(apkDir, "*.apk", SearchOption.TopDirectoryOnly));
+        int deleted = 0;
+        foreach (var file in candidates)
+        {
+            if (listed.Contains(Path.GetRelativePath(installDir, file))) continue;
+            if (TryDelete(file)) deleted++;
+        }
+        return deleted;
+    }
+
     private static bool TryDelete(string path)
     {
         try

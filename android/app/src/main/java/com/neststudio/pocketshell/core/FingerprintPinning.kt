@@ -64,7 +64,7 @@ class FingerprintTrustManager(private val expectedFingerprint: String) : X509Tru
 }
 
 /**
- * Accepts any host name (the cert is issued to CN=pkshell, not to the LAN/Tailscale IP) but only when the
+ * Accepts any host name (the cert is issued to CN=PocketShell, not to the LAN/Tailscale IP) but only when the
  * peer certificate is the pinned one. The TrustManager already enforces this during the handshake; this
  * re-check keeps hostname verification from being a blanket "accept all".
  */

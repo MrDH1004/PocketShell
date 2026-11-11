@@ -12,13 +12,13 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 
 /**
- * a.der / b.der are self-signed RSA-2048 CN=pkshell certificates generated with keytool.
+ * a.der / b.der are self-signed RSA-2048 CN=PocketShell certificates generated with keytool.
  * Expected fingerprints were computed independently with `sha256sum a.der b.der`.
  */
 class FingerprintPinningTest {
 
-    private val fpA = "6ba4c49772f9fc3b16edf5b076b1528e746ab629ee9ed44b7f21731a4654d869"
-    private val fpB = "936b2288a5a46a2e15eef0b558c072674d130795a5a567049d53ebae310d1d31"
+    private val fpA = "fb06f48341274fcce1699527855abb3a89fd35487bfb4f07debcfea4f41e5682"
+    private val fpB = "dbebe1da5eb5658d907f3d1a437763f1c4d4763dbe1cd4887c4010d0ff27b657"
 
     private fun der(name: String): ByteArray =
         requireNotNull(javaClass.classLoader!!.getResourceAsStream("certs/$name")) { "missing $name" }.use { it.readBytes() }

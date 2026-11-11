@@ -1,4 +1,4 @@
-# PocketShell (구 MyPCToAndroid / mpta, 코드명 pkshell) — 설계/계약 문서 (SSOT)
+# PocketShell (코드명 pkshell) — 설계/계약 문서 (SSOT)
 
 사양: `.omc/specs/deep-interview-pc-terminal-to-android.md` (AC-1~22). 이 문서는 구현 계약이다. 컴포넌트 간 인터페이스를 바꾸면 이 문서를 먼저 수정한다.
 

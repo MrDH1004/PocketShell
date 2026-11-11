@@ -177,6 +177,42 @@ public class InstallTransactionTests
     }
 
     [Fact]
+    public void RemoveObsoleteDeletesLibrariesAndApksTheManifestNoLongerLists()
+    {
+        var install = TempDir();
+        var staging = TempDir();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(install, "android"));
+            Directory.CreateDirectory(Path.Combine(staging, "android"));
+            File.WriteAllText(Path.Combine(install, "Renamed.Core.dll"), "left by an older version");
+            File.WriteAllText(Path.Combine(install, "old.runtimeconfig.json"), "left by an older version");
+            File.WriteAllText(Path.Combine(install, "android", "app-v1.apk"), "previous apk");
+            File.WriteAllText(Path.Combine(install, "unins000.exe"), "installer's uninstaller");
+            File.WriteAllText(Path.Combine(install, "notes.txt"), "user");
+            Assert.Equal(0, InstallTransaction.RemoveObsolete(install)); // no manifest: nothing is touched
+            Assert.True(File.Exists(Path.Combine(install, "Renamed.Core.dll")));
+
+            File.WriteAllText(Path.Combine(staging, "a.dll"), "new");
+            File.WriteAllText(Path.Combine(staging, "android", "app-v2.apk"), "new apk");
+            InstallTransaction.Apply(staging, install);
+            Assert.Equal(3, InstallTransaction.RemoveObsolete(install));
+            Assert.False(File.Exists(Path.Combine(install, "Renamed.Core.dll")));
+            Assert.False(File.Exists(Path.Combine(install, "old.runtimeconfig.json")));
+            Assert.False(File.Exists(Path.Combine(install, "android", "app-v1.apk")));
+            Assert.True(File.Exists(Path.Combine(install, "a.dll")));
+            Assert.True(File.Exists(Path.Combine(install, "android", "app-v2.apk")));
+            Assert.True(File.Exists(Path.Combine(install, "unins000.exe")));
+            Assert.True(File.Exists(Path.Combine(install, "notes.txt")));
+        }
+        finally
+        {
+            Directory.Delete(install, true);
+            Directory.Delete(staging, true);
+        }
+    }
+
+    [Fact]
     public void CleanupDeletesOnlyBackupsListedInManifest()
     {
         var install = TempDir();
@@ -560,7 +596,6 @@ public class DiscoveryTests
             .Select(System.Net.IPAddress.Parse)).Select(a => a.ToString());
         Assert.Equal(ExpectedPickedAddresses, picked);
         Assert.True(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("PKSHELL?1")));
-        Assert.True(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("MPTA?1"))); // apps from before the rename
         Assert.False(DiscoveryResponder.IsRequest(Encoding.ASCII.GetBytes("PKSHELL?2")));
     }
 }

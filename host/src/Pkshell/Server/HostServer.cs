@@ -163,7 +163,6 @@ public sealed class HostServer : IDisposable
         // roll back and needs every *.old), so clean only after it is gone; tolerate a briefly busy port.
         int? parentPid = int.TryParse(Pkshell.Core.Util.EnvVars.Get("UPDATE_PARENT_PID"), out var pp) ? pp : null;
         Environment.SetEnvironmentVariable(UpdateParentPidEnv, null); // not inherited by shells / later children
-        Environment.SetEnvironmentVariable(Pkshell.Core.Util.EnvVars.LegacyPrefix + "UPDATE_PARENT_PID", null);
         if (parentPid == null) CleanupOldInstallFiles("startup");
         else _ = Task.Run(() => CleanupAfterParentExit(parentPid.Value));
 
@@ -421,6 +420,12 @@ public sealed class HostServer : IDisposable
     {
         var (deleted, remaining) = InstallTransaction.CleanupOld(_installDir);
         if (deleted + remaining > 0) Log.Info($"update cleanup ({when}): deleted {deleted} *.old file(s), {remaining} still locked");
+        try
+        {
+            int obsolete = InstallTransaction.RemoveObsolete(_installDir);
+            if (obsolete > 0) Log.Info($"update cleanup ({when}): deleted {obsolete} file(s) this version no longer ships");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn($"update cleanup ({when}): {ex.Message}"); }
         return remaining;
     }
 

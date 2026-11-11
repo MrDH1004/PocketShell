@@ -1,4 +1,4 @@
-# Deep Interview Spec: PC 터미널 ↔ Android 미러링 앱 (MyPCToAndroid)
+# Deep Interview Spec: PC 터미널 ↔ Android 미러링 앱 (PocketShell)
 
 ## Metadata
 - Interview ID: di-mypc2android-20261104
