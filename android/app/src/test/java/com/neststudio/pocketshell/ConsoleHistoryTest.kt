@@ -19,7 +19,7 @@ class ConsoleHistoryTest {
 
     /** Phone rows the render shows, in order (row bodies). */
     private fun shown(out: ByteArray): List<String> =
-        Regex("$esc\\[(\\d+);1H(.*?)$esc\\[0m$esc\\[K").findAll(String(out, Charsets.UTF_8)).map { it.groupValues[2] }.toList()
+        Regex("$esc\\[(\\d+);1H$esc\\[0m$esc\\[K(.*?)$esc\\[0m(?=$esc\\[\\d+;\\d+H|$)").findAll(String(out, Charsets.UTF_8)).map { it.groupValues[2] }.toList()
 
     private fun cursorOf(out: ByteArray): String? =
         Regex("$esc\\[(\\d+);(\\d+)H$esc\\[\\?25h").find(String(out, Charsets.UTF_8))?.let { "${it.groupValues[1]};${it.groupValues[2]}" }
@@ -97,5 +97,24 @@ class ConsoleHistoryTest {
     fun redrawWithNothingInCommonIsNotAScroll() {
         assertEquals(0, ConsoleHistory.scrollShift(screen1, listOf("x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10")))
         assertEquals(0, ConsoleHistory.scrollShift(List(10) { "" }, List(10) { "" }))
+    }
+
+    @Test
+    fun aSingleLineThatComesBackIsNotShownTwice() {
+        val h = ConsoleHistory()
+        h.accept(frame(screen1, 9 to 3))
+        // The program's bottom area grew by one row: the output moved up one.
+        val up = listOf("l2", "l3", "l4", "l5", "l6", "l7", "l8", "busy", "> in", "status")
+        assertEquals(1, h.accept(frame(up, 9 to 3)))
+        assertEquals(1, h.historySize)
+        // It shrank again: l1 is back on screen and leaves the history.
+        assertEquals(0, h.accept(frame(screen1, 9 to 3)))
+        assertEquals(0, h.historySize)
+        assertEquals(screen1, shown(h.render(10, 0)))
+        // The same line printed twice is not a move back: both copies stay.
+        val twice = ConsoleHistory()
+        twice.accept(frame(listOf("same", "same", "a", "b", "c", "d", "e", "f", "> in", "status"), 9 to 3))
+        twice.accept(frame(listOf("same", "a", "b", "c", "d", "e", "f", "g", "> in", "status"), 9 to 3))
+        assertEquals(1, twice.historySize)
     }
 }

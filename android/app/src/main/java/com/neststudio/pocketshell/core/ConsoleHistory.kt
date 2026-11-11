@@ -7,7 +7,8 @@ package com.neststudio.pocketshell.core
  * lines and the user can scroll back.
  *
  * Frames come from host VtFrame.Build: `ESC[?25l ESC[H`, per row `ESC[y;1H` + text/SGR + `ESC[0m ESC[K`, then an
- * optional cursor `ESC[r;cH ESC[?25h`. Row bodies are kept verbatim (text + SGR) and re-emitted at other positions.
+ * optional cursor `ESC[r;cH ESC[?25h`. Row bodies are kept verbatim (text + SGR) and re-emitted at other positions
+ * ([render] draws its rows as `ESC[y;1H ESC[0m ESC[K` + text + `ESC[0m`).
  */
 class ConsoleHistory(private val maxLines: Int = 3000) {
     private val history = ArrayDeque<String>()
@@ -41,6 +42,12 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
             repeat(redrawn) { history.removeLast() }
             added -= redrawn
             for (i in 0 until shifted) history.addLast(window[i])
+        }
+        // The screen moved back down (the program's bottom area got shorter): the rows that came back at the top are
+        // the last ones that scrolled off. Seen as a move, so a single line or blank lines count too.
+        if (shifted == 0 && window.size == height) {
+            val back = scrollShift(next.asList(), window)
+            if (back in 1..history.size && history.takeLast(back) == next.asList().subList(0, back)) repeat(back) { history.removeLast() }
         }
         // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
         repeat(overlapWithTop(history.takeLast(40), next.asList())) { history.removeLast() }
@@ -179,11 +186,11 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         val sb = StringBuilder(START)
         for (r in 0 until viewRows) {
             val i = s + viewRows - 1 - r
-            sb.append("[").append(r + 1).append(";1H").append(lines.getOrElse(i) { "" }).append("[0m[K")
+            sb.append(ROW_START.format(r + 1)).append(lines.getOrElse(i) { "" }).append(ROW_END)
         }
         val fromTop = viewRows - 1 - (cursorFromBottom - s)
         if (s == 0 && cursorFromBottom >= 0 && fromTop in 0 until viewRows) {
-            sb.append("[").append(fromTop + 1).append(';').append(cursorCol).append("H[?25h")
+            sb.append("\u001b[").append(fromTop + 1).append(';').append(cursorCol).append("H\u001b[?25h")
         }
         return sb.toString().toByteArray(Charsets.UTF_8)
     }
@@ -202,7 +209,7 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
         for (r in 0 until viewRows) {
             val idx = start + r
             val body = if (idx in 0..end) line(idx) else ""
-            sb.append("\u001b[").append(r + 1).append(";1H").append(body).append("\u001b[0m\u001b[K")
+            sb.append(ROW_START.format(r + 1)).append(body).append(ROW_END)
         }
         val c = cursor
         if (s == 0 && c != null) {
@@ -217,6 +224,12 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
     companion object {
         private const val START = "\u001b[?25l\u001b[H"
         private const val MAX_GROUP = 60
+        /**
+         * A drawn phone row: position, clear, text. The clear comes first: after a row that fills the width the
+         * cursor rests on the last column, and an erase there would take the row's last character with it.
+         */
+        private const val ROW_START = "\u001b[%d;1H\u001b[0m\u001b[K"
+        private const val ROW_END = "\u001b[0m"
         private val ROW = Regex("\u001b\\[(\\d+);1H(.*?)\u001b\\[0m\u001b\\[K")
         private val CURSOR = Regex("\u001b\\[(\\d+);(\\d+)H\u001b\\[\\?25h$")
 

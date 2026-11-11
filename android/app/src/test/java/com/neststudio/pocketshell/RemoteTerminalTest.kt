@@ -1,5 +1,6 @@
 package com.neststudio.pocketshell
 
+import com.neststudio.pocketshell.core.ConsoleHistory
 import com.termux.terminal.RemoteTerminalSession
 import com.termux.terminal.TextStyle
 import com.termux.terminal.WcWidth
@@ -162,5 +163,21 @@ class RemoteTerminalTest {
         assertFalse(s.isRunning)
         assertEquals(2, s.exitStatus)
         assertEquals("[세션 종료]", s.emulator.screen.getSelectedText(0, 0, 39, 0).trim())
+    }
+
+    @Test
+    fun externalRowThatFillsTheWidthKeepsItsLastCharacter() {
+        val esc = 27.toChar().toString()
+        val rows = listOf("abcdefghij", "가나다라마", "> x")
+        val frame = StringBuilder("$esc[?25l$esc[H")
+        rows.forEachIndexed { i, r -> frame.append("$esc[${i + 1};1H").append(r).append("$esc[0m$esc[K") }
+        val h = ConsoleHistory()
+        h.accept(frame.toString().toByteArray(Charsets.UTF_8))
+        val (s, _) = newSession(cols = 10, rows = 3)
+        for (cols in listOf(0, 10)) { // as sent, and re-flowed to the phone width
+            val out = h.render(3, 0, cols)
+            s.appendRemoteOutput(out, 0, out.size)
+            assertEquals(rows.joinToString("\n"), s.emulator.screen.transcriptText.trim())
+        }
     }
 }

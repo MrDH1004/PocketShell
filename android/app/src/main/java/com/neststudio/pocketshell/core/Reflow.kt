@@ -40,6 +40,8 @@ object Reflow {
         val numbered: Boolean = false,
         /** First word is a diff sign glued to text ("+parent)"): a diff view's own wrapped continuation. */
         val gutter: Boolean = false,
+        /** The last word holds a wide (CJK) character: an ordinary word, however many cells it takes. */
+        val lastWordWide: Boolean = false,
     ) {
         val blank: Boolean get() = indent >= width
     }
@@ -82,8 +84,9 @@ object Reflow {
             if (cursorRow == r && cursorCol > 0) markCursor(row, cursorCol - 1)
             val inf = info(row)
             while (cells.isNotEmpty() && cells.last().space && !cells.last().cursor) cells.removeAt(cells.size - 1)
-            // A long token (path, URL) cut at the window edge continues without a space; words get one back.
-            if (prev.lastWord < LONG_TOKEN) cells.add(Cell(" ", 1, "", -1))
+            // A long token (path, URL) cut at the window edge continues without a space; words get one back. Korean
+            // words reach that many cells quickly (two per syllable) and are words all the same.
+            if (prev.lastWord < LONG_TOKEN || prev.lastWordWide) cells.add(Cell(" ", 1, "", -1))
             var k = 0
             while (k < row.size && row[k].space && !row[k].cursor) k++
             for (i in k until row.size) cells.add(row[i])
@@ -132,8 +135,10 @@ object Reflow {
         }
         var lastWord = 0
         var e = end - 1
+        var lastWordWide = false
         while (e >= k && !cells[e].space) {
             lastWord += cells[e].width
+            if (cells[e].width == 2) lastWordWide = true
             e--
         }
         val w = word.toString()
@@ -152,7 +157,7 @@ object Reflow {
             }
             textStart = col
         }
-        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox, numbered, gutter)
+        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox, numbered, gutter, lastWordWide)
     }
 
     private fun isBox(text: String): Boolean = text.isNotEmpty() && text[0] in '─'..'▟'

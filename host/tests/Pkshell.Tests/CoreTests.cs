@@ -440,6 +440,23 @@ public class VtFrameTests
     }
 
     [Fact]
+    public void ScrollbackDropsASingleLineThatMovedBackDown()
+    {
+        var sb = new ConsoleScrollback();
+        sb.Accept(Frame("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "> in", "status"));
+        // The program's bottom area grew by one row, then shrank again: l1 left and came back.
+        Assert.Equal(1, sb.Accept(Frame("l2", "l3", "l4", "l5", "l6", "l7", "l8", "busy", "> in", "status")));
+        Assert.Single(sb.Snapshot());
+        Assert.Equal(0, sb.Accept(Frame("l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8", "> in", "status")));
+        Assert.Empty(sb.Snapshot());
+        // The same line printed twice is not a move back: both copies stay.
+        var twice = new ConsoleScrollback();
+        twice.Accept(Frame("same", "same", "a", "b", "c", "d", "e", "f", "> in", "status"));
+        twice.Accept(Frame("same", "a", "b", "c", "d", "e", "f", "g", "> in", "status"));
+        Assert.Single(twice.Snapshot());
+    }
+
+    [Fact]
     public void ReaderFrameCarriesConsoleSize()
     {
         var vt = Encoding.UTF8.GetBytes("\x1b[Hok");

@@ -104,6 +104,14 @@ public sealed partial class ConsoleScrollback
                 for (int r = RedrawnTail(tail, _window.Take(k).ToList()); r > 0; r--) _lines.RemoveLast();
                 for (int i = 0; i < k; i++) _lines.AddLast(_window[i]);
             }
+            // The screen moved back down (the program's bottom area got shorter): the rows that came back at the top
+            // are the last ones that scrolled off. Seen as a move, so a single line or blank lines count too.
+            if (k == 0 && _window.Count == rows.Count)
+            {
+                int back = ScrollShift(rows, _window);
+                if (back > 0 && back <= _lines.Count && _lines.TakeLast(back).SequenceEqual(rows.Take(back), StringComparer.Ordinal))
+                    for (int i = 0; i < back; i++) _lines.RemoveLast();
+            }
             // Redraws can bring lines that already scrolled off back onto the screen: drop that overlap from the tail.
             for (int m = OverlapWithTop(_lines.TakeLast(Math.Min(_lines.Count, 40)).ToList(), rows); m > 0; m--) _lines.RemoveLast();
             while (_lines.Count > _maxLines) _lines.RemoveFirst();

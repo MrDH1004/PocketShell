@@ -58,7 +58,7 @@ class ReflowTest {
         sb.append("$esc[2;5H$esc[?25h")
         h.accept(sb.toString().toByteArray())
         val out = String(h.render(5, 0, 10), Charsets.UTF_8)
-        val rows = Regex("$esc\\[(\\d+);1H(.*?)$esc\\[0m$esc\\[K").findAll(out).map { strip(it.groupValues[2]) }.toList()
+        val rows = Regex("$esc\\[(\\d+);1H$esc\\[0m$esc\\[K(.*?)$esc\\[0m(?=$esc\\[\\d+;\\d+H|$)").findAll(out).map { strip(it.groupValues[2]) }.toList()
         assertEquals(listOf("", "xxxxxxxxxx", "xxxxxxxxxx", "xxxxx", "> ab "), rows) // the cursor cell past the text is a space
         assertEquals(true, out.endsWith("$esc[5;5H$esc[?25h"))
         assertEquals(0, h.maxScroll(5, 10))
@@ -101,7 +101,7 @@ class ReflowTest {
         }
         h.accept(sb.toString().toByteArray())
         val out = String(h.render(4, 0, 12), Charsets.UTF_8)
-        val rows = Regex("$esc\\[(\\d+);1H(.*?)$esc\\[0m$esc\\[K").findAll(out).map { strip(it.groupValues[2]) }.toList()
+        val rows = Regex("$esc\\[(\\d+);1H$esc\\[0m$esc\\[K(.*?)$esc\\[0m(?=$esc\\[\\d+;\\d+H|$)").findAll(out).map { strip(it.groupValues[2]) }.toList()
         assertEquals(listOf("- aaaa bbbb", "  cccc dd", "  eeee ffff", "> x"), rows)
         assertEquals(0, h.maxScroll(4, 12))
     }
@@ -127,5 +127,12 @@ class ReflowTest {
         assertEquals(61, Reflow.fitCols(240, 53)) // 4 lines of up to 61 instead of 4 full + 28 stray
         // A full row of Korean (wide) text at 61 columns stays on 4 lines.
         assertEquals(4, Reflow.lineCount("가".repeat(120), 61))
+    }
+
+    @Test
+    fun koreanWordsJoinedAcrossRowsKeepTheirSpace() {
+        // "스크립트로만" is 12 cells wide, as long as a cut path, but it is a word: the next row starts a new one.
+        val r = Reflow.layoutGroup(listOf("  1. 지금은 흉내 낸 스크립트로만", "     확인했어."), 60)
+        assertEquals(listOf("  1. 지금은 흉내 낸 스크립트로만 확인했어."), r.lines.map(::strip))
     }
 }
