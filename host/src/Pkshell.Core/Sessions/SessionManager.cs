@@ -88,15 +88,29 @@ public sealed class SessionManager : IDisposable
     {
         var s = Get(id);
         if (s == null) return false;
-        if (s.IsRunning)
-        {
-            s.Kill();
-            var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (s.IsRunning && DateTime.UtcNow < deadline) Thread.Sleep(50);
-            if (s.IsRunning) Log.Warn($"session {id}: still running 5 s after terminate; history removed anyway");
-        }
+        if (s.IsRunning && !Terminate(s)) Log.Warn($"session {id}: still running 5 s after terminate; history removed anyway");
         DeleteHistory(s);
         return true;
+    }
+
+    /// <summary>
+    /// Ends a running session's shell and keeps what it printed: it moves to 최근 and can be reopened there.
+    /// Returns null if not found, false if it was not running (or did not exit within 5 s).
+    /// </summary>
+    public bool? End(string id)
+    {
+        var s = Get(id);
+        if (s == null) return null;
+        return s.IsRunning && Terminate(s);
+    }
+
+    /// <summary>Kills the shell and waits up to 5 s for it to be gone.</summary>
+    private static bool Terminate(HostSession s)
+    {
+        s.Kill();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (s.IsRunning && DateTime.UtcNow < deadline) Thread.Sleep(50);
+        return !s.IsRunning;
     }
 
     /// <summary>

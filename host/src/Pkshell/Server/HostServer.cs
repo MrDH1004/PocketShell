@@ -791,6 +791,12 @@ public sealed class HostServer : IDisposable
             _recent.Observe(externals);
             list.AddRange(externals);
             list.AddRange(_recent.Closed());
+            var roots = ProjectStore.Load(_home).Roots;
+            if (roots.Count > 0)
+            {
+                foreach (var s in list)
+                    s.FolderDeletable = s.Kind != "external" && ProjectFolders.WhyNotDeletable(roots, s.Cwd) == null;
+            }
             return Json(new { sessions = list });
         });
 
@@ -905,19 +911,67 @@ public sealed class HostServer : IDisposable
             }
         });
 
-        app.MapDelete("/api/sessions/{id}", async (HttpContext ctx, string id) =>
+        // Ends a live session and keeps its record: a host session moves to 최근 (reopen continues it); for a console
+        // opened on the PC the shell and everything started from it is terminated.
+        app.MapPost("/api/sessions/{id}/end", async (HttpContext ctx, string id) =>
+        {
+            var by = AuthOf(ctx).DeviceId ?? "local";
+            if (TryExtPid(id, out var pid))
+            {
+                if (_externals.Get(pid) == null) return Error(404, "session not found");
+                var err = await Task.Run(() => EndExternal(pid));
+                if (err != null) return Error(409, err);
+                Log.Info($"external console {pid} ended by {by}");
+                return Results.NoContent();
+            }
+            var ended = await Task.Run(() => _sessions.End(id));
+            if (ended == null) return Error(404, "session not found");
+            if (ended == false) return Error(409, "세션이 실행 중이 아니거나 5초 안에 종료되지 않았습니다");
+            Log.Info($"session {id} ended by {by}");
+            return Results.NoContent();
+        });
+
+        // ?folder=1 also moves the session's folder to the Recycle Bin (only a folder right under a project root).
+        app.MapDelete("/api/sessions/{id}", async (HttpContext ctx, string id, string? folder) =>
         {
             if (TryExtPid(id, out _)) return Error(400, "external sessions cannot be deleted");
             var by = AuthOf(ctx).DeviceId ?? "local";
-            if (id.StartsWith(RecentExternals.IdPrefix, StringComparison.Ordinal))
+            bool recent = id.StartsWith(RecentExternals.IdPrefix, StringComparison.Ordinal);
+            string? dir = null;
+            if (folder == "1")
+            {
+                var cwd = recent ? _recent.Closed().FirstOrDefault(s => s.Id == id)?.Cwd : _sessions.Get(id)?.Snapshot().Cwd;
+                if (cwd == null) return Error(404, "session not found");
+                var why = ProjectFolders.WhyNotDeletable(ProjectStore.Load(_home).Roots, cwd);
+                if (why != null) return Error(400, why);
+                dir = ProjectFolders.Normalize(cwd)!;
+                var users = _sessions.All.Where(s => s.IsRunning && s.Id != id).Select(s => s.Snapshot())
+                    .Concat(_externals.List())
+                    .Where(s => ProjectFolders.IsInside(dir, s.Cwd))
+                    .Select(s => s.Title.Length > 0 ? s.Title : s.Id).ToList();
+                if (users.Count > 0) return Error(409, $"이 폴더를 쓰는 다른 세션이 있습니다: {string.Join(", ", users)}. 먼저 종료하세요");
+            }
+            if (recent)
             {
                 if (!_recent.Remove(id)) return Error(404, "session not found");
                 Log.Info($"recent {id} deleted by {by}");
-                return Results.NoContent();
             }
-            // A running session is terminated and its history removed (waits for the shell to exit).
-            if (!await Task.Run(() => _sessions.Delete(id))) return Error(404, "session not found");
-            Log.Info($"session {id} deleted by {by}");
+            else
+            {
+                // A running session is terminated and its history removed (waits for the shell to exit).
+                if (!await Task.Run(() => _sessions.Delete(id))) return Error(404, "session not found");
+                Log.Info($"session {id} deleted by {by}");
+            }
+            if (dir != null)
+            {
+                var err = await Task.Run(() => ProjectFolders.Recycle(dir));
+                if (err != null)
+                {
+                    Log.Warn($"folder {dir} not recycled (session {id} deleted by {by}): {err}");
+                    return Error(500, $"세션은 삭제했지만 폴더는 그대로입니다: {err}");
+                }
+                Log.Info($"folder {dir} moved to the Recycle Bin with session {id} by {by}");
+            }
             return Results.NoContent();
         });
 
@@ -1104,6 +1158,26 @@ public sealed class HostServer : IDisposable
             return JsonSerializer.Deserialize<T>(text, Pkshell.Core.Util.Json.Options);
         }
         catch (JsonException) { return null; }
+    }
+
+    /// <summary>Terminates a PC console's shell and what it started. Returns null on success, else the reason.</summary>
+    private static string? EndExternal(int pid)
+    {
+        // A console this server itself was started from would take the server down with it.
+        var procs = ExternalConsoles.SnapshotProcesses().ToDictionary(p => p.Pid, p => p.ParentPid);
+        for (int p = Environment.ProcessId, hops = 0; hops < 32 && procs.TryGetValue(p, out var parent); p = parent, hops++)
+        {
+            if (parent == pid) return "이 콘솔에서 PocketShell 서버가 실행 중이라 여기서는 종료할 수 없습니다";
+        }
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            proc.Kill(entireProcessTree: true);
+            return proc.WaitForExit(5000) ? null : "5초 안에 종료되지 않았습니다";
+        }
+        catch (ArgumentException) { return null; } // already gone
+        catch (InvalidOperationException) { return null; }
+        catch (System.ComponentModel.Win32Exception ex) { return "종료하지 못했습니다: " + ex.Message; }
     }
 
     private static bool TryExtPid(string id, out int pid)

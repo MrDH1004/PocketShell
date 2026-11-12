@@ -24,6 +24,8 @@ data class SessionInfo(
     val agentState: String? = null,
     /** The question shown while [agentState] is waiting. */
     val prompt: AgentPrompt? = null,
+    /** The host may delete this session's folder with it (a folder right under a project root; host ≥ 0.2.62). */
+    val folderDeletable: Boolean = false,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
     /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
@@ -55,12 +57,31 @@ data class SessionInfo(
             agent = if (o.has("agent") && !o.isNull("agent")) o.optString("agent") else null,
             agentState = if (o.has("agentState") && !o.isNull("agentState")) o.optString("agentState") else null,
             prompt = AgentPrompt.fromJson(o.optJSONObject("prompt")),
+            folderDeletable = o.optBoolean("folderDeletable", false),
         )
 
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */
         fun listFromJson(text: String): List<SessionInfo> {
             val arr: JSONArray = JSONObject(text).optJSONArray("sessions") ?: return emptyList()
             return (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
+        }
+    }
+}
+
+/** What a long press on a session row offers. */
+enum class SessionAction { END, DELETE, DELETE_WITH_FOLDER }
+
+object SessionActions {
+    /**
+     * A running session can be ended (its record stays under 최근) or deleted; a record can be deleted. A console
+     * opened on the PC can only be ended. Deleting the folder too is offered only when the host allows it.
+     */
+    fun of(s: SessionInfo): List<SessionAction> = when {
+        s.isExternal -> listOf(SessionAction.END)
+        else -> buildList {
+            if (s.isRunningHost) add(SessionAction.END)
+            add(SessionAction.DELETE)
+            if (s.folderDeletable && s.cwd.isNotBlank()) add(SessionAction.DELETE_WITH_FOLDER)
         }
     }
 }

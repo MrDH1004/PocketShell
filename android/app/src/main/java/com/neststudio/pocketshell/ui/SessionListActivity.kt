@@ -9,6 +9,8 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Spinner
@@ -17,17 +19,21 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.neststudio.pocketshell.BuildConfig
 import com.neststudio.pocketshell.PkshellApp
 import com.neststudio.pocketshell.R
 import com.neststudio.pocketshell.core.HostUpdateStatus
 import com.neststudio.pocketshell.core.ProjectOptions
+import com.neststudio.pocketshell.core.SessionAction
+import com.neststudio.pocketshell.core.SessionActions
 import com.neststudio.pocketshell.core.SessionInfo
 import com.neststudio.pocketshell.core.SessionSections
 import com.neststudio.pocketshell.core.UpdateRefusal
@@ -50,7 +56,7 @@ class SessionListActivity : AppCompatActivity() {
     private lateinit var hostUpdateText: TextView
     private lateinit var hostUpdateApply: Button
     private var hostUpdateStatus: HostUpdateStatus? = null
-    private val adapter = SessionAdapter(::openSession, ::confirmDelete, ::newTerminalHere)
+    private val adapter = SessionAdapter(::openSession, ::showSessionActions, ::newTerminalHere)
     private val appUpdate = AppUpdateController(this)
     private var autoRefresh: kotlinx.coroutines.Job? = null
     private var loading = false
@@ -426,22 +432,107 @@ class SessionListActivity : AppCompatActivity() {
         }
     }
 
+    private fun nameOf(s: SessionInfo) = s.title.ifBlank { s.shell.ifBlank { s.id } }
+
+    /** Long press: 세션 종료 / 삭제 / 폴더까지 삭제, whichever apply to this row. Each asks before it acts. */
+    private fun showSessionActions(s: SessionInfo) {
+        val actions = SessionActions.of(s)
+        val sheet = BottomSheetDialog(this)
+        val d = resources.displayMetrics.density
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, (d * 8).toInt(), 0, (d * 16).toInt())
+        }
+        box.addView(TextView(this).apply {
+            text = nameOf(s)
+            textSize = 16f
+            maxLines = 2
+            setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            setPadding((d * 24).toInt(), (d * 12).toInt(), (d * 24).toInt(), (d * 4).toInt())
+        })
+        box.addView(TextView(this).apply {
+            text = s.cwd
+            textSize = 12f
+            maxLines = 2
+            visibility = if (s.cwd.isBlank()) View.GONE else View.VISIBLE
+            setTextColor(ContextCompat.getColor(context, R.color.text_muted))
+            setPadding((d * 24).toInt(), 0, (d * 24).toInt(), (d * 12).toInt())
+        })
+        for (action in actions) {
+            val (icon, label) = when (action) {
+                SessionAction.END -> R.drawable.ic_stop to R.string.session_end
+                SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
+                SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
+            }
+            val row = layoutInflater.inflate(R.layout.item_sheet_action, box, false)
+            row.findViewById<ImageView>(R.id.actionIcon).setImageResource(icon)
+            row.findViewById<TextView>(R.id.actionLabel).setText(label)
+            row.setOnClickListener {
+                sheet.dismiss()
+                when (action) {
+                    SessionAction.END -> confirmEnd(s)
+                    SessionAction.DELETE -> confirmDelete(s)
+                    SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)
+                }
+            }
+            box.addView(row)
+        }
+        sheet.setContentView(box)
+        sheet.show()
+    }
+
+    /** Runs a session action and reloads the list; a refusal from the PC is shown with the PC's own reason. */
+    private fun runSessionAction(failed: Int, call: suspend (com.neststudio.pocketshell.net.ApiClient) -> Unit) {
+        val api = (application as PkshellApp).api() ?: return
+        lifecycleScope.launch {
+            try {
+                call(api)
+                showMessage(null)
+            } catch (e: ApiException) {
+                showMessage(
+                    when (e.code) {
+                        // The PC answered and said why (folder in use, not a project folder, ...): no generic hint.
+                        400, 409, 500 -> getString(failed) + ErrorText.cause(this@SessionListActivity, e.message)
+                        404, 405 -> getString(R.string.err_format, getString(failed), getString(R.string.err_hint_update_pc))
+                        else -> ErrorText.of(this@SessionListActivity, failed, e)
+                    },
+                )
+            } catch (e: IOException) {
+                showMessage(ErrorText.of(this@SessionListActivity, failed, e))
+            }
+            refresh()
+        }
+    }
+
+    private fun confirmEnd(s: SessionInfo) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.end_title, nameOf(s)))
+            .setMessage(if (s.isExternal) R.string.end_external_confirm else R.string.end_host_confirm)
+            .setPositiveButton(R.string.end_action) { _, _ -> runSessionAction(R.string.err_end_session) { it.end(s.id) } }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun confirmDelete(s: SessionInfo) {
         if (s.isExternal) return
-        val name = s.title.ifBlank { s.shell.ifBlank { s.id } }
         AlertDialog.Builder(this)
-            .setTitle(getString(if (s.isRunningHost) R.string.delete_running_title else R.string.delete_history_title, name))
+            .setTitle(getString(if (s.isRunningHost) R.string.delete_running_title else R.string.delete_history_title, nameOf(s)))
             .setMessage(if (s.isRunningHost) R.string.delete_running_confirm else R.string.delete_history_confirm)
             .setPositiveButton(if (s.isRunningHost) R.string.delete_running_action else R.string.delete_history_action) { _, _ ->
-                val api = (application as PkshellApp).api() ?: return@setPositiveButton
-                lifecycleScope.launch {
-                    try {
-                        api.delete(s.id)
-                    } catch (e: IOException) {
-                        showMessage(ErrorText.of(this@SessionListActivity, R.string.err_delete_session, e))
-                    }
-                    refresh()
-                }
+                runSessionAction(R.string.err_delete_session) { it.delete(s.id) }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteWithFolder(s: SessionInfo) {
+        if (s.isExternal) return
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.delete_folder_title, nameOf(s)))
+            .setMessage(getString(if (s.isRunningHost) R.string.delete_folder_running_confirm else R.string.delete_folder_confirm, s.cwd))
+            .setPositiveButton(R.string.delete_folder_action) { _, _ ->
+                runSessionAction(R.string.err_delete_folder) { it.delete(s.id, withFolder = true) }
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

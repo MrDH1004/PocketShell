@@ -452,6 +452,10 @@ public class UpdateStagingTests
             {
                 Assert.Equal(UpdateStates.Ready, s1.Status.State);
                 Assert.True(File.Exists(Path.Combine(s1.StagingDir!, "psh.exe")));
+                // Download progress belongs to State=downloading only; the mode is always reported.
+                Assert.Null(s1.Status.Step);
+                Assert.Null(s1.Status.Downloaded);
+                Assert.Equal(UpdateModes.Auto, s1.Status.Mode);
             }
             Assert.Equal(1, feed.ZipHits);
 

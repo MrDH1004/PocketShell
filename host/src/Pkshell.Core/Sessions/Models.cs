@@ -36,6 +36,9 @@ public sealed class SessionDto
     /// <summary>The question shown while <see cref="AgentState"/> is "waiting".</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public PromptDto? Prompt { get; set; }
+    /// <summary>The session's folder may be deleted with it (DELETE ...?folder=1): a folder right under a project root.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool FolderDeletable { get; set; }
     /// <summary>What the agent wrote last (for the "done" event); not part of the session JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? AgentPreview { get; set; }
@@ -46,7 +49,7 @@ public sealed class SessionDto
         CreatedAt = CreatedAt, LastActivity = LastActivity, Cols = Cols, Rows = Rows,
         Clients = Clients.Select(c => new ClientDto { Id = c.Id, Type = c.Type, Cols = c.Cols, Rows = c.Rows }).ToList(),
         Pid = Pid, ResumedFrom = ResumedFrom, Agent = Agent,
-        AgentState = AgentState, AgentStateSince = AgentStateSince, Prompt = Prompt,
+        AgentState = AgentState, AgentStateSince = AgentStateSince, Prompt = Prompt, FolderDeletable = FolderDeletable,
     };
 
     /// <summary>Copies a tracker's state into this snapshot.</summary>

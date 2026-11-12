@@ -78,4 +78,25 @@ class ProtocolTest {
         assertFalse(url.contains("token"))
         assertTrue(ClientProtocol.webSocketUrl("fd7a::1", 7380, "x", 1, 1, true).startsWith("wss://[fd7a::1]:7380/"))
     }
+
+    @Test
+    fun longPressOffersWhatFitsTheSession() {
+        fun session(kind: String, state: String, folder: Boolean) = SessionInfo.fromJson(
+            JSONObject(sessionJson).put("kind", kind).put("state", state).put("folderDeletable", folder),
+        )
+        val end = com.neststudio.pocketshell.core.SessionAction.END
+        val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
+        val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
+        val of = com.neststudio.pocketshell.core.SessionActions::of
+        // Running: end (the record stays) or delete; the folder only when the PC allows it.
+        assertEquals(listOf(end, delete), of(session("host", "running", false)))
+        assertEquals(listOf(end, delete, folder), of(session("host", "running", true)))
+        // A record cannot be ended any more.
+        assertEquals(listOf(delete, folder), of(session("history", "exited", true)))
+        assertEquals(listOf(delete), of(session("recent", "exited", false)))
+        // A console opened on the PC: only ended, never deleted (and never its folder).
+        assertEquals(listOf(end), of(session("external", "running", true)))
+        // An older PC does not send the field.
+        assertFalse(SessionInfo.fromJson(JSONObject(sessionJson)).folderDeletable)
+    }
 }

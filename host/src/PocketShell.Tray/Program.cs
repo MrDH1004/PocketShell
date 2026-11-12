@@ -16,7 +16,7 @@ internal static class Program
         int pid = 0;
         bool restarting = args.Length == 2 && string.Equals(args[0], WaitPidArg, StringComparison.Ordinal) && int.TryParse(args[1], out pid);
         if (restarting) WaitForExit(pid);
-        using var single = new Mutex(true, @"Local\PocketShell.Tray", out var first);
+        using var single = new Mutex(true, SingleInstanceName(), out var first);
         // The previous tray has already hidden its icon: keep waiting for it rather than leaving no tray at all.
         if (!first && !(restarting && AcquireAfterPrevious(single))) return 0; // already in the tray
 
@@ -26,7 +26,7 @@ internal static class Program
         try
         {
             bool openPin = args.Length == 1 && string.Equals(args[0], PairArg, StringComparison.Ordinal);
-            Application.Run(new TrayApp(home, openPin));
+            Application.Run(new TrayApp(home, openPin, afterUpdate: restarting));
             return 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -35,6 +35,16 @@ internal static class Program
             MessageBox.Show(ex.Message, Brand.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
+    }
+
+    /// <summary>One tray per data folder: a tray started for another PKSHELL_HOME (a second server) runs beside this one.</summary>
+    private static string SingleInstanceName()
+    {
+        const string name = @"Local\PocketShell.Tray";
+        var home = Environment.GetEnvironmentVariable("PKSHELL_HOME");
+        if (string.IsNullOrWhiteSpace(home)) return name;
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(home).ToLowerInvariant()));
+        return name + "." + Convert.ToHexString(hash)[..12];
     }
 
     private static bool AcquireAfterPrevious(Mutex single)

@@ -257,6 +257,7 @@ public static class Program
         Console.WriteLine($"applying update to {latest}; the host restarts on the same port when ready...");
         // Follow the handoff: the host is briefly unreachable while the new process takes over the port.
         var deadline = DateTime.UtcNow.AddSeconds(90);
+        string shown = "";
         while (DateTime.UtcNow < deadline)
         {
             await Task.Delay(1000);
@@ -271,6 +272,20 @@ public static class Program
                     Console.Error.WriteLine($"psh: update failed: {Str(u, "error")}");
                     return 1;
                 }
+                if (u.ValueKind != JsonValueKind.Object) continue;
+                // A download in progress is not a stall: say how far it is and keep waiting.
+                string line = Str(u, "state");
+                if (line == "downloading")
+                {
+                    deadline = DateTime.UtcNow.AddSeconds(90);
+                    long got = u.TryGetProperty("downloaded", out var d) && d.TryGetInt64(out var dv) ? dv : 0;
+                    long total = u.TryGetProperty("total", out var t) && t.TryGetInt64(out var tv) ? tv : 0;
+                    string step = Str(u, "step");
+                    line = step is "verify" or "extract" ? step
+                        : total > 0 ? $"downloading {got / 1048576.0:0.0} / {total / 1048576.0:0.0} MB ({got * 100 / total}%)"
+                        : $"downloading {got / 1048576.0:0.0} MB";
+                }
+                if (line.Length > 0 && line != shown) Console.WriteLine("  " + (shown = line));
             }
             catch (Exception ex) when (ex is CliException or TaskCanceledException) { /* port in handoff */ }
         }

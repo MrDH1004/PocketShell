@@ -15,6 +15,25 @@ public sealed class UpdateStatus
     public string State { get; set; } = UpdateStates.None;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Error { get; set; }
+    /// <summary><see cref="UpdateModes"/>: auto installs by itself once no session is running.</summary>
+    public string Mode { get; set; } = UpdateModes.Auto;
+    /// <summary>While State is downloading: <see cref="UpdateSteps"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Step { get; set; }
+    /// <summary>Bytes received so far (step download).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Downloaded { get; set; }
+    /// <summary>Size of the download, when the server says it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Total { get; set; }
+
+    public UpdateStatus Copy() => (UpdateStatus)MemberwiseClone();
+}
+
+/// <summary>Parts of State=downloading, in order.</summary>
+public static class UpdateSteps
+{
+    public const string Download = "download", Verify = "verify", Extract = "extract";
 }
 
 public static class UpdateStates
@@ -68,14 +87,14 @@ public sealed class UpdateService : IDisposable
         Mode = UpdateModes.Normalize(mode);
         Interval = interval < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : interval;
         _runningSessions = runningSessions;
-        _status = new UpdateStatus { Current = current.ToString() };
+        _status = new UpdateStatus { Current = current.ToString(), Mode = Mode };
         _http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd(ReleaseFeed.UserAgent);
     }
 
     public UpdateStatus Status
     {
-        get { lock (_gate) return new UpdateStatus { Current = _status.Current, Latest = _status.Latest, State = _status.State, Error = _status.Error }; }
+        get { lock (_gate) return _status.Copy(); }
     }
 
     /// <summary>Staged app directory (contains psh.exe) when State is ready/applying.</summary>
@@ -90,7 +109,22 @@ public sealed class UpdateService : IDisposable
         {
             _status.State = state;
             _status.Error = error;
+            _status.Step = null;
+            _status.Downloaded = null;
+            _status.Total = null;
             if (latest != null) _status.Latest = latest;
+        }
+    }
+
+    /// <summary>Where a download is (only while State is downloading).</summary>
+    private void Progress(string step, long? downloaded = null, long? total = null)
+    {
+        lock (_gate)
+        {
+            if (_status.State != UpdateStates.Downloading) return;
+            _status.Step = step;
+            _status.Downloaded = downloaded;
+            _status.Total = total;
         }
     }
 
@@ -232,6 +266,7 @@ public sealed class UpdateService : IDisposable
         var assetName = ReleaseFeed.HostAssetName(rel.Version);
         var asset = rel.Asset(assetName)!;
         Set(UpdateStates.Downloading);
+        Progress(UpdateSteps.Download, 0);
         try
         {
             string? expected = ReleaseFeed.ParseDigest(asset.Digest);
@@ -260,6 +295,7 @@ public sealed class UpdateService : IDisposable
             if (File.Exists(readyFile) && File.ReadAllText(readyFile).Trim() == expected && File.Exists(zip) && await HashFileAsync(zip) == expected)
             {
                 TryDeleteDir(appDir);
+                Progress(UpdateSteps.Extract);
                 ZipFile.ExtractToDirectory(zip, appDir);
                 if (FindExeDir(appDir) is { } cachedExeDir) return Staged(cachedExeDir, rel, "already staged (cached zip re-verified)");
             }
@@ -268,15 +304,19 @@ public sealed class UpdateService : IDisposable
             Directory.CreateDirectory(dir);
             string actual;
             if (ReleaseFeed.TryLocalDir(FeedUrl, out _))
-                File.Copy(asset.Url, zip, overwrite: true); // local folder feed: the asset URL is a file path
+            {
+                // local folder feed: the asset URL is a file path
+                await using var input = File.OpenRead(asset.Url);
+                await CopyWithProgressAsync(input, zip, input.Length);
+            }
             else
             using (var resp = await _http.GetAsync(asset.Url, HttpCompletionOption.ResponseHeadersRead))
             {
                 if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"download {asset.Url}: HTTP {(int)resp.StatusCode}");
                 await using var input = await resp.Content.ReadAsStreamAsync();
-                await using (var fs = new FileStream(zip, FileMode.Create, FileAccess.Write, FileShare.None))
-                    await input.CopyToAsync(fs);
+                await CopyWithProgressAsync(input, zip, resp.Content.Headers.ContentLength);
             }
+            Progress(UpdateSteps.Verify);
             actual = await HashFileAsync(zip);
             if (!string.Equals(actual, expected, StringComparison.Ordinal))
             {
@@ -284,6 +324,7 @@ public sealed class UpdateService : IDisposable
                 MarkError($"refusing update {rel.Tag}: sha256 mismatch for {assetName} (expected {expected} from {source}, got {actual})");
                 return null;
             }
+            Progress(UpdateSteps.Extract);
             ZipFile.ExtractToDirectory(zip, appDir); // .NET rejects entries that escape the target directory; zip kept for re-verification
             var exeDir = FindExeDir(appDir);
             if (exeDir == null)
@@ -299,6 +340,22 @@ public sealed class UpdateService : IDisposable
         {
             MarkError($"download of {rel.Tag} failed: {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>Copies the download to <paramref name="file"/>, publishing how much has arrived (GET /api/update).</summary>
+    private async Task CopyWithProgressAsync(Stream input, string file, long? total)
+    {
+        await using var fs = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None);
+        var buffer = new byte[81920];
+        long done = 0;
+        Progress(UpdateSteps.Download, 0, total);
+        int n;
+        while ((n = await input.ReadAsync(buffer, _stop.Token)) > 0)
+        {
+            await fs.WriteAsync(buffer.AsMemory(0, n), _stop.Token);
+            done += n;
+            Progress(UpdateSteps.Download, done, total);
         }
     }
 

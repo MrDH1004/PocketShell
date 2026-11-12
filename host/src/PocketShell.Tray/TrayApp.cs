@@ -22,8 +22,14 @@ internal sealed class TrayApp : ApplicationContext
     /// <summary>"업데이트 확인…", or "업데이트 설치 (vX)…" once the host knows a newer release.</summary>
     private readonly ToolStripMenuItem _updateItem;
     private string? _updateLatest;
-    private string? _notifiedVersion;
+    private string? _updateCurrent;
+    private string _updateMode = Pkshell.Core.Update.UpdateModes.Auto;
     private bool _updateBusy;
+    private UpdateForm? _updateForm;
+    /// <summary>While the update window shows "설치 완료": the tray restarts on the new files after this.</summary>
+    private DateTime? _restartHoldUntil;
+    private bool _restartHinted;
+    private static readonly TimeSpan ShowDoneFor = TimeSpan.FromSeconds(3);
     private DateTime _nextUpdatePoll = DateTime.MinValue;
     private static readonly TimeSpan UpdatePollEvery = TimeSpan.FromMinutes(5);
     private readonly System.Windows.Forms.Timer _timer;
@@ -47,7 +53,8 @@ internal sealed class TrayApp : ApplicationContext
     private PinForm? _pinForm;
 
     /// <param name="openPin">`--pair` (installer's last step): open 휴대폰 연결 once the server is up.</param>
-    public TrayApp(string home, bool openPin = false)
+    /// <param name="afterUpdate">Started by the previous tray after an update was installed: say so once.</param>
+    public TrayApp(string home, bool openPin = false, bool afterUpdate = false)
     {
         _home = home;
         _server = new ServerControl(home);
@@ -83,6 +90,8 @@ internal sealed class TrayApp : ApplicationContext
         _timer.Tick += async (_, _) => await TickAsync();
         _timer.Start();
         _ = StartupAsync(openPin);
+        if (afterUpdate && _version.Length > 0)
+            _icon.ShowBalloonTip(4000, Brand.Name, $"업데이트 완료: v{_version}", ToolTipIcon.Info);
     }
 
     private async Task StartupAsync(bool openPin)
@@ -132,8 +141,17 @@ internal sealed class TrayApp : ApplicationContext
     private async Task TickAsync()
     {
         if (_busy) return;
-        if (ShouldRestartForUpdate(hinted: _restartEvent.WaitOne(0)))
+        // The hint is a one-shot signal: keep it while the update window still shows "설치 완료".
+        if (_restartEvent.WaitOne(0)) _restartHinted = true;
+        if (ShouldRestartForUpdate(hinted: _restartHinted))
         {
+            // An open update window first shows "설치 완료" for a moment; the tray then restarts on the new files.
+            if (_restartHoldUntil == null && _updateForm is { IsDisposed: false, Visible: true })
+            {
+                _updateForm.ShowDone();
+                _restartHoldUntil = DateTime.UtcNow + ShowDoneFor;
+            }
+            if (_restartHoldUntil is { } until && DateTime.UtcNow < until) return;
             RestartForUpdate();
             return;
         }
@@ -251,12 +269,58 @@ internal sealed class TrayApp : ApplicationContext
         var state = LocalApi.Str(st, "state");
         var latest = LocalApi.Str(st, "latest");
         _updateLatest = state is "available" or "downloading" or "ready" && latest.Length > 0 ? latest : null;
-        if (_updateLatest != null && _updateLatest != _notifiedVersion && notify)
+        _updateCurrent = LocalApi.Str(st, "current");
+        if (LocalApi.Str(st, "mode") is { Length: > 0 } mode) _updateMode = mode;
+        // Asked once per version (kept across tray restarts); afterwards the bold menu item is the way in.
+        if (_updateLatest != null && notify && _updateLatest != PromptedVersion())
         {
-            _notifiedVersion = _updateLatest;
-            _icon.ShowBalloonTip(5000, Brand.Name, $"새 버전 v{_updateLatest}이 있습니다. 트레이 메뉴의 '업데이트 설치'로 바로 적용할 수 있습니다.", ToolTipIcon.Info);
+            RememberPrompted(_updateLatest);
+            ShowUpdateForm();
         }
         Refresh();
+    }
+
+    private string PromptedFile => Path.Combine(_home, "tray-update-prompted");
+
+    private string PromptedVersion()
+    {
+        try { return File.Exists(PromptedFile) ? File.ReadAllText(PromptedFile).Trim() : ""; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return ""; }
+    }
+
+    private void RememberPrompted(string version)
+    {
+        try { File.WriteAllText(PromptedFile, version); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { TrayLog.Write(_home, "cannot remember the update prompt: " + ex.Message); }
+    }
+
+    /// <summary>Opens the update window for the newest known version ("지금 설치" / "나중에", then progress).</summary>
+    private void ShowUpdateForm()
+    {
+        if (_updateLatest == null) return;
+        if (_updateForm is { IsDisposed: false })
+        {
+            _updateForm.Activate();
+            return;
+        }
+        _updateForm = new UpdateForm(_updateLatest, _updateCurrent ?? _version, _updateMode,
+            install: () => ApplyUpdateAsync(force: false), poll: ReadUpdateStatusAsync,
+            installedIsNew: () => InstalledBuildVersion() is { } v && _buildVersion.Length > 0 && !string.Equals(v, _buildVersion, StringComparison.Ordinal));
+        _updateForm.FormClosed += (_, _) => _updateForm = null;
+        _updateForm.Show();
+        _updateForm.Activate();
+    }
+
+    /// <summary>GET /api/update for the update window; null while the host does not answer (it is swapping files).</summary>
+    private async Task<Pkshell.Core.Update.UpdateStatus?> ReadUpdateStatusAsync()
+    {
+        try
+        {
+            var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Get, "api/update", timeout: TimeSpan.FromSeconds(3));
+            if (status != 200) return null;
+            return System.Text.Json.JsonSerializer.Deserialize<Pkshell.Core.Update.UpdateStatus>(body.GetRawText(), Json.Options);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException or System.Text.Json.JsonException) { return null; }
     }
 
     /// <summary>Menu "업데이트 확인…": asks the host to check now, then offers to install a newer release.</summary>
@@ -282,10 +346,8 @@ internal sealed class TrayApp : ApplicationContext
                 MessageBox.Show($"최신 버전을 사용 중입니다 (v{current}).", $"{Brand.Name} 업데이트", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            var ask = MessageBox.Show(
-                $"새 버전 v{_updateLatest}이 있습니다 (현재 v{current}).\n\n지금 설치할까요? 서버가 몇 초 동안 다시 시작되고, 휴대폰은 자동으로 다시 연결됩니다.",
-                $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (ask == DialogResult.Yes) await ApplyUpdateAsync(force: false);
+            RememberPrompted(_updateLatest);
+            ShowUpdateForm();
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
         {
@@ -298,7 +360,8 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
-    private async Task ApplyUpdateAsync(bool force, bool killWorking = false)
+    /// <summary>Asks the host to install; with sessions running it asks the user first. True once the install has started.</summary>
+    private async Task<bool> ApplyUpdateAsync(bool force, bool killWorking = false)
     {
         var request = killWorking ? "{\"force\":true,\"killWorking\":true}" : force ? "{\"force\":true}" : "{}";
         var (status, body) = await LocalApi.SendAsync(_home, _server.Port, HttpMethod.Post, "api/update/apply", request);
@@ -307,23 +370,23 @@ internal sealed class TrayApp : ApplicationContext
             var n = body.TryGetProperty("runningSessions", out var r) && r.TryGetInt32(out var c) ? c : 0;
             var working = body.TryGetProperty("workingAgents", out var w) && w.TryGetInt32(out var wc) ? wc : 0;
             var names = UpdateSessionLines(body);
+            // Only auto mode installs by itself later; in notify mode "아니요" just leaves it for the menu.
+            var later = _updateMode == Pkshell.Core.Update.UpdateModes.Auto ? " '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다." : "";
             if (force && working > 0)
             {
                 // Second, separate question: an AI is in the middle of a turn and would be cut off.
                 var sure = MessageBox.Show(
-                    $"AI가 작업 중인 세션이 {working}개 있습니다. 지금 설치하면 작업이 중간에 끊깁니다.\n\n{names}\n\n그래도 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
+                    $"AI가 작업 중인 세션이 {working}개 있습니다. 지금 설치하면 작업이 중간에 끊깁니다.\n\n{names}\n\n그래도 종료하고 설치할까요?{later}",
                     $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-                if (sure == DialogResult.Yes) await ApplyUpdateAsync(force: true, killWorking: true);
-                return;
+                return sure == DialogResult.Yes && await ApplyUpdateAsync(force: true, killWorking: true);
             }
             var ask = MessageBox.Show(
-                $"이 PC에서 연 세션 {n}개가 실행 중입니다. 지금 설치하면 이 세션들이 종료됩니다.\n\n{names}\n\n세션을 종료하고 설치할까요? '아니요'를 누르면 세션이 모두 끝난 뒤 자동으로 설치됩니다.",
+                $"이 PC에서 연 세션 {n}개가 실행 중입니다. 지금 설치하면 이 세션들이 종료됩니다.\n\n{names}\n\n세션을 종료하고 설치할까요?{later}",
                 $"{Brand.Name} 업데이트", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
-            if (ask == DialogResult.Yes) await ApplyUpdateAsync(force: true);
-            return;
+            return ask == DialogResult.Yes && await ApplyUpdateAsync(force: true);
         }
-        if (status != 200) { ShowError($"업데이트를 시작하지 못했습니다: {LocalApi.Str(body, "error")}\n잠시 후 다시 시도하세요."); return; }
-        _icon.ShowBalloonTip(4000, Brand.Name, $"v{_updateLatest} 설치 중입니다. 잠시 후 서버가 다시 시작됩니다.", ToolTipIcon.Info);
+        if (status != 200) { ShowError($"업데이트를 시작하지 못했습니다: {LocalApi.Str(body, "error")}\n잠시 후 다시 시도하세요."); return false; }
+        return true;
     }
 
     /// <summary>The sessions an apply would end, one per line ("· title (AI 작업 중)"), at most eight.</summary>
@@ -428,6 +491,7 @@ internal sealed class TrayApp : ApplicationContext
         _icon.Dispose();
         _pinForm?.Close();
         _projectsForm?.Close();
+        _updateForm?.Close();
         _restartEvent.Dispose();
         ExitThread();
     }

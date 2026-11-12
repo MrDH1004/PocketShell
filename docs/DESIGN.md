@@ -83,7 +83,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 | GET | `/api/sessions/{id}` | Session |
 | POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈) |
 | POST | `/api/sessions/{id}/resume` | history → 새 Session |
-| DELETE | `/api/sessions/{id}` | 완전 삭제: running이면 종료를 기다린 뒤 기록까지 삭제(최근에도 안 남음), history면 삭제 |
+| DELETE | `/api/sessions/{id}` | 완전 삭제: running이면 종료를 기다린 뒤 기록까지 삭제(최근에도 안 남음), history면 삭제. `?folder=1`이면 세션의 폴더(cwd)도 휴지통으로 보냄(아래 "폴더 삭제") |
+| POST | `/api/sessions/{id}/end` | 종료만: host 세션은 셸을 끝내고 기록을 남김(최근으로 이동, 204; 실행 중이 아니면 409). `ext-<pid>`는 그 콘솔의 셸 프로세스 트리를 종료(서버 자신이 그 콘솔에서 실행 중이면 409) |
 | POST | `/api/external/{pid}/adopt` | 외부 콘솔의 cwd(가능하면)·셸 종류로 새 host 세션 생성 → Session (AC-14). cwd를 못 얻으면 사용자 홈 |
 | POST | `/api/pair/start` | 2절 |
 | POST | `/api/pair/claim` | 2절 |
@@ -136,6 +137,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 시나리오는 AC 번호별 함수. Android 렌더링은 `android` 모듈 JVM 단위테스트(`gradlew test`)가 담당하고, QA 드라이버는 adb 기기가 연결돼 있으면 APK 설치·실행 스모크까지 수행.
 
 ## 10. 호스트 구현 확정 사항 (계약 보충, host 구현 기준)
+- 폴더 삭제(`DELETE /api/sessions/{id}?folder=1`, `ProjectFolders`): 대상은 세션의 cwd. 허용 조건 = 등록된 프로젝트 루트(`projects.json`)의 바로 아래 폴더(= "새 프로젝트"가 만드는 폴더), 루트 자체·더 깊은 폴더·루트 밖·링크(reparse point)·없는 폴더는 400 + 이유. 그 폴더(또는 하위)를 cwd로 쓰는 다른 실행 중 host 세션이나 PC 콘솔이 있으면 409 + 세션 이름. 세션을 먼저 삭제(실행 중이면 종료)한 뒤 `SHFileOperation(FO_DELETE, FOF_ALLOWUNDO)`으로 휴지통에 보낸다(대화상자 없음, 최대 3초 재시도). 휴지통이 없는 드라이브에서는 바로 삭제된다. 폴더를 못 옮기면 500 "세션은 삭제했지만 폴더는 그대로입니다". 세션 목록의 각 항목에는 허용 조건을 만족할 때 `folderDeletable:true`가 붙고(external 제외), 폰은 이때만 "폴더까지 삭제"를 보여 준다.
+- 폰 세션 목록 길게 누르기(`SessionActions`): 실행 중 host = 세션 종료 / 세션 삭제 / (가능하면) 폴더까지 삭제, 기록 = 기록 삭제 / 폴더까지 삭제, PC 콘솔 = 세션 종료만. 모두 확인 창을 거친다.
 - 응답 코드: 성공 GET/POST = 200 + JSON(`POST /api/sessions`, resume, adopt 포함). `DELETE /api/sessions/{id}`, `DELETE /api/devices/{id}` = 204(본문 없음). 없음 = 404, history가 아닌 세션 resume = 409, 셸 실행 실패 등 = 400. 오류 본문 `{"error":"..."}`.
 - local 토큰 전용 엔드포인트(`pair/start`, `devices`)에 기기 토큰으로 접근하면 401(403 아님).
 - `GET /api/devices` → `{"devices":[{id,name,createdAt,revoked}]}` (tokenSha256은 노출하지 않음). revoke는 항목을 삭제하지 않고 `revoked:true`로 표시.
@@ -159,7 +162,10 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 무결성: 자산의 `digest`(`sha256:<hex>`) 필드와 다운로드 파일 SHA-256 일치 필수. digest 없으면 같은 릴리스의 `SHA256SUMS.txt`(`<hex>  <name>`)로 대체, 둘 다 없으면 업데이트 거부.
 
 ### 11.3 PC 호스트
-- `serve` 시작 시 + 3시간마다 확인. 트레이 메뉴 "업데이트 확인…"으로 수동 확인·설치(새 버전이 있으면 "업데이트 설치 (vX)…"로 바뀌고 알림 1회, PC 세션 실행 중이면 종료 후 설치할지 물음). 폰 앱도 세션 목록이 보일 때 3시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
+- `serve` 시작 시 + 3시간마다 확인. 트레이 메뉴 "업데이트 확인…"으로 수동 확인·설치(새 버전이 있으면 "업데이트 설치 (vX)…"로 바뀌고, PC 세션 실행 중이면 종료 후 설치할지 물음).
+- 트레이 업데이트 창(`UpdateForm`): 새 버전을 알게 되면 버전마다 한 번(`<home>\tray-update-prompted`에 기록, 트레이 재시작 후에도 유지) "지금 설치 / 나중에"를 묻는다. 설치를 시작하면 같은 창이 `GET /api/update`를 0.4초마다 읽어 4단계로 보여 준다(`UpdateProgress.Describe`): 1 다운로드(`downloaded`/`total`, %) → 2 설치 준비(`step` verify·extract) → 3 교체(state applying, 또는 서버가 응답하지 않고 설치 폴더가 아직 이전 빌드) → 4 다시 시작(응답 없음 + 설치 폴더가 새 빌드) → 완료(`current` = 대상 버전). 창을 닫아도 설치는 계속된다. 묻는 중에 호스트가 스스로 설치를 시작하면(auto, 마지막 세션 종료) 진행 화면으로 바뀐다. 서버가 2분 넘게 응답하지 않으면 실패로 표시. 완료 후 트레이는 "설치 완료"를 3초 보여 준 뒤 새 파일로 다시 시작하고(재시작 힌트는 그동안 보관), 새 트레이가 "업데이트 완료: vX" 풍선을 1회 띄운다.
+- `GET /api/update` 필드: `{current, latest, state, error?, mode, step?, downloaded?, total?}`. `mode`는 auto|notify|off. `step`(download|verify|extract)·`downloaded`·`total`(바이트, 서버가 크기를 알려 줄 때)은 state=downloading일 때만 있다. `psh update`도 기다리는 동안 다운로드 진행을 한 줄씩 출력하고, 다운로드 중에는 90초 제한을 다시 센다.
+- 트레이 단일 실행 뮤텍스는 데이터 폴더별이다: `PKSHELL_HOME`을 지정해 띄운 트레이(다른 서버용)는 기본 트레이와 함께 실행된다. 폰 앱도 세션 목록이 보일 때 3시간마다 확인(설정 `autoUpdate`: `"auto"`(기본) | `"notify"` | `"off"`).
 - 새 버전 발견 → `%PKSHELL_HOME%\updates\<ver>\`에 zip 다운로드·검증·압축 해제(staging).
 - 적용 조건: 실행 중 host 세션 0개(셸이 ConPTY 자식이라 호스트 재시작 시 세션이 종료되기 때문). auto 모드는 유휴 상태가 되면 자동 적용, 세션이 있으면 대기 후 유휴 시 적용.
 - `POST /api/update/apply {force?:bool, killWorking?:bool}` (local 토큰 또는 기기 토큰): 세션이 있고 force가 아니면 409 `{error, runningSessions, workingAgents, sessions[{id, title, agent, agentState}]}`. force여도 AI CLI가 작업 중(`working`)인 세션이 있으면 killWorking 없이는 같은 409(확인을 한 번 더 받기 위함). 트레이·폰·CLI는 끝날 세션 목록을 보여 주고, 작업 중인 세션이 있으면 별도 확인을 한 번 더 받는다. 자동 적용은 force 없이 호출하므로 세션이 있으면 기다린다. `GET /api/update` → `{current, latest, state: "none"|"available"|"downloading"|"ready"|"applying"|"error", error?}`. `/api/info`에 `update` 동일 객체 포함.

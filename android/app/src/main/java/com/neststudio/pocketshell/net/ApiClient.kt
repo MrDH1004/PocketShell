@@ -205,8 +205,14 @@ class ApiClient(
     suspend fun newTerminalHere(pid: Int): SessionInfo =
         SessionInfo.fromJson(JSONObject(request("POST", "/api/external/$pid/adopt")))
 
-    suspend fun delete(id: String) {
-        request("DELETE", "/api/sessions/$id")
+    /** Deletes a session (a running one is ended first); [withFolder] also moves its folder to the PC's Recycle Bin. */
+    suspend fun delete(id: String, withFolder: Boolean = false) {
+        request("DELETE", "/api/sessions/$id" + if (withFolder) "?folder=1" else "")
+    }
+
+    /** Ends a live session; a host session stays under 최근, a PC console's programs are terminated. */
+    suspend fun end(id: String) {
+        request("POST", "/api/sessions/$id/end")
     }
 
     /**
@@ -246,10 +252,10 @@ class ApiClient(
     private fun httpErrorMessage(code: Int, body: String): String = when (code) {
         401 -> "인증 실패 (401) — 기기 등록이 취소되었거나 코드가 만료되었습니다"
         404 -> "찾을 수 없음 (404)"
-        409 -> "요청 충돌 (409) ${body.take(200)}"
+        409 -> serverErrorText(body) ?: "요청 충돌 (409) ${body.take(200)}"
         429 -> "시도 횟수 초과 (429) — 잠시 후 다시 시도하세요"
         400 -> serverErrorText(body) ?: "잘못된 요청 (400) ${body.take(200)}"
-        else -> "서버 오류 ($code) ${body.take(200)}"
+        else -> serverErrorText(body) ?: "서버 오류 ($code) ${body.take(200)}"
     }
 
     private companion object {
