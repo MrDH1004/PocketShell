@@ -292,7 +292,7 @@ class TerminalActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- saved phrases
 
-    /** The user's phrases as a menu on [anchor]: a tap types the phrase and sends it (Enter). */
+    /** The user's phrases as a menu on [anchor]: a tap types the phrase into the input line without Enter. */
     private fun showSnippets(anchor: View) {
         val snippets = uiPrefs.snippets
         val menu = android.widget.PopupMenu(this, anchor)
@@ -307,11 +307,10 @@ class TerminalActivity : AppCompatActivity() {
         menu.show()
     }
 
+    /** Types the phrase into the input line and waits: the user edits or sends it with Enter. */
     private fun sendSnippet(text: String) {
         val bytes = text.toByteArray(Charsets.UTF_8)
         session.write(bytes, 0, bytes.size)
-        // Enter goes separately, a moment later: a TUI reading text and Enter in one chunk may take it for a paste.
-        main.postDelayed({ sendSpecial(SpecialKey.ENTER) }, ENTER_DELAY_MS)
         terminalView.resetImeLine()
     }
 
