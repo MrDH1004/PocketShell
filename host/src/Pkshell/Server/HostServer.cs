@@ -971,6 +971,15 @@ public sealed class HostServer : IDisposable
                     return Error(500, $"세션은 삭제했지만 폴더는 그대로입니다: {err}");
                 }
                 Log.Info($"folder {dir} moved to the Recycle Bin with session {id} by {by}");
+                // The project is discarded: its Claude Code / Codex conversations go to the Recycle Bin too.
+                var history = await Task.Run(() => AgentHistory.Find(dir, AgentHistory.ClaudeDir(), AgentHistory.CodexDir()));
+                var left = await Task.Run(() => AgentHistory.Recycle(history));
+                Log.Info($"folder {dir}: {history.Count - left.Count} AI conversation item(s) moved to the Recycle Bin");
+                if (left.Count > 0)
+                {
+                    Log.Warn($"folder {dir}: conversations not recycled: {string.Join("; ", left)}");
+                    return Error(500, $"세션과 폴더는 삭제했지만 AI 대화 기록 {left.Count}개는 지우지 못했습니다 (PC의 host.log 참고)");
+                }
             }
             return Results.NoContent();
         });
