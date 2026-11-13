@@ -68,8 +68,10 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 **세션 목록**
 - 카드에 Claude/GPT 상태가 표시됨: **작업 중 / 입력 대기 / 끝남** (5초마다 갱신). PC 목록 카드에는 PC별 합계(입력 대기 n · 작업 중 n · 끝남 n).
 - **실행 중**: 폰이나 `psh new`로 만든 PocketShell 세션.
-- **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴.
-- **최근**: 끝난 세션 기록. 한 폴더는 화면에 한 번만(위에 열려 있으면 안 나오고, 같은 폴더 기록은 가장 최근 것만). 다시 열면 그 칸이 맨 위로. 최근 활동 순. 누르면 같은 폴더·셸로 다시 시작.
+- **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴. 제목이 `C:\WINDOWS\System32\cmd.exe`인 빈 cmd 창은 안 나옴(최근에도).
+- **최근**: 끝난 세션 기록, 최근 활동 순. 누르면 같은 폴더·셸로 다시 시작하고, Claude/GPT가 돌던 세션이면 그 폴더의 마지막 대화를 이어감.
+  - 한 폴더는 화면에 한 번만: 실행 중·외부에 열려 있는 폴더는 안 나오고, 같은 폴더 기록은 가장 최근 것만 남음. 다시 열었다 닫으면 그 칸이 맨 위로 올라옴(새 칸이 늘지 않음).
+  - 개수: 세션 목록 메뉴 **최근 목록 개수**(기본 8, 끄기 가능).
 - 외부 항목 오른쪽 아이콘(화면+플러스): 그 콘솔의 폴더에서 새 터미널 열기 (실행 중인 프로그램을 옮기지는 않음).
 - `+` 버튼 → **새 프로젝트**: 프로젝트 폴더(PC 트레이에서 지정)·이름·AI(Claude / GPT(Codex), PC에 설치된 것만)를 고르면 `<폴더>\<이름>`을 만들고(이미 있으면 그대로 사용) 그 폴더에서 claude/codex를 실행한 세션이 열림.
 - `+` 버튼 → **새 터미널**: 새 세션(pwsh/powershell/cmd/bash). 세션을 길게 누르면 **세션 종료**(셸만 끝내고 기록은 '최근'에 남음) / **세션 삭제**(종료하고 기록도 삭제) / **세션과 폴더 삭제**.
@@ -121,6 +123,7 @@ cd android && gradlew.bat test assembleRelease   # JDK 17, Android SDK 35
 dotnet run --project qa/Pkshell.QA -c Release       # E2E QA
 powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releases → 자동 업데이트, Inno Setup 6 필요)
 ```
+릴리스 파일 4개(설치 파일, 호스트 zip, APK, SHA256SUMS)는 `-CopyTo <폴더>` 또는 사용자 환경 변수 `PKSHELL_RELEASE_COPY_DIR`가 있으면 `<폴더>\v<버전>\`에도 복사됨.
 
 ## 보안
 - 원격 셸이므로 같은 LAN 또는 Tailscale 안에서만 사용. 0.0.0.0 바인딩 없음.
