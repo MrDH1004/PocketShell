@@ -52,7 +52,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   `codex resume --last` 입력(Enter 포함) 후 항목 삭제. `DELETE`는 항목만 삭제.
 - host 세션 셸 환경에서 CLAUDECODE / CLAUDE_CODE_* / CLAUDE_PID / CLAUDE_EFFORT / AI_AGENT 제거(호스트가 Claude Code 안에서 시작돼도 셸 안 claude가 child session으로 돌지 않게 — 그러면 대화 기록 저장이 꺼져 --continue 불가).
 - host 세션에서 도는 AI CLI를 20초마다와 종료 시 meta.agent에 기록 → 업데이트·재시작으로 끝난 세션을 resume하면 `claude --continue` / `codex resume --last` 입력.
-- 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
+- 폰 '최근' 섹션 = history + recent, lastActivity 내림차순, 같은 폴더(대소문자·끝 구분자 무시)+같은 AI CLI는 가장 최근 1개만, 개수는 폰 메뉴 '최근 목록 개수'(기본 8, 0=숨김).
 - 폰 터미널 상단: 연결 점(초록 = 연결됨) + 제목, 원래 크기로 맞춤 버튼, 프로젝트 파일(폴더) 버튼 + ⋮ 메뉴(정보: 전체 제목·연결 상태·크기 / 보기 설정(글꼴)). 보기 설정은 목록 메뉴에도 있다. 연결이 아닐 때(연결 중·끊김·재연결)는 제목 아래 한 줄로 상태 문구를 보여 색에만 의존하지 않고, 점의 설명(TalkBack)도 상태 문구.
 - 오류 문구: "무엇이 실패 + 어떻게 복구" + 원인 한 줄(`ErrorText`). 파괴적 확인은 제목에 대상 이름, 버튼은 동사(종료하고 삭제 / 삭제 / 페어링 해제). 키 바 키캡은 TalkBack에 버튼 역할 + 읽을 이름(Page Up 등).
   글꼴 크기 6~32sp(기본 12). 핀치 = 갤러리처럼 화면 확대(1~5배, 글꼴·PC 크기는 그대로), 확대 중 한 손가락으로 이동(위/아래 끝을 넘겨 끌면 터미널 기록 스크롤), 원래 크기 버튼으로 1배.

@@ -95,12 +95,22 @@ data class SessionSections(
     companion object {
         const val DEFAULT_RECENT_LIMIT = 8
 
-        /** [recentLimit]: newest N entries under 최근 (0 hides the section). */
+        /**
+         * [recentLimit]: newest N entries under 최근 (0 hides the section). Only the newest entry per folder and AI
+         * CLI is shown; older ones for the same folder are left out.
+         */
         fun of(sessions: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections = SessionSections(
             running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity },
             external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE },
-            recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }.take(recentLimit.coerceAtLeast(0)),
+            recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }
+                .distinctBy(::recentKey).take(recentLimit.coerceAtLeast(0)),
         )
+
+        /** Same folder (case and trailing separator ignored, as on Windows) and same AI CLI; no folder → the id. */
+        private fun recentKey(s: SessionInfo): String {
+            val dir = s.cwd.trim().trimEnd('\\', '/').lowercase()
+            return if (dir.isEmpty()) "id:" + s.id else dir + "|" + (s.agent ?: "")
+        }
     }
 }
 

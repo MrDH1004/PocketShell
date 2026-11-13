@@ -67,6 +67,19 @@ class ProtocolTest {
     }
 
     @Test
+    fun recentShowsOnlyTheNewestPerFolder() {
+        val text = """{"sessions":[
+            {"id":"rec-old","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"E:\\vailvpn","state":"exited","lastActivity":"2026-11-14T01:00:00.000Z","agent":"claude"},
+            {"id":"rec-new","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"e:\\VailVpn\\","state":"exited","lastActivity":"2026-11-14T03:08:00.000Z","agent":"claude"},
+            {"id":"rec-gpt","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"E:\\vailvpn","state":"exited","lastActivity":"2026-11-13T10:00:00.000Z","agent":"gpt"},
+            {"id":"aaaaaaaaaaaa","kind":"history","title":"a","shell":"cmd","cwd":"","state":"exited","lastActivity":"2026-11-12T10:00:00.000Z"},
+            {"id":"cccccccccccc","kind":"history","title":"c","shell":"cmd","cwd":"","state":"exited","lastActivity":"2026-11-11T10:00:00.000Z"}
+        ]}"""
+        val recent = SessionSections.of(SessionInfo.listFromJson(text), 10).recent.map { it.id }
+        assertEquals(listOf("rec-new", "rec-gpt", "aaaaaaaaaaaa", "cccccccccccc"), recent)
+    }
+
+    @Test
     fun resizeMessageAndUrl() {
         val o = JSONObject(ClientProtocol.resizeMessage(90, 33))
         assertEquals("resize", o.getString("type"))
