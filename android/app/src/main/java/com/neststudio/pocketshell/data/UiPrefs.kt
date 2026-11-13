@@ -81,8 +81,14 @@ class UiPrefs(context: Context) {
         get() = prefs.getString(K_SNIPPETS, null)?.let(Snippets::parse) ?: Snippets.DEFAULTS
         set(value) = prefs.edit().putString(K_SNIPPETS, Snippets.toText(value)).apply()
 
+    /** Terminal: the AI CLI's choices as buttons above the key bar while it waits (⋮ menu toggle, on by default). */
+    var quickReplies: Boolean
+        get() = prefs.getBoolean(K_QUICK_REPLIES, true)
+        set(value) = prefs.edit().putBoolean(K_QUICK_REPLIES, value).apply()
+
     companion object {
         private const val PREFS = "ui"
+        private const val K_QUICK_REPLIES = "quick_replies"
         private const val K_MUTED = "muted_sessions"
         private const val MUTED_MAX = 200
         private const val K_QUIET_ON = "quiet_enabled"

@@ -285,6 +285,7 @@
     <string name="notify_reply">답장</string>
     <string name="notify_reply_hint">다음 지시 입력</string>
     <string name="notify_reply_failed">PC로 보내지 못했습니다: %1$s</string>
+    <string name="quick_reply_toggle">선택지 버튼 표시</string>
     <string name="quick_reply_escape">취소 (Esc)</string>
     <string name="quick_reply_failed">보내지 못했습니다: %1$s</string>
     <string name="term_copied">복사했습니다</string>

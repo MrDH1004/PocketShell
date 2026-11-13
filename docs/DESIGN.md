@@ -241,4 +241,4 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   - 고정 알림은 PC별 마지막 롱폴 결과를 보여 준다: 모두 성공 "PC n대 연결됨", 실패 "연결 안 됨: 이름", 404(0.2.59 미만) "PC 업데이트 필요: 이름", 401 "다시 연결(PIN) 필요: 이름".
   - 방해 금지 시간(`UiPrefs.quiet*`, 분 단위, 자정을 넘을 수 있음): 그 시간대에는 같은 알림을 소리 없는 채널(`agent_quiet`, IMPORTANCE_LOW)로 보낸다.
   - 자주 쓰는 문구(`UiPrefs.snippets`, 최대 20개·200자): 터미널 키 바 "문구" 키와 ⋮ 메뉴. 누르면 문구를 입력창에 넣기만 하고 Enter는 보내지 않는다(고치거나 직접 보냄). 알림 칩은 바로 보냄.
-  - 세션 카드 상태 칩, PC 카드 합계, 터미널 빠른 응답 바(2초마다 `GET /api/sessions/{id}`).
+  - 세션 카드 상태 칩, PC 카드 합계, 터미널 빠른 응답 바(2초마다 `GET /api/sessions/{id}`, ⋮ 메뉴 "선택지 버튼 표시" 토글 `UiPrefs.quickReplies`, 기본 켜짐).

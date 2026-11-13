@@ -85,6 +85,8 @@ class TerminalActivity : AppCompatActivity() {
     private var pcId = ""
     private lateinit var quickBar: LinearLayout
     private var quickPrompt: com.neststudio.pocketshell.core.AgentPrompt? = null
+    /** What the AI CLI asks right now (last poll), shown as buttons only while [UiPrefs.quickReplies] is on. */
+    private var askedPrompt: com.neststudio.pocketshell.core.AgentPrompt? = null
     private var statePoll: kotlinx.coroutines.Job? = null
 
     // Special key bar toggles.
@@ -227,7 +229,8 @@ class TerminalActivity : AppCompatActivity() {
                 if (client != null && sessionId.isNotEmpty()) {
                     try {
                         val s = client.session(sessionId)
-                        showQuickReplies(s.prompt.takeIf { s.agentState == com.neststudio.pocketshell.core.AgentState.WAITING })
+                        askedPrompt = s.prompt.takeIf { s.agentState == com.neststudio.pocketshell.core.AgentState.WAITING }
+                        showQuickReplies(askedPrompt.takeIf { uiPrefs.quickReplies })
                     } catch (e: IOException) {
                         // offline or the session ended: the connection status already says so
                     } catch (e: org.json.JSONException) {
@@ -395,6 +398,10 @@ class TerminalActivity : AppCompatActivity() {
         menu.menu.add(2, OPT_SELECT, 100, R.string.term_select_copy)
         menu.menu.add(2, OPT_SEARCH, 100, R.string.term_search)
         menu.menu.add(4, OPT_SNIPPETS, 100, R.string.snippets_title)
+        menu.menu.add(4, OPT_QUICK, 100, R.string.quick_reply_toggle).apply {
+            isCheckable = true
+            isChecked = uiPrefs.quickReplies
+        }
         if (sessionKind != SessionInfo.KIND_HISTORY && pcId.isNotEmpty() && sessionId.isNotEmpty()) {
             menu.menu.add(4, OPT_MUTE, 100, if (uiPrefs.isMuted(pcId, sessionId)) R.string.notify_unmute_session else R.string.notify_mute_session)
         }
@@ -406,6 +413,10 @@ class TerminalActivity : AppCompatActivity() {
                 OPT_SELECT -> openText(search = false)
                 OPT_SEARCH -> openText(search = true)
                 OPT_SNIPPETS -> showSnippets(anchor)
+                OPT_QUICK -> {
+                    uiPrefs.quickReplies = !uiPrefs.quickReplies
+                    showQuickReplies(askedPrompt.takeIf { uiPrefs.quickReplies })
+                }
                 OPT_MUTE -> {
                     val muted = !uiPrefs.isMuted(pcId, sessionId)
                     uiPrefs.setMuted(pcId, sessionId, muted)
@@ -982,6 +993,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val OPT_SEARCH = 4
         private const val OPT_SNIPPETS = 5
         private const val OPT_MUTE = 6
+        private const val OPT_QUICK = 7
         private const val SNIPPET_EDIT = 10_000
         private const val SNIPPET_NONE = 10_001
         private const val STATE_POLL_MS = 2000L
