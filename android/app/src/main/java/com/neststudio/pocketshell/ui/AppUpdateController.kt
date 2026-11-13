@@ -59,13 +59,14 @@ class AppUpdateController(private val activity: AppCompatActivity) {
     /**
      * Checks both sources at once: the paired PC host over the LAN (`GET /api/app/android`, no GitHub rate limit) and
      * GitHub Releases. Either one is enough; the dialog lets the user pick where to download from.
+     * While [PC_SOURCE] is off, only GitHub is checked.
      */
     private fun check(manual: Boolean) {
         if (job?.isActive == true) return
         job = activity.lifecycleScope.launch {
             val api = (activity.application as PkshellApp).api()
             updater.pcApi = api
-            val pc = async { if (api == null) null else runCatching { updater.checkPc(api) } }
+            val pc = async { if (api == null || !PC_SOURCE) null else runCatching { updater.checkPc(api) } }
             val gh = async { runCatching { updater.check() } }
             val pcResult = pc.await()
             val ghResult = gh.await()
@@ -76,6 +77,9 @@ class AppUpdateController(private val activity: AppCompatActivity) {
                 !manual -> Unit
                 ghResult.isSuccess || pcResult?.isSuccess == true ->
                     toast(activity.getString(R.string.update_latest, updater.currentVersion))
+                !PC_SOURCE -> showError(
+                    activity.getString(R.string.update_check_failed, ghResult.exceptionOrNull()?.message ?: ""),
+                )
                 else -> showError(
                     activity.getString(
                         R.string.update_check_failed_both,
@@ -205,5 +209,8 @@ class AppUpdateController(private val activity: AppCompatActivity) {
 
     private companion object {
         const val APK_MIME = "application/vnd.android.package-archive"
+
+        /** Phone app from the paired PC over the same network (`GET /api/app/android`). Off for now: GitHub only. */
+        const val PC_SOURCE = false
     }
 }

@@ -17,6 +17,9 @@
   config.json "updateUrl"; three newest kept) and only version.properties is committed and pushed: no tag, no release.
   Apply it with `psh update`; paired phones take the APK from the PC.
 
+  -CopyTo <folder> (default: the PKSHELL_RELEASE_COPY_DIR environment variable): after a GitHub release the four
+  files are also copied to <folder><Version>\ (e.g. a synced OneDrive folder). Skipped when neither is set.
+
   -DryRun performs steps 1-4 into a temp folder only: version.properties is restored afterwards and nothing is
   committed, tagged, pushed or released.
 
@@ -28,7 +31,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Version,
     [switch]$DryRun,
     [switch]$Local,
-    [string]$OutDir
+    [string]$OutDir,
+    [string]$CopyTo = $env:PKSHELL_RELEASE_COPY_DIR
 )
 
 $ErrorActionPreference = 'Stop'
@@ -244,4 +248,11 @@ Step "gh release create v$Version"
 $ghArgs = @('release', 'create', "v$Version", $setupOut, $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version", '--generate-notes')
 if ($IsPrerelease) { $ghArgs += '--prerelease' }
 Invoke-Checked 'gh' $ghArgs
+
+if ($CopyTo) {
+    $copyDir = Join-Path $CopyTo "v$Version"
+    Step "copy release files to $copyDir"
+    New-Item -ItemType Directory -Force -Path $copyDir | Out-Null
+    foreach ($f in @($setupOut, $hostZip, $apkOut, $sumsPath)) { Copy-Item -LiteralPath $f -Destination $copyDir -Force }
+}
 Step "released v$Version (artifacts in $OutDir)"
