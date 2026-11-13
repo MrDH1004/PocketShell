@@ -818,13 +818,13 @@ class TerminalActivity : AppCompatActivity() {
             return tv
         }
         for (k in listOf(SpecialKey.ESC, SpecialKey.TAB)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
-        lateinit var snippetKey: TextView
-        snippetKey = keyButton(getString(R.string.snippets_key)) { showSnippets(snippetKey) }
         keyButton("", spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
             // A drawn return icon (like the system keyboard's), not the font's tiny "↵" glyph.
             val icon = ContextCompat.getDrawable(context, R.drawable.ic_key_enter)
             setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
         }
+        lateinit var snippetKey: TextView
+        snippetKey = keyButton(getString(R.string.snippets_key)) { showSnippets(snippetKey) }
         ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
         altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
         // Hidden on the bar (not used); the toggle handling is kept.
