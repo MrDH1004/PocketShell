@@ -95,6 +95,20 @@ public final class TerminalView extends View {
     private EdgeEffect mEdgeTop, mEdgeBottom;
     private boolean mRemoteFling;
 
+    /**
+     * PocketShell: scroll sensitivity (1 = finger distance, 2 = twice as far); scales dragging and flinging alike.
+     * Set from the app's 보기 설정.
+     */
+    private float mScrollSensitivity = 1f;
+    /** Velocity (scroller units) of a fling a new touch cut short, and when: a quick follow-up fling adds it. */
+    private float mCarryVelocity;
+    private long mCarryAt;
+    /** Sign of the running fling's velocity in scroller units (getCurrVelocity is only the magnitude). */
+    private float mFlingSign;
+    /** Local transcript fling: pixels not yet turned into whole rows. */
+    private float mLocalFlingRemainder;
+    private static final long CARRY_WINDOW_MS = 600;
+
     /** If non-zero, this is the last unicode code point received if that was a combining character. */
     int mCombiningAccent;
 
@@ -193,9 +207,9 @@ public final class TerminalView extends View {
                     sendMouseEventCode(e, TerminalEmulator.MOUSE_LEFT_BUTTON_MOVED, true);
                 } else {
                     scrolledWithFinger = true;
+                    distanceY *= mScrollSensitivity;
+                    stopFlingKeepingVelocity();
                     if (isRemoteScroll()) {
-                        mScroller.forceFinished(true);
-                        mRemoteFling = false;
                         remoteScrollPx(distanceY, true);
                         return true;
                     }
@@ -218,8 +232,8 @@ public final class TerminalView extends View {
             @Override
             public boolean onFling(final MotionEvent e2, float velocityX, float velocityY) {
                 if (mEmulator == null) return true;
-                // Do not start scrolling until last fling has been taken care of:
-                if (!mScroller.isFinished()) return true;
+                // PocketShell: a fling while one still runs takes over (and keeps its speed, see flingVelocity).
+                stopFlingKeepingVelocity();
 
                 // PocketShell: an external console scrolls its own phone-side history (onRemoteScroll(0) probes for
                 // it). Fling relative to the start in both directions, like mouse tracking: the emulator transcript
@@ -231,12 +245,13 @@ public final class TerminalView extends View {
                 }
                 final boolean remote = false;
                 final boolean mouseTrackingAtStartOfFling = mEmulator.isMouseTrackingActive();
-                float SCALE = 0.25f;
-                if (mouseTrackingAtStartOfFling) {
-                    mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
-                } else {
-                    mScroller.fling(0, mTopRow, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.getScreen().getActiveTranscriptRows(), 0);
+                if (!mouseTrackingAtStartOfFling) {
+                    // Alternate screen (less, vim) without mouse: scrolling sends arrow keys, no fling (as before).
+                    if (!mEmulator.isAlternateBufferActive()) startLocalFling(e2, velocityY);
+                    return true;
                 }
+                float SCALE = 0.25f;
+                mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
 
                 post(new Runnable() {
                     private int mLastY = 0;
@@ -692,6 +707,7 @@ public final class TerminalView extends View {
      */
     public void scrollByFinger(float distanceY) {
         if (mEmulator == null) return;
+        distanceY *= mScrollSensitivity;
         if (isRemoteScroll()) {
             remoteScrollPx(distanceY, false);
             return;
@@ -757,9 +773,69 @@ public final class TerminalView extends View {
         invalidate();
     }
 
+    /** PocketShell: scroll sensitivity, 0.5 to 3 (1 = the finger's distance). */
+    public void setScrollSensitivity(float sensitivity) {
+        mScrollSensitivity = Math.max(0.5f, Math.min(3f, sensitivity));
+    }
+
+    /**
+     * Stops a running fling; its current velocity is kept for a moment so a quick next fling in the same
+     * direction goes faster (repeated flicks speed up, as in a phone browser).
+     */
+    private void stopFlingKeepingVelocity() {
+        if (!mScroller.isFinished()) {
+            mCarryVelocity = mFlingSign * mScroller.getCurrVelocity();
+            mCarryAt = android.os.SystemClock.uptimeMillis();
+            mScroller.forceFinished(true);
+        }
+        mRemoteFling = false;
+    }
+
+    /** Fling velocity in scroller units (positive = towards newer lines) for a finger velocity, with the carry. */
+    private float flingVelocity(float velocityY) {
+        float v = -velocityY * mScrollSensitivity;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (mCarryAt != 0 && now - mCarryAt < CARRY_WINDOW_MS && Math.signum(mCarryVelocity) == Math.signum(v)) v += mCarryVelocity;
+        mCarryAt = 0;
+        float max = ViewConfiguration.get(getContext()).getScaledMaximumFlingVelocity() * 4f;
+        v = Math.max(-max, Math.min(max, v));
+        mFlingSign = Math.signum(v);
+        return v;
+    }
+
+    /**
+     * Pixel-physics fling over the emulator transcript (PocketShell session): the same glide as the external
+     * console, moved a whole row at a time; stops at the oldest row and at the live screen.
+     */
+    private void startLocalFling(final MotionEvent e2, float velocityY) {
+        mScroller.fling(0, 0, 0, (int) flingVelocity(velocityY), 0, 0, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2);
+        mLocalFlingRemainder = 0f;
+        postOnAnimation(new Runnable() {
+            private int mLastY = 0;
+
+            @Override
+            public void run() {
+                if (mEmulator == null || mEmulator.isMouseTrackingActive() || mScroller.isFinished()) return;
+                boolean more = mScroller.computeScrollOffset();
+                int newY = mScroller.getCurrY();
+                float px = mLocalFlingRemainder + (newY - mLastY);
+                mLastY = newY;
+                float line = mRenderer.mFontLineSpacing;
+                int rows = (int) (px / line);
+                mLocalFlingRemainder = px - rows * line;
+                if (rows != 0) {
+                    int before = mTopRow;
+                    doScroll(e2, rows);
+                    if (mTopRow == before) { mScroller.forceFinished(true); return; } // at an edge
+                }
+                if (more) postOnAnimation(this);
+            }
+        });
+    }
+
     /** Pixel fling over the client history: same physics both ways, bounces at an edge. */
     private void startRemoteFling(float velocityY) {
-        mScroller.fling(0, 0, 0, -(int) velocityY, 0, 0, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2);
+        mScroller.fling(0, 0, 0, (int) flingVelocity(velocityY), 0, 0, Integer.MIN_VALUE / 2, Integer.MAX_VALUE / 2);
         mRemoteFling = true;
         postOnAnimation(new Runnable() {
             private int mLastY = 0;

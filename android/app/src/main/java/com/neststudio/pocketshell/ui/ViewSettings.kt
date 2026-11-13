@@ -38,7 +38,7 @@ enum class TerminalFont(val id: String, val label: String, @FontRes private val 
     }
 }
 
-/** "보기 설정" dialog: font size + font. Changes are saved at once and reported to [onChanged] for live preview. */
+/** "보기 설정" dialog: font size + font + scroll sensitivity. Changes are saved at once and reported to [onChanged] for live preview. */
 object ViewSettingsDialog {
     /** [note]: shown under the size (e.g. an external console caps the size to fit the PC window). */
     fun show(context: Context, note: String? = null, onChanged: () -> Unit = {}) {
@@ -105,6 +105,35 @@ object ViewSettingsDialog {
         }
         box.addView(group)
 
+        val scrollLabel = TextView(context).apply { setPadding(0, pad / 2, 0, 0) }
+        fun showScroll(p: Int) { scrollLabel.text = context.getString(R.string.view_scroll, p) }
+        showScroll(prefs.scrollPercent)
+        box.addView(scrollLabel)
+        val step = UiPrefs.SCROLL_STEP
+        val scrollSeek = SeekBar(context).apply {
+            max = (UiPrefs.MAX_SCROLL_PERCENT - UiPrefs.MIN_SCROLL_PERCENT) / step
+            progress = (prefs.scrollPercent - UiPrefs.MIN_SCROLL_PERCENT) / step
+            contentDescription = context.getString(R.string.view_scroll_name)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    val p = UiPrefs.MIN_SCROLL_PERCENT + value * step
+                    prefs.scrollPercent = p
+                    showScroll(p)
+                    onChanged()
+                }
+
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) {}
+            })
+        }
+        box.addView(scrollSeek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        box.addView(TextView(context).apply {
+            text = context.getString(R.string.view_scroll_hint)
+            textSize = 12f
+            setTextColor(androidx.core.content.ContextCompat.getColor(context, R.color.text_muted))
+        })
+
         AlertDialog.Builder(context)
             .setTitle(R.string.view_settings)
             .setView(box)
@@ -112,6 +141,7 @@ object ViewSettingsDialog {
             .setNeutralButton(R.string.view_reset) { _, _ ->
                 prefs.fontSizeSp = UiPrefs.DEFAULT_FONT_SP
                 prefs.fontId = TerminalFont.SYSTEM.id
+                prefs.scrollPercent = UiPrefs.DEFAULT_SCROLL_PERCENT
                 onChanged()
             }
             .show()

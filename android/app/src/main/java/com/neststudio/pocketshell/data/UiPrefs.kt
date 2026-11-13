@@ -19,6 +19,11 @@ class UiPrefs(context: Context) {
         get() = prefs.getFloat(K_FONT_SIZE, DEFAULT_FONT_SP).coerceIn(MIN_FONT_SP, MAX_FONT_SP)
         set(value) = prefs.edit().putFloat(K_FONT_SIZE, value.coerceIn(MIN_FONT_SP, MAX_FONT_SP)).apply()
 
+    /** Terminal scroll sensitivity in percent (100 = the finger's distance); drag and fling alike. */
+    var scrollPercent: Int
+        get() = prefs.getInt(K_SCROLL, DEFAULT_SCROLL_PERCENT).coerceIn(MIN_SCROLL_PERCENT, MAX_SCROLL_PERCENT)
+        set(value) = prefs.edit().putInt(K_SCROLL, value.coerceIn(MIN_SCROLL_PERCENT, MAX_SCROLL_PERCENT)).apply()
+
     /** Terminal font id, see TerminalFonts. */
     var fontId: String
         get() = prefs.getString(K_FONT, null).orEmpty()
@@ -102,9 +107,15 @@ class UiPrefs(context: Context) {
         private const val K_RECENT_LIMIT = "recent_limit"
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
+        private const val K_SCROLL = "scroll_percent"
 
         /** Choices offered in the menu. */
         val RECENT_LIMIT_CHOICES = intArrayOf(0, 3, 5, 8, 10, 15, 20, 30)
+
+        const val DEFAULT_SCROLL_PERCENT = 100
+        const val MIN_SCROLL_PERCENT = 50
+        const val MAX_SCROLL_PERCENT = 300
+        const val SCROLL_STEP = 10
 
         const val DEFAULT_FONT_SP = 12f
         const val MIN_FONT_SP = 6f

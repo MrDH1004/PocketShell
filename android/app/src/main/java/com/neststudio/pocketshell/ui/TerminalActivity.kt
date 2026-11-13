@@ -175,6 +175,7 @@ class TerminalActivity : AppCompatActivity() {
 
         terminalView.setTerminalViewClient(viewClient)
         uiPrefs = UiPrefs(this)
+        terminalView.setScrollSensitivity(uiPrefs.scrollPercent / 100f)
         fontSizeSp = uiPrefs.fontSizeSp
         typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
         applyTextSize(spToPx(fontSizeSp))
@@ -465,6 +466,7 @@ class TerminalActivity : AppCompatActivity() {
         fontSizeSp = uiPrefs.fontSizeSp
         typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
         terminalView.setTypeface(typeface)
+        terminalView.setScrollSensitivity(uiPrefs.scrollPercent / 100f)
         refit()
     }
 
