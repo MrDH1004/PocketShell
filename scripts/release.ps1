@@ -18,7 +18,7 @@
   Apply it with `psh update`; paired phones take the APK from the PC.
 
   -CopyTo <folder> (default: the PKSHELL_RELEASE_COPY_DIR environment variable): after a GitHub release the four
-  files are also copied to <folder><Version>\ (e.g. a synced OneDrive folder). Skipped when neither is set.
+  files are also copied to <folder>\v<Version>\ (e.g. a synced OneDrive folder). Skipped when neither is set.
 
   -DryRun performs steps 1-4 into a temp folder only: version.properties is restored afterwards and nothing is
   committed, tagged, pushed or released.
