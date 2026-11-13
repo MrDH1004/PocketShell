@@ -315,6 +315,41 @@ public static class Win32
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+    public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+    /// <summary>
+    /// Visible top-level windows of process <paramref name="pid"/> whose window class is <paramref name="className"/>.
+    /// Plain Win32: unlike walking the UI Automation root, it never waits on another app's hung window.
+    /// </summary>
+    public static List<IntPtr> TopLevelWindowsOf(int pid, string className)
+    {
+        var result = new List<IntPtr>();
+        var cls = new System.Text.StringBuilder(256);
+        EnumWindows((hwnd, _) =>
+        {
+            if (GetWindowThreadProcessId(hwnd, out uint owner) != 0 && owner == (uint)pid && IsWindowVisible(hwnd))
+            {
+                cls.Clear();
+                if (GetClassName(hwnd, cls, cls.Capacity) > 0 && cls.ToString() == className) result.Add(hwnd);
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
+
     /// <summary>winuser.h LASTINPUTINFO: cbSize (UINT), dwTime (DWORD, GetTickCount of the last input event).</summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct LASTINPUTINFO
