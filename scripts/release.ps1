@@ -249,6 +249,8 @@ $ghArgs = @('release', 'create', "v$Version", $setupOut, $hostZip, $apkOut, $sum
 if ($IsPrerelease) { $ghArgs += '--prerelease' }
 Invoke-Checked 'gh' $ghArgs
 
+# A shell started before the variable was set does not see it: read the user-level value too.
+if (-not $CopyTo) { $CopyTo = [Environment]::GetEnvironmentVariable('PKSHELL_RELEASE_COPY_DIR', 'User') }
 if ($CopyTo) {
     $copyDir = Join-Path $CopyTo "v$Version"
     Step "copy release files to $copyDir"
