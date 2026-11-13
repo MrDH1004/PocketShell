@@ -96,20 +96,32 @@ data class SessionSections(
         const val DEFAULT_RECENT_LIMIT = 8
 
         /**
-         * [recentLimit]: newest N entries under 최근 (0 hides the section). Only the newest entry per folder and AI
-         * CLI is shown; older ones for the same folder are left out.
+         * [recentLimit]: newest N entries under 최근 (0 hides the section). A folder shows once on the whole screen:
+         * 최근 leaves out folders open under 실행 중 / 외부 and keeps only the newest entry per folder, so reopening
+         * a 최근 entry moves it up instead of adding another.
          */
-        fun of(sessions: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections = SessionSections(
-            running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity },
-            external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE },
-            recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }
-                .distinctBy(::recentKey).take(recentLimit.coerceAtLeast(0)),
-        )
+        fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections {
+            val sessions = all.filterNot(::isPlainCmd)
+            val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
+            val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
+            val open = (running + external).mapTo(HashSet(), ::folderKey)
+            val recent = sessions.filter { it.isHistory && folderKey(it) !in open }.sortedByDescending { it.lastActivity }
+                .distinctBy(::folderKey).take(recentLimit.coerceAtLeast(0))
+            return SessionSections(running, external, recent)
+        }
 
-        /** Same folder (case and trailing separator ignored, as on Windows) and same AI CLI; no folder → the id. */
-        private fun recentKey(s: SessionInfo): String {
+        /**
+         * A PC console still titled with cmd's own path ("C:\WINDOWS\System32\cmd.exe", "관리자: …"): nothing named
+         * runs in it, so it is not listed under 외부 or 최근.
+         */
+        private fun isPlainCmd(s: SessionInfo): Boolean =
+            (s.isExternal || s.kind == SessionInfo.KIND_RECENT) &&
+                s.title.trim().endsWith("\\system32\\cmd.exe", ignoreCase = true)
+
+        /** The folder, case and trailing separator ignored (as on Windows); no folder → the session's own id. */
+        private fun folderKey(s: SessionInfo): String {
             val dir = s.cwd.trim().trimEnd('\\', '/').lowercase()
-            return if (dir.isEmpty()) "id:" + s.id else dir + "|" + (s.agent ?: "")
+            return if (dir.isEmpty()) "id:" + s.id else dir
         }
     }
 }

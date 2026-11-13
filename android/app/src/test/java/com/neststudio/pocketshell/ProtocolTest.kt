@@ -73,10 +73,31 @@ class ProtocolTest {
             {"id":"rec-new","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"e:\\VailVpn\\","state":"exited","lastActivity":"2026-11-14T03:08:00.000Z","agent":"claude"},
             {"id":"rec-gpt","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"E:\\vailvpn","state":"exited","lastActivity":"2026-11-13T10:00:00.000Z","agent":"gpt"},
             {"id":"aaaaaaaaaaaa","kind":"history","title":"a","shell":"cmd","cwd":"","state":"exited","lastActivity":"2026-11-12T10:00:00.000Z"},
-            {"id":"cccccccccccc","kind":"history","title":"c","shell":"cmd","cwd":"","state":"exited","lastActivity":"2026-11-11T10:00:00.000Z"}
+            {"id":"cccccccccccc","kind":"history","title":"c","shell":"cmd","cwd":"","state":"exited","lastActivity":"2026-11-11T10:00:00.000Z"},
+            {"id":"rec-open","kind":"recent","title":"shell","shell":"cmd","cwd":"E:\\PocketShell","state":"exited","lastActivity":"2026-11-14T05:00:00.000Z"},
+            {"id":"ext-42","kind":"external","title":"shell","shell":"cmd","cwd":"E:\\PocketShell\\","state":"running","lastActivity":"2026-11-14T05:30:00.000Z","pid":42},
+            {"id":"hist-open","kind":"history","title":"h","shell":"pwsh","cwd":"D:\\work","state":"exited","lastActivity":"2026-11-14T04:00:00.000Z"},
+            {"id":"dddddddddddd","kind":"host","title":"h","shell":"pwsh","cwd":"d:\\WORK","state":"running","lastActivity":"2026-11-14T05:10:00.000Z"}
         ]}"""
-        val recent = SessionSections.of(SessionInfo.listFromJson(text), 10).recent.map { it.id }
-        assertEquals(listOf("rec-new", "rec-gpt", "aaaaaaaaaaaa", "cccccccccccc"), recent)
+        val s = SessionSections.of(SessionInfo.listFromJson(text), 10)
+        // one per folder (newest), folders open above are left out, entries without a folder kept
+        assertEquals(listOf("rec-new", "aaaaaaaaaaaa", "cccccccccccc"), s.recent.map { it.id })
+        assertEquals(listOf("dddddddddddd"), s.running.map { it.id })
+        assertEquals(listOf("ext-42"), s.external.map { it.id })
+    }
+
+    @Test
+    fun plainCmdConsolesAreNotListed() {
+        val text = """{"sessions":[
+            {"id":"ext-1","kind":"external","title":"C:\\WINDOWS\\System32\\cmd.exe","shell":"cmd","cwd":"C:\\a","state":"running","pid":1},
+            {"id":"ext-2","kind":"external","title":"관리자: C:\\Windows\\system32\\cmd.exe","shell":"cmd","cwd":"C:\\b","state":"running","pid":2},
+            {"id":"ext-3","kind":"external","title":"✳ VeilVPN","shell":"cmd","cwd":"C:\\c","state":"running","pid":3},
+            {"id":"rec-1","kind":"recent","title":"C:\\WINDOWS\\System32\\cmd.exe","shell":"cmd","cwd":"C:\\d","state":"exited","lastActivity":"2026-11-13T08:32:00.000Z","agent":"gpt"},
+            {"id":"rec-2","kind":"recent","title":"Tapo_P110","shell":"cmd","cwd":"C:\\e","state":"exited","lastActivity":"2026-11-13T08:35:00.000Z"}
+        ]}"""
+        val s = SessionSections.of(SessionInfo.listFromJson(text), 10)
+        assertEquals(listOf("ext-3"), s.external.map { it.id })
+        assertEquals(listOf("rec-2"), s.recent.map { it.id })
     }
 
     @Test

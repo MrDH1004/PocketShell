@@ -66,18 +66,22 @@ public sealed class RecentExternalsTests : IDisposable
     }
 
     [Fact]
-    public void TwoWindowsOnTheSameFolderAreTwoEntries()
+    public void OneClosedRecordPerFolder()
     {
-        static SessionDto Win(int pid, string start, string? agent) =>
-            new() { Kind = "external", Cwd = @"E:\Work\a", Agent = agent, Shell = "cmd", Pid = pid, CreatedAt = start };
+        static SessionDto Win(int pid, string start, string? agent, string cwd = @"E:\Work\a") =>
+            new() { Kind = "external", Cwd = cwd, Agent = agent, Shell = "cmd", Pid = pid, CreatedAt = start };
         var r = new RecentExternals(FilePath);
         r.Observe(new[] { Win(10, "2026-11-08T01:00:00Z", "claude"), Win(20, "2026-11-08T02:00:00Z", null) });
         r.Observe(new[] { Win(20, "2026-11-08T02:00:00Z", null) });
-        Assert.Equal(RecentExternals.IdForConsole(10, "2026-11-08T01:00:00Z"), Assert.Single(r.Closed()).Id);
+        Assert.Empty(r.Closed()); // its folder is still open in window 20
         r.Observe(Array.Empty<SessionDto>());
-        var closed = r.Closed();
-        Assert.Equal(2, closed.Count);
-        Assert.All(closed, c => Assert.Equal(@"E:\Work\a", c.Cwd));
+        Assert.Equal(RecentExternals.IdForConsole(20, "2026-11-08T02:00:00Z"), Assert.Single(r.Closed()).Id);
+
+        // reopening the folder (another case/trailing separator) and closing it again replaces the record
+        r.Observe(new[] { Win(30, "2026-11-08T03:00:00Z", "claude", @"e:\work\A\") });
+        Assert.Empty(r.Closed());
+        r.Observe(Array.Empty<SessionDto>());
+        Assert.Equal(RecentExternals.IdForConsole(30, "2026-11-08T03:00:00Z"), Assert.Single(new RecentExternals(FilePath).Closed()).Id);
         // pid reused by a later process = another window
         Assert.NotEqual(RecentExternals.IdForConsole(10, "a"), RecentExternals.IdForConsole(10, "b"));
     }
