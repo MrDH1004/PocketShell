@@ -43,6 +43,8 @@ public sealed class AgentEventDto
     public long Seq { get; set; }
     public string SessionId { get; set; } = "";
     public string Title { get; set; } = "";
+    /// <summary>The session's folder (0.2.85+): the phone names the notification after the project, not the title.</summary>
+    public string Cwd { get; set; } = "";
     public string? Agent { get; set; }
     public string State { get; set; } = "";
     public PromptDto? Prompt { get; set; }

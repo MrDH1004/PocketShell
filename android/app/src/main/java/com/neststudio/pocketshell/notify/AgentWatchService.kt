@@ -166,7 +166,7 @@ class AgentWatchService : Service() {
         ) return
         val id = notificationId(p.id, e.sessionId)
         val waiting = e.state == AgentState.WAITING
-        val name = e.title.ifBlank { e.sessionId }
+        val name = e.displayTitle // the project folder, like the session list
         val text = when {
             waiting -> e.prompt?.question?.ifBlank { null } ?: getString(R.string.notify_waiting_text)
             else -> e.preview?.ifBlank { null } ?: getString(R.string.notify_done_text)
@@ -215,7 +215,7 @@ class AgentWatchService : Service() {
     private fun openIntent(p: Pairing, e: AgentEvent, id: Int): PendingIntent {
         val kind = if (e.sessionId.startsWith("ext-")) SessionInfo.KIND_EXTERNAL else SessionInfo.KIND_HOST
         val pid = e.sessionId.removePrefix("ext-").toIntOrNull()?.takeIf { kind == SessionInfo.KIND_EXTERNAL }
-        val session = SessionInfo(e.sessionId, kind, e.title, "", "", SessionInfo.STATE_RUNNING, "", "", 0, 0, pid, null, e.agent)
+        val session = SessionInfo(e.sessionId, kind, e.title, "", e.cwd, SessionInfo.STATE_RUNNING, "", "", 0, 0, pid, null, e.agent)
         val stack = arrayOf(
             Intent(this, PcListActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             Intent(this, SessionListActivity::class.java),

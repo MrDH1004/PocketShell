@@ -48,6 +48,16 @@ class WebViewTest {
     }
 
     @Test
+    fun notificationIsNamedAfterTheProject() {
+        val json = """{"epoch":"e","seq":2,"events":[
+            {"seq":1,"sessionId":"ext-1","title":"✳ 조작 가능한 모든 것 MCP","cwd":"E:\\AIWork\\flowdesk","agent":"claude","state":"done"},
+            {"seq":2,"sessionId":"abc","title":"old host","agent":"claude","state":"done"}]}"""
+        val events = com.neststudio.pocketshell.core.AgentEvents.parse(json).events
+        assertEquals("flowdesk", events[0].displayTitle)
+        assertEquals("old host", events[1].displayTitle) // host before 0.2.85: no folder
+    }
+
+    @Test
     fun keyBarLayout() {
         val k = com.neststudio.pocketshell.core.KeyBarLayout
         assertEquals(k.DEFAULT, k.parse(null))

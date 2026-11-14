@@ -35,10 +35,7 @@ data class SessionInfo(
      * little about where it runs. Without a folder: the title, then the shell, then the id.
      */
     val displayTitle: String
-        get() {
-            val folder = cwd.trim().trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/')
-            return folder.ifBlank { title.ifBlank { shell.ifBlank { id } } }
-        }
+        get() = projectName(cwd) ?: title.ifBlank { shell.ifBlank { id } }
 
     /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
     val isHistory: Boolean get() = kind == KIND_HISTORY || kind == KIND_RECENT || (kind == KIND_HOST && state == STATE_EXITED)
@@ -52,6 +49,10 @@ data class SessionInfo(
         const val KIND_RECENT = "recent"
         const val STATE_RUNNING = "running"
         const val STATE_EXITED = "exited"
+
+        /** Last folder name of a PC path ("E:\AIWork\flowdesk\" → "flowdesk", "C:\" → "C:"), null when blank. */
+        fun projectName(cwd: String): String? =
+            cwd.trim().trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/').ifBlank { null }
 
         fun fromJson(o: JSONObject): SessionInfo = SessionInfo(
             id = o.getString("id"),

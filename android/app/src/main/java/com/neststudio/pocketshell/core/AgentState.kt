@@ -46,7 +46,12 @@ data class AgentEvent(
     val prompt: AgentPrompt?,
     /** "done" only: the last lines the agent wrote (hosts from 0.2.61). */
     val preview: String? = null,
-)
+    /** The session's folder (hosts from 0.2.85; "" before). */
+    val cwd: String = "",
+) {
+    /** Notification name: the project folder like the session list, else the title. */
+    val displayTitle: String get() = SessionInfo.projectName(cwd) ?: title.ifBlank { sessionId }
+}
 
 /** Reply of `GET /api/events`: where the host's log is now and the events after the `after` we sent. */
 data class AgentEvents(val epoch: String, val seq: Long, val events: List<AgentEvent>) {
@@ -68,6 +73,7 @@ data class AgentEvents(val epoch: String, val seq: Long, val events: List<AgentE
                     state = state,
                     prompt = AgentPrompt.fromJson(e.optJSONObject("prompt")),
                     preview = if (e.isNull("preview")) null else e.optString("preview").ifBlank { null },
+                    cwd = e.optString("cwd", ""),
                 )
             }
             return AgentEvents(o.optString("epoch", ""), o.optLong("seq", 0), events)

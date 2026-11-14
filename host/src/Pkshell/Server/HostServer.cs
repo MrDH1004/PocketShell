@@ -346,7 +346,7 @@ public sealed class HostServer : IDisposable
         if (s.AgentState == null) return;
         _events.Add(new AgentEventDto
         {
-            SessionId = s.Id, Title = s.Title, Agent = s.Agent, State = s.AgentState, Prompt = s.Prompt, Preview = s.AgentPreview,
+            SessionId = s.Id, Title = s.Title, Cwd = s.Cwd ?? "", Agent = s.Agent, State = s.AgentState, Prompt = s.Prompt, Preview = s.AgentPreview,
             Time = Ids.IsoNow(),
         });
         Log.Info($"agent {s.Id} ({s.Agent}): {s.AgentState}{(s.Prompt != null ? $" [{s.Prompt.Options.Count} choices]" : "")}");
