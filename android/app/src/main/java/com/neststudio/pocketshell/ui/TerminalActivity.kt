@@ -543,7 +543,15 @@ class TerminalActivity : AppCompatActivity() {
             // phone's width instead of leaving the right side empty.
             var px = userPx
             while (px < userPx * Reflow.MAX_GROW && colsAt(px + 1) >= consoleCols) px++
-            reflowCols = consoleCols
+            if (colsAt(px) > consoleCols) {
+                // The user's font is much smaller than the PC width needs (pinched in): keep it and re-flow the PC's
+                // text to the phone's columns (wrapped paragraphs joined, then wrapped at the phone width) instead of
+                // leaving the PC's 48 columns in part of the screen.
+                reflowCols = 0
+                px = userPx
+            } else {
+                reflowCols = consoleCols
+            }
             if (px != textPx) {
                 applyTextSize(px)
                 drawnRows = -1
