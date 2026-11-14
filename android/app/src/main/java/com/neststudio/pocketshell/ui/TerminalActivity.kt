@@ -152,6 +152,13 @@ class TerminalActivity : AppCompatActivity() {
         terminalView = findViewById(R.id.terminal)
         zoom = findViewById(R.id.zoom)
         zoom.onOverscrollY = { terminalView.scrollByFinger(it) } // zoomed: dragging past the edge scrolls history
+        // Pinch = font size, re-fitted live: the grid (and the PC session's width) follows, so text keeps filling the
+        // screen instead of a magnified picture running off its sides.
+        zoom.onPinch = { pinchFont(it) }
+        zoom.onPinchEnd = {
+            pinchSp = 0f
+            uiPrefs.fontSizeSp = fontSizeSp
+        }
         titleView.text = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId }
 
         session = RemoteTerminalSession(TRANSCRIPT_ROWS, sessionClient, object : RemoteTerminalSession.Transport {
@@ -177,6 +184,7 @@ class TerminalActivity : AppCompatActivity() {
         uiPrefs = UiPrefs(this)
         terminalView.setScrollSensitivity(uiPrefs.scrollPercent / 100f)
         fontSizeSp = uiPrefs.fontSizeSp
+        openedSp = fontSizeSp
         typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)
         applyTextSize(spToPx(fontSizeSp))
         terminalView.setTypeface(typeface)
@@ -379,6 +387,19 @@ class TerminalActivity : AppCompatActivity() {
         c.connectNow()
     }
 
+    /** Font size while a pinch runs (unrounded, so slow pinches add up); 0 = no pinch. */
+    private var pinchSp = 0f
+    /** Font size when this screen opened: the 원래 크기 button goes back to it. */
+    private var openedSp = UiPrefs.DEFAULT_FONT_SP
+
+    private fun pinchFont(factor: Float) {
+        val base = if (pinchSp > 0f) pinchSp else fontSizeSp
+        pinchSp = (base * factor).coerceIn(UiPrefs.MIN_FONT_SP, UiPrefs.MAX_FONT_SP)
+        if (spToPx(pinchSp) == spToPx(fontSizeSp)) return // same pixels: nothing to re-fit yet
+        fontSizeSp = pinchSp
+        refit()
+    }
+
     private fun applyTextSize(px: Int) {
         textPx = px
         terminalView.setTextSize(px) // re-measures synchronously → onViewResized if the cell grid changed
@@ -457,7 +478,8 @@ class TerminalActivity : AppCompatActivity() {
     /** Top-bar button: undo the pinch zoom (1x, picture back in place) and go back to the saved font size. */
     private fun resetSize() {
         zoom.reset()
-        fontSizeSp = uiPrefs.fontSizeSp
+        fontSizeSp = openedSp // undo this screen's pinches
+        uiPrefs.fontSizeSp = fontSizeSp
         refit()
     }
 

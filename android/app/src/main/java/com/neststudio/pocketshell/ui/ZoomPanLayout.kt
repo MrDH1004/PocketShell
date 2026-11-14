@@ -36,8 +36,23 @@ class ZoomPanLayout @JvmOverloads constructor(context: Context, attrs: Attribute
      */
     var onOverscrollY: ((Float) -> Unit)? = null
 
+    /**
+     * When set, a pinch changes the terminal's font instead of magnifying the picture: called with each step's scale
+     * factor (the grid re-fits live, so the text keeps filling the width). [onPinchEnd] follows when the fingers lift.
+     */
+    var onPinch: ((Float) -> Unit)? = null
+    var onPinchEnd: (() -> Unit)? = null
+
     private val detector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleEnd(d: ScaleGestureDetector) {
+            onPinchEnd?.invoke()
+        }
+
         override fun onScale(d: ScaleGestureDetector): Boolean {
+            onPinch?.let {
+                it(d.scaleFactor)
+                return true
+            }
             val next = (scale * d.scaleFactor).coerceIn(1f, MAX_SCALE)
             if (next == scale) return true
             // Keep the content point under the fingers where it is.

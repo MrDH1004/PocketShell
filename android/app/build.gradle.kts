@@ -24,6 +24,7 @@ android {
         targetSdk = 35
         versionCode = pkshellVersionCode
         versionName = pkshellVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -70,6 +71,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Real org.json for JVM unit tests (android.jar only has stubs).
     testImplementation("org.json:json:20240303")
 }
