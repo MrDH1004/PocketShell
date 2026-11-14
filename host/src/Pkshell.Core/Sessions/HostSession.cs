@@ -170,7 +170,9 @@ public sealed class HostSession : IDisposable
         lock (Hub.SyncRoot)
         {
             Hub.Unsubscribe(a.Subscriber);
-            if (_clients.Remove(a.Client) && _meta.State == "running") ApplySizePolicyLocked();
+            bool removed = _clients.Remove(a.Client);
+            if (ReferenceEquals(_active, a.Client)) _active = null;
+            if (removed && _meta.State == "running") ApplySizePolicyLocked();
         }
     }
 
@@ -190,9 +192,27 @@ public sealed class HostSession : IDisposable
 
     public (int Cols, int Rows) CurrentSize { get { lock (Hub.SyncRoot) return (_meta.Cols, _meta.Rows); } }
 
+    /// <summary>The attached window that typed last; the PTY follows its size (SizePolicy.ComputePreferred).</summary>
+    private ClientDto? _active;
+
+    /// <summary>Input from an attached window: that window becomes the one the size follows.</summary>
+    public void WriteInputFrom(ClientDto client, ReadOnlySpan<byte> data)
+    {
+        lock (Hub.SyncRoot)
+        {
+            if (!ReferenceEquals(_active, client) && _clients.Contains(client))
+            {
+                _active = client;
+                if (_meta.State == "running") ApplySizePolicyLocked();
+            }
+        }
+        WriteInput(data);
+    }
+
     private void ApplySizePolicyLocked()
     {
-        var (c, r) = SizePolicy.Compute(_clients.Select(x => (x.Cols, x.Rows)), (_meta.Cols, _meta.Rows));
+        var active = _active != null && _clients.Contains(_active) ? (_active.Cols, _active.Rows) : ((int, int)?)null;
+        var (c, r) = SizePolicy.ComputePreferred(active, _clients.Select(x => (x.Type, x.Cols, x.Rows)).ToList(), (_meta.Cols, _meta.Rows));
         if (c == _meta.Cols && r == _meta.Rows) return;
         _meta.Cols = c;
         _meta.Rows = r;

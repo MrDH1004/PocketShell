@@ -1348,7 +1348,7 @@ public sealed class HostServer : IDisposable
 
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
             await ReceiveLoop(conn,
-                data => s.WriteInput(data),
+                data => s.WriteInputFrom(a.Client, data),
                 (nc, nr) => s.ResizeClient(a.Client, nc, nr),
                 cts.Token);
             cts.Cancel();

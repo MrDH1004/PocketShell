@@ -22,9 +22,17 @@ public class StartWhenSizedTests
             Assert.DoesNotContain("START_MARK", s.ScreenText()); // still settling
             await Task.Delay(1500);
             Assert.Contains("START_MARK", s.ScreenText());
-            Assert.Equal((48, 48), s.CurrentSize);
-            s.Detach(pc);
+            Assert.Equal((63, 48), s.CurrentSize); // the phone's width, not min(phone, PC tab)
+
+            // Typing in the PC tab makes it the window the size follows; the phone takes it back by typing.
+            s.WriteInputFrom(pc.Client, " "u8);
+            Assert.Equal((48, 70), s.CurrentSize);
+            s.WriteInputFrom(phone.Client, " "u8);
+            Assert.Equal((63, 48), s.CurrentSize);
+            // The phone leaves: the PC tab's size.
             s.Detach(phone);
+            Assert.Equal((48, 70), s.CurrentSize);
+            s.Detach(pc);
         }
         finally
         {
