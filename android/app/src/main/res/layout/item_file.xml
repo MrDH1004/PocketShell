@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- File browser row: icon tile, name, size and date. -->
+<!-- File browser row, one line: icon tile, name, then size and date at the end. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_row"
     android:gravity="center_vertical"
-    android:minHeight="44dp"
+    android:minHeight="32dp"
     android:orientation="horizontal"
     android:paddingStart="16dp"
     android:paddingTop="3dp"
@@ -14,36 +14,31 @@
 
     <ImageView
         android:id="@+id/icon"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:layout_marginEnd="12dp"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginEnd="10dp"
         android:background="@drawable/bg_icon_tile"
         android:importantForAccessibility="no"
-        android:padding="8dp"
+        android:padding="5dp"
         android:src="@drawable/ic_file" />
 
-    <LinearLayout
+    <TextView
+        android:id="@android:id/text1"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:orientation="vertical">
+        android:ellipsize="middle"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp" />
 
-        <TextView
-            android:id="@android:id/text1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="middle"
-            android:maxLines="1"
-            android:textColor="@color/text_primary"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@android:id/text2"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFeatureSettings="tnum"
-            android:maxLines="1"
-            android:textColor="@color/text_muted"
-            android:textSize="12sp" />
-    </LinearLayout>
+    <TextView
+        android:id="@android:id/text2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:fontFeatureSettings="tnum"
+        android:maxLines="1"
+        android:textColor="@color/text_muted"
+        android:textSize="12sp" />
 </LinearLayout>
