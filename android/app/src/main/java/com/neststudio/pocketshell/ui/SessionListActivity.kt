@@ -141,7 +141,7 @@ class SessionListActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        appUpdate.autoCheck() // at most every 3 hours (UpdatePolicy), silent unless an update is found
+        appUpdate.autoCheck() // at most every 15 minutes (UpdatePolicy); a newer version shows the floating update pill
         if ((application as PkshellApp).pairing() != null) refresh()
         // A PC paired just now lands here without passing the PC list: make sure its notifications are being watched.
         com.neststudio.pocketshell.notify.AgentWatchService.apply(this)

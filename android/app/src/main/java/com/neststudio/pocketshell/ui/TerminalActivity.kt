@@ -96,6 +96,8 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var altButton: TextView
 
     private lateinit var uiPrefs: UiPrefs
+    /** New app version: floating pill under the top bar (the bottom is the key bar). */
+    private val appUpdate = AppUpdateController(this, pillAtTop = true)
     private var fontSizeSp = UiPrefs.DEFAULT_FONT_SP
     private var typeface: Typeface = Typeface.MONOSPACE
     private var textPx = 0
@@ -208,6 +210,7 @@ class TerminalActivity : AppCompatActivity() {
         super.onResume()
         resumed = true
         registerNetworkCallback()
+        appUpdate.autoCheck()
         // AC-18: reconnect immediately when coming back (screen on / app switch).
         maybeConnect()
         terminalView.requestFocus()

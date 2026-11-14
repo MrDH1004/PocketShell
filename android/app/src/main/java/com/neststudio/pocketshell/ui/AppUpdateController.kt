@@ -30,12 +30,13 @@ import java.io.IOException
  *
  * Must be constructed during the activity's initialization (it registers an activity result launcher).
  */
-class AppUpdateController(private val activity: AppCompatActivity) {
+class AppUpdateController(private val activity: AppCompatActivity, private val pillAtTop: Boolean = false) {
 
     // Lazy: this controller is created as an activity field, before the activity has a base context.
     private val updater by lazy { AppUpdater(activity) }
     private var pendingApk: File? = null
     private var job: Job? = null
+    private var pill: UpdatePill? = null
 
     private val unknownSourcesSettings =
         activity.registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -48,8 +49,12 @@ class AppUpdateController(private val activity: AppCompatActivity) {
             }
         }
 
-    /** Session list shown: at most every 3 hours, silent unless an update is found. */
+    /**
+     * Screen shown: checks at most every 15 minutes and, when a newer release is known, shows the floating update
+     * pill (tap = download and install). Silent otherwise.
+     */
     fun autoCheck() {
+        found?.let { showPill(it) }
         if (updater.shouldAutoCheck()) check(manual = false)
     }
 
@@ -72,7 +77,10 @@ class AppUpdateController(private val activity: AppCompatActivity) {
             val ghResult = gh.await()
             val pcUpdate = pcResult?.getOrNull()
             val ghUpdate = ghResult.getOrNull()
+            val newest = listOfNotNull(pcUpdate, ghUpdate).maxByOrNull { it.candidate.version }
+            if (newest != null) found = newest
             when {
+                !manual && newest != null -> showPill(newest)
                 pcUpdate != null || ghUpdate != null -> showUpdateDialog(pcUpdate, ghUpdate)
                 !manual -> Unit
                 ghResult.isSuccess || pcResult?.isSuccess == true ->
@@ -106,6 +114,44 @@ class AppUpdateController(private val activity: AppCompatActivity) {
             b.setPositiveButton(activity.getString(R.string.update_from_github, gh.candidate.version.toString())) { _, _ -> download(gh) }
         }
         b.show()
+    }
+
+    /** Floating "새 버전 x · 눌러서 설치" over the screen; closing it hides that version until a newer one. */
+    private fun showPill(update: VerifiedUpdate) {
+        if (activity.isFinishing) return
+        val version = update.candidate.version.toString()
+        if (version == dismissedVersion || version == updater.currentVersion) return
+        if (pill?.version == version) return
+        pill?.remove()
+        pill = UpdatePill(activity, version, pillAtTop,
+            onTap = { p -> pillDownload(update, p) },
+            onClose = {
+                dismissedVersion = version
+                pill = null
+            })
+    }
+
+    /** One tap: download with the progress in the pill, then straight to the installer. */
+    private fun pillDownload(update: VerifiedUpdate, p: UpdatePill) {
+        if (job?.isActive == true) return
+        job = activity.lifecycleScope.launch {
+            try {
+                p.progress(0)
+                val apk = updater.download(update) { done, total ->
+                    val pct = if (total > 0) (done * 100 / total).toInt() else -1
+                    activity.runOnUiThread { p.progress(pct) }
+                }
+                p.remove()
+                pill = null
+                install(apk)
+            } catch (e: IntegrityException) {
+                p.idle()
+                showError(activity.getString(R.string.update_integrity_failed, e.message ?: ""))
+            } catch (e: IOException) {
+                p.idle()
+                showError(activity.getString(R.string.update_download_failed, e.message ?: ""))
+            }
+        }
     }
 
     private fun download(update: VerifiedUpdate) {
@@ -209,6 +255,12 @@ class AppUpdateController(private val activity: AppCompatActivity) {
 
     private companion object {
         const val APK_MIME = "application/vnd.android.package-archive"
+
+        /** Newest release found this run (shared by every screen's controller, so each shows the pill at once). */
+        @Volatile var found: VerifiedUpdate? = null
+
+        /** Version whose pill the user closed this run. */
+        @Volatile var dismissedVersion: String? = null
 
         /** Phone app from the paired PC over the same network (`GET /api/app/android`). Off for now: GitHub only. */
         const val PC_SOURCE = false

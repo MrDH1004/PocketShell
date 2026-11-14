@@ -156,6 +156,8 @@
     <string name="update_pc_unpaired">PC와 페어링되어 있지 않음</string>
     <string name="update_check_failed_both">업데이트를 확인하지 못했습니다. PC 연결이나 인터넷 연결을 확인하고 다시 시도하세요.\n\nPC: %1$s\nGitHub: %2$s</string>
     <string name="update_later">나중에</string>
+    <string name="update_pill">새 버전 %1$s · 눌러서 설치</string>
+    <string name="update_pill_progress">받는 중 %1$d%%</string>
     <string name="update_downloading">업데이트 다운로드 중</string>
     <string name="update_progress">%1$d%%</string>
     <string name="update_progress_unknown">%1$d KB</string>

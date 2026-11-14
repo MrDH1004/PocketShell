@@ -100,7 +100,7 @@ class PcListActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        appUpdate.autoCheck() // at most every 3 hours (UpdatePolicy), silent unless an update is found
+        appUpdate.autoCheck() // at most every 15 minutes (UpdatePolicy); a newer version shows the floating update pill
         refresh()
         ensureNotifications()
     }
