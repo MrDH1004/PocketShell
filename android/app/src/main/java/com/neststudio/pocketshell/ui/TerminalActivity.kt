@@ -509,7 +509,21 @@ class TerminalActivity : AppCompatActivity() {
             paint.textSize = px.toFloat()
             return (width / paint.measureText("X")).toInt()
         }
-        val target = Reflow.fitCols(consoleCols, colsAt(userPx))
+        val phoneCols = colsAt(userPx)
+        if (consoleCols < phoneCols) {
+            // A PC window narrower than the phone: its programs (Claude Code diffs, tables) wrap at the PC width
+            // themselves, which no re-flow can undo. Grow the font (up to Reflow.MAX_GROW) so those rows fill the
+            // phone's width instead of leaving the right side empty.
+            var px = userPx
+            while (px < userPx * Reflow.MAX_GROW && colsAt(px + 1) >= consoleCols) px++
+            reflowCols = consoleCols
+            if (px != textPx) {
+                applyTextSize(px)
+                drawnRows = -1
+            }
+            return
+        }
+        val target = Reflow.fitCols(consoleCols, phoneCols)
         var px = userPx
         while (px > MIN_TEXT_PX && colsAt(px) < target) px--
         reflowCols = target

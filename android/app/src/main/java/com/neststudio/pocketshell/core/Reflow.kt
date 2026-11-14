@@ -167,6 +167,9 @@ object Reflow {
     /** Most the font is shrunk (as a column ratio) to avoid stray wrapped characters, see [fitCols]. */
     const val MAX_SHRINK = 1.25
 
+    /** Most the font is grown so a PC window narrower than the phone fills the phone's width. */
+    const val MAX_GROW = 1.6
+
     /**
      * Columns to lay an external console out at. A full PC row of [pcCols] wraps into several phone lines and the
      * last one is often just a few stray characters ("ps" alone on a line). When a slightly smaller font (at most
