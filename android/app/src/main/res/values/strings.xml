@@ -113,6 +113,11 @@
     <string name="files_op_failed">일부 항목을 처리하지 못했습니다</string>
     <string name="files_op_host_old">이 기능은 PC 호스트 0.2.76 이상에서 됩니다. PC 호스트를 업데이트하세요.</string>
     <string name="pc_enter">들어가기</string>
+    <string name="keybar_settings">키 바 설정</string>
+    <string name="keybar_hide">이 키 숨기기</string>
+    <string name="keybar_reset">기본값</string>
+    <string name="keybar_empty">키를 하나 이상 고르세요</string>
+    <string name="keybar_settings_title">보일 키 (순서: 키 바에서 길게 눌러 끌기)</string>
     <string name="web_view">웹 보기</string>
     <string name="web_address_hint">주소 (예: 10.0.0.5:8080)</string>
     <string name="web_more">더 보기</string>

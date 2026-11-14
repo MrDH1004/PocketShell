@@ -48,6 +48,20 @@ class WebViewTest {
     }
 
     @Test
+    fun keyBarLayout() {
+        val k = com.neststudio.pocketshell.core.KeyBarLayout
+        assertEquals(k.DEFAULT, k.parse(null))
+        assertEquals(listOf("tab", "esc"), k.parse("tab, esc, bogus, tab"))
+        assertEquals(listOf("tab", "esc", "enter"), k.move(listOf("esc", "tab", "enter"), "tab", -1))
+        assertEquals(listOf("esc", "tab"), k.move(listOf("esc", "tab"), "tab", 1)) // already last
+        val rows = k.settingsRows(listOf("up", "esc"))
+        assertEquals(listOf("up" to true, "esc" to true), rows.take(2))
+        assertEquals(k.ALL.size, rows.size)
+        assertEquals(listOf("esc"), k.fromSettings(rows.map { (id, on) -> id to (on && id == "esc") }))
+        assertEquals(k.DEFAULT, k.parse(k.toText(k.DEFAULT)))
+    }
+
+    @Test
     fun basicCredentials() = assertEquals("Basic dTpw", ProxyHead.basic("u", "p"))
 
     @Test

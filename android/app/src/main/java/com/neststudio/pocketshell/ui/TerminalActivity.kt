@@ -428,6 +428,7 @@ class TerminalActivity : AppCompatActivity() {
             menu.menu.add(4, OPT_MUTE, 100, if (uiPrefs.isMuted(pcId, sessionId)) R.string.notify_unmute_session else R.string.notify_mute_session)
         }
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
+        menu.menu.add(3, OPT_KEYBAR, 102, R.string.keybar_settings)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
         menu.setOnMenuItemClickListener {
@@ -444,6 +445,7 @@ class TerminalActivity : AppCompatActivity() {
                     uiPrefs.setMuted(pcId, sessionId, muted)
                     Toast.makeText(this, if (muted) R.string.notify_muted_toast else R.string.notify_unmuted_toast, Toast.LENGTH_LONG).show()
                 }
+                OPT_KEYBAR -> showKeyBarSettings()
                 OPT_VIEW -> {
                     val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
                     ViewSettingsDialog.show(this, note) { applyViewSettings() }
@@ -828,8 +830,132 @@ class TerminalActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- key bar
 
+    private lateinit var keyBarView: LinearLayout
+
+    /** Key id (KeyBarLayout) → the special key it sends; ids not listed here have their own action. */
+    private fun specialOf(id: String): SpecialKey? = when (id) {
+        "esc" -> SpecialKey.ESC
+        "tab" -> SpecialKey.TAB
+        "enter" -> SpecialKey.ENTER
+        "left" -> SpecialKey.LEFT
+        "up" -> SpecialKey.UP
+        "down" -> SpecialKey.DOWN
+        "right" -> SpecialKey.RIGHT
+        "slash" -> SpecialKey.SLASH
+        "pipe" -> SpecialKey.PIPE
+        "tilde" -> SpecialKey.TILDE
+        "minus" -> SpecialKey.MINUS
+        "home" -> SpecialKey.HOME
+        "end" -> SpecialKey.END
+        "pgup" -> SpecialKey.PGUP
+        "pgdn" -> SpecialKey.PGDN
+        else -> null
+    }
+
+    /** Name of a key in the key bar settings list. */
+    private fun keyName(id: String): String = when (id) {
+        "snippets" -> getString(R.string.snippets_key)
+        "ctrl" -> "CTRL"
+        "alt" -> "ALT"
+        else -> specialOf(id)?.let { k -> if (k == SpecialKey.ENTER) "Enter" else "${k.label}  ${getString(spokenName(k))}" } ?: id
+    }
+
+    /** Key being dragged on the bar and whether it changed place (dropped in place = the key's menu). */
+    private var draggedKey: View? = null
+    private var dragMoved = false
+
+    /**
+     * Long-press a key and drag it: it moves among the other keys as the finger passes them and stays where it is
+     * let go (the order is saved). Let go without moving: the key's menu (hide it, key bar settings).
+     */
+    private fun startKeyDrag(v: View) {
+        draggedKey = v
+        dragMoved = false
+        v.alpha = 0.3f
+        v.startDragAndDrop(android.content.ClipData.newPlainText("key", v.tag as String), View.DragShadowBuilder(v), null, 0)
+    }
+
+    private val keyDragListener = View.OnDragListener { target, e ->
+        val dragged = draggedKey ?: return@OnDragListener false
+        when (e.action) {
+            android.view.DragEvent.ACTION_DRAG_STARTED -> true
+            android.view.DragEvent.ACTION_DRAG_ENTERED, android.view.DragEvent.ACTION_DRAG_LOCATION -> {
+                val bar = keyBarView
+                if (target !== dragged && target.parent === bar) {
+                    val to = bar.indexOfChild(target)
+                    val from = bar.indexOfChild(dragged)
+                    // Past the middle of the key under the finger → take its place.
+                    val past = if (to > from) e.x > target.width / 2f else e.x < target.width / 2f
+                    if (to >= 0 && from >= 0 && past) {
+                        bar.removeView(dragged)
+                        bar.addView(dragged, to)
+                        dragMoved = true
+                    }
+                }
+                true
+            }
+            android.view.DragEvent.ACTION_DROP -> true
+            android.view.DragEvent.ACTION_DRAG_ENDED -> {
+                if (draggedKey != null) {
+                    draggedKey = null
+                    dragged.alpha = 1f
+                    if (dragMoved) {
+                        val order = (0 until keyBarView.childCount).mapNotNull { keyBarView.getChildAt(it).tag as? String }
+                        uiPrefs.keyBar = order
+                    } else keyMenu(dragged, dragged.tag as String)
+                }
+                true
+            }
+            else -> true
+        }
+    }
+
+    /** A key long-pressed and let go in place: hide it, or open the key bar settings. */
+    private fun keyMenu(anchor: View, id: String) {
+        val keys = uiPrefs.keyBar
+        val menu = android.widget.PopupMenu(this, anchor)
+        menu.menu.add(0, 3, 0, R.string.keybar_hide).isEnabled = keys.size > 1
+        menu.menu.add(0, 4, 1, R.string.keybar_settings)
+        menu.setOnMenuItemClickListener {
+            when (it.itemId) {
+                3 -> setKeyBar(keys - id)
+                4 -> showKeyBarSettings()
+            }
+            true
+        }
+        menu.show()
+    }
+
+    private fun setKeyBar(keys: List<String>) {
+        uiPrefs.keyBar = keys
+        buildKeyBar(keyBarView)
+    }
+
+    /** ⋮ > 키 바 설정: tick the keys to show (order = the bar's; move keys by long-pressing them on the bar). */
+    private fun showKeyBarSettings() {
+        val rows = com.neststudio.pocketshell.core.KeyBarLayout.settingsRows(uiPrefs.keyBar).toMutableList()
+        val labels = rows.map { keyName(it.first) }.toTypedArray()
+        val checked = rows.map { it.second }.toBooleanArray()
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.keybar_settings_title)
+            .setMultiChoiceItems(labels, checked) { _, which, on -> checked[which] = on }
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val picked = com.neststudio.pocketshell.core.KeyBarLayout.fromSettings(rows.mapIndexed { i, r -> r.first to checked[i] })
+                if (picked.isEmpty()) Toast.makeText(this, R.string.keybar_empty, Toast.LENGTH_SHORT).show()
+                else setKeyBar(picked)
+            }
+            .setNeutralButton(R.string.keybar_reset) { _, _ ->
+                uiPrefs.resetKeyBar()
+                buildKeyBar(keyBarView)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun buildKeyBar(bar: LinearLayout) {
-        fun keyButton(label: String, spoken: Int? = null, onClick: () -> Unit): TextView {
+        keyBarView = bar
+        bar.removeAllViews()
+        fun keyButton(label: String, spoken: Int? = null, id: String? = null, add: Boolean = true, onClick: () -> Unit): TextView {
             val tv = TextView(this)
             tv.text = label
             if (spoken != null) tv.contentDescription = getString(spoken)
@@ -850,33 +976,46 @@ class TerminalActivity : AppCompatActivity() {
             tv.isClickable = true
             tv.setBackgroundResource(R.drawable.bg_keycap)
             tv.setOnClickListener { onClick() }
+            if (id != null) {
+                tv.tag = id
+                tv.setOnLongClickListener { startKeyDrag(tv); true }
+                tv.setOnDragListener(keyDragListener)
+            }
             val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT)
             lp.marginStart = (d * 4).toInt()
             lp.marginEnd = (d * 4).toInt()
-            bar.addView(tv, lp)
+            if (add) bar.addView(tv, lp)
             return tv
         }
-        for (k in listOf(SpecialKey.ESC, SpecialKey.TAB)) keyButton(k.label, spokenName(k)) { sendSpecial(k) }
-        keyButton("", spokenName(SpecialKey.ENTER)) { sendSpecial(SpecialKey.ENTER) }.apply {
-            // A drawn return icon (like the system keyboard's), not the font's tiny "↵" glyph.
-            val icon = ContextCompat.getDrawable(context, R.drawable.ic_key_enter)
-            setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
-        }
-        lateinit var snippetKey: TextView
-        snippetKey = keyButton(getString(R.string.snippets_key)) { showSnippets(snippetKey) }
-        ctrlButton = keyButton("CTRL") { ctrlOn = !ctrlOn; refreshToggles() }
-        altButton = keyButton("ALT") { altOn = !altOn; refreshToggles() }
-        // Hidden on the bar (not used); the toggle handling is kept.
-        ctrlButton.visibility = View.GONE
-        altButton.visibility = View.GONE
-        for (k in listOf(
-            SpecialKey.LEFT, SpecialKey.UP, SpecialKey.DOWN, SpecialKey.RIGHT,
-            SpecialKey.SLASH, SpecialKey.PIPE, SpecialKey.TILDE, SpecialKey.MINUS,
-            SpecialKey.HOME, SpecialKey.END, SpecialKey.PGUP, SpecialKey.PGDN,
-        )) {
-            keyButton(k.label, spokenName(k)) { sendSpecial(k) }
+        val keys = uiPrefs.keyBar
+        // CTRL / ALT exist even when hidden (the toggle state is read when a key is sent).
+        ctrlButton = keyButton("CTRL", id = "ctrl", add = false) { ctrlOn = !ctrlOn; refreshToggles() }
+        altButton = keyButton("ALT", id = "alt", add = false) { altOn = !altOn; refreshToggles() }
+        for (id in keys) {
+            when (id) {
+                "ctrl" -> bar.addView(ctrlButton, ctrlButton.layoutParams ?: keyParams())
+                "alt" -> bar.addView(altButton, altButton.layoutParams ?: keyParams())
+                "snippets" -> {
+                    lateinit var snippetKey: TextView
+                    snippetKey = keyButton(getString(R.string.snippets_key), id = id) { showSnippets(snippetKey) }
+                }
+                "enter" -> keyButton("", spokenName(SpecialKey.ENTER), id) { sendSpecial(SpecialKey.ENTER) }.apply {
+                    // A drawn return icon (like the system keyboard's), not the font's tiny "↵" glyph.
+                    val icon = ContextCompat.getDrawable(context, R.drawable.ic_key_enter)
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
+                }
+                else -> specialOf(id)?.let { k -> keyButton(k.label, spokenName(k), id) { sendSpecial(k) } }
+            }
         }
         refreshToggles()
+    }
+
+    private fun keyParams(): LinearLayout.LayoutParams {
+        val d = resources.displayMetrics.density
+        return LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT).apply {
+            marginStart = (d * 4).toInt()
+            marginEnd = (d * 4).toInt()
+        }
     }
 
     /** What TalkBack says for a key cap (symbols and abbreviations read badly). */
@@ -1033,6 +1172,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val OPT_SNIPPETS = 5
         private const val OPT_MUTE = 6
         private const val OPT_QUICK = 7
+        private const val OPT_KEYBAR = 8
         private const val SNIPPET_EDIT = 10_000
         private const val SNIPPET_NONE = 10_001
         private const val STATE_POLL_MS = 2000L
