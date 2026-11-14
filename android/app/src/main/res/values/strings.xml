@@ -119,6 +119,8 @@
     <string name="keybar_empty">키를 하나 이상 고르세요</string>
     <string name="keybar_settings_title">보일 키 (순서: 키 바에서 길게 눌러 끌기)</string>
     <string name="web_view">웹 보기</string>
+    <string name="web_project">이 프로젝트 웹 열기</string>
+    <string name="web_project_pick">%1$s 웹 서버</string>
     <string name="web_address_hint">주소 (예: 10.0.0.5:8080)</string>
     <string name="web_more">더 보기</string>
     <string name="web_forward">앞으로</string>

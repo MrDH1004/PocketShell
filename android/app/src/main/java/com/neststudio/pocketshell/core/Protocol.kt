@@ -26,6 +26,8 @@ data class SessionInfo(
     val prompt: AgentPrompt? = null,
     /** The host may delete this session's folder with it (a folder right under a project root; host ≥ 0.2.62). */
     val folderDeletable: Boolean = false,
+    /** Web servers running in the session's folder (listening ports, host ≥ 0.2.88). */
+    val webPorts: List<Int> = emptyList(),
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
 
@@ -71,6 +73,7 @@ data class SessionInfo(
             agentState = if (o.has("agentState") && !o.isNull("agentState")) o.optString("agentState") else null,
             prompt = AgentPrompt.fromJson(o.optJSONObject("prompt")),
             folderDeletable = o.optBoolean("folderDeletable", false),
+            webPorts = o.optJSONArray("webPorts")?.let { a -> (0 until a.length()).map { a.optInt(it) }.filter { it in 1..65535 } }.orEmpty(),
         )
 
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */

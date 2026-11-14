@@ -798,6 +798,14 @@ public sealed class HostServer : IDisposable
                 foreach (var s in list)
                     s.FolderDeletable = s.Kind != "external" && ProjectFolders.WhyNotDeletable(roots, s.Cwd) == null;
             }
+            // Project web servers (dev servers started in the session's folder): a globe on the phone's card.
+            var listeners = Pkshell.Core.Projects.WebServers.Listeners(_port);
+            foreach (var s in list)
+            {
+                if (s.State != "running" && s.Kind != "external") continue;
+                var ports = Pkshell.Core.Projects.WebServers.HttpOnly(Pkshell.Core.Projects.WebServers.For(s.Cwd, listeners));
+                s.WebPorts = ports.Count > 0 ? ports : null;
+            }
             return Json(new { sessions = list });
         });
 

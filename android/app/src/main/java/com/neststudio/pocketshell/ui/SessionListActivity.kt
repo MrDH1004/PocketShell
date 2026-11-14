@@ -706,10 +706,29 @@ private class SessionAdapter(
                 val newHere = v.findViewById<View>(R.id.newHere)
                 newHere.visibility = if (s.isExternal) View.VISIBLE else View.GONE
                 newHere.setOnClickListener { onNewHere(s) }
+                // A web server runs in this project's folder (host ≥ 0.2.88): open it in the web view.
+                val webHere = v.findViewById<View>(R.id.webHere)
+                webHere.visibility = if (s.webPorts.isNotEmpty()) View.VISIBLE else View.GONE
+                webHere.setOnClickListener { openProjectWeb(v.context, s) }
                 v.setOnClickListener { onClick(s) }
                 v.setOnLongClickListener { onLongClick(s); true }
             }
         }
+    }
+
+    /** The project's web server in the web view (http://localhost:port, opened by the PC); several → pick one. */
+    private fun openProjectWeb(context: android.content.Context, s: SessionInfo) {
+        val ports = s.webPorts
+        fun open(port: Int) = context.startActivity(WebActivity.intent(context, "http://localhost:$port"))
+        if (ports.size == 1) {
+            open(ports[0])
+            return
+        }
+        AlertDialog.Builder(context)
+            .setTitle(context.getString(R.string.web_project_pick, s.displayTitle))
+            .setItems(ports.map { "localhost:$it" }.toTypedArray()) { _, which -> open(ports[which]) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun formatTime(iso: String): String {
