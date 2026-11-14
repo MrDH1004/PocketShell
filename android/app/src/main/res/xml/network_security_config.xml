@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Web view (WebActivity) pages are often plain http:// on the company network (http://192.168.x.x:5175). Android
+  blocks cleartext by default (net::ERR_CLEARTEXT_NOT_PERMITTED), so allow it. The WebView's requests never leave
+  the phone in the clear anyway: they go to the loopback proxy and on to the PC over the pinned TLS tunnel. The
+  app's own API traffic is https/wss with a pinned certificate (PinnedHttp) and does not use cleartext.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
