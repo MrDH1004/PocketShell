@@ -25,9 +25,35 @@ data class FileListing(val path: String, val entries: List<FileEntry>) {
     }
 }
 
+/** One entry of `GET /api/drives` (host ≥ 0.2.73): a well-known folder or a drive the PC browser starts from. */
+data class PcPlace(val name: String, val path: String, val drive: Boolean) {
+    companion object {
+        /** `{places:[{name, path, kind}]}`; entries without a path are skipped. */
+        fun parseList(text: String): List<PcPlace> {
+            val arr = JSONObject(text).optJSONArray("places") ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val path = o.optString("path")
+                if (path.isBlank()) null else PcPlace(o.optString("name").ifBlank { path }, path, o.optString("kind") == "drive")
+            }
+        }
+    }
+}
+
 /** Windows path helpers for the file browser (the host is a Windows PC). */
 object PcPath {
     fun child(dir: String, name: String): String = if (dir.endsWith("\\")) dir + name else "$dir\\$name"
+
+    /** PC browser: the parent folder; a drive root (or a path without one) goes up to "" (= 내 PC). */
+    fun parentOrTop(path: String): String {
+        val trimmed = path.trimEnd('\\')
+        val i = trimmed.lastIndexOf('\\')
+        if (i < 0 || (i == 2 && trimmed.length == 2)) return ""
+        return if (i == 2 && trimmed[1] == ':') trimmed.substring(0, 3) else if (i == 0) "" else trimmed.substring(0, i)
+    }
+
+    /** Folder name for a session title: last segment, or the drive ("C:") for a drive root. */
+    fun name(path: String): String = path.trimEnd('\\').substringAfterLast('\\').ifEmpty { path }
 
     /** Parent of [path], or null at [root] (the browser does not leave the project folder) or a drive root. */
     fun parentWithin(path: String, root: String): String? {
@@ -171,6 +197,20 @@ object Crumbs {
         if (rel.isEmpty()) return out
         var cur = root
         for (part in rel.split('\\').filter { it.isNotEmpty() }) {
+            cur = PcPath.child(cur, part)
+            out += part to cur
+        }
+        return out
+    }
+
+    /** PC browser: [top] ("내 PC", path "") > drive > folders down to [path]. */
+    fun ofPc(path: String, top: String): List<Pair<String, String>> {
+        val out = mutableListOf(top to "")
+        val parts = path.trimEnd('\\').split('\\').filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return out
+        var cur = parts[0] + "\\"
+        out += parts[0] to cur
+        for (part in parts.drop(1)) {
             cur = PcPath.child(cur, part)
             out += part to cur
         }

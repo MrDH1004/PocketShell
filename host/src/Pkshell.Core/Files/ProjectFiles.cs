@@ -6,6 +6,9 @@ public sealed record FileEntry(string Name, bool Dir, long Size, string Modified
 /// <summary>Upload target exists and overwrite was not asked for.</summary>
 public sealed class FileExistsException(string name) : IOException($"이미 있는 파일입니다: {name}");
 
+/// <summary>A starting point of the phone's PC browser: a drive or a well-known folder.</summary>
+public sealed record Place(string Name, string Path, string Kind);
+
 /// <summary>Directory listing.</summary>
 public sealed record FileListing(string Path, List<FileEntry> Entries);
 
@@ -25,6 +28,47 @@ public static class ProjectFiles
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) return null;
         try { return Path.GetFullPath(path); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
+    }
+
+    /// <summary>
+    /// "내 PC" for the phone's PC browser: the user folder, desktop, documents, downloads, the project folders set in
+    /// the tray app (kind "folder"), then the ready drives (kind "drive"). Missing folders and duplicates are left out.
+    /// </summary>
+    public static List<Place> Places(IEnumerable<string> projectRoots)
+    {
+        var list = new List<Place>();
+        void Add(string name, string? path, string kind)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (list.Any(p => string.Equals(System.IO.Path.TrimEndingDirectorySeparator(p.Path), System.IO.Path.TrimEndingDirectorySeparator(path), StringComparison.OrdinalIgnoreCase))) return;
+            list.Add(new Place(name, path, kind));
+        }
+        void Folder(string name, string? path)
+        {
+            if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path)) Add(name, path, "folder");
+        }
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        Folder("사용자 폴더", home);
+        Folder("바탕 화면", Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+        Folder("문서", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+        if (!string.IsNullOrEmpty(home)) Folder("다운로드", System.IO.Path.Combine(home, "Downloads"));
+        foreach (var root in projectRoots)
+        {
+            var name = System.IO.Path.GetFileName(System.IO.Path.TrimEndingDirectorySeparator(root));
+            Folder("프로젝트 폴더: " + (string.IsNullOrEmpty(name) ? root : name), root);
+        }
+        foreach (var d in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (d.DriveType is DriveType.CDRom or DriveType.NoRootDirectory or DriveType.Unknown || !d.IsReady) continue;
+                var label = d.VolumeLabel;
+                var letter = d.Name.TrimEnd('\\');
+                Add(string.IsNullOrWhiteSpace(label) ? letter : $"{letter} {label}", d.Name, "drive");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* not ready after all */ }
+        }
+        return list;
     }
 
     /// <summary>Folders first, then files; each by name (case-insensitive). Unreadable entries are skipped.</summary>

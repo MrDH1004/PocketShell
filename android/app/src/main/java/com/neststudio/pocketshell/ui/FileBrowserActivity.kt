@@ -28,6 +28,7 @@ import com.neststudio.pocketshell.core.FileKinds
 import com.neststudio.pocketshell.core.FilePreview
 import com.neststudio.pocketshell.core.FileSort
 import com.neststudio.pocketshell.core.PcPath
+import com.neststudio.pocketshell.core.ProjectAgent
 import com.neststudio.pocketshell.core.RelativeTime
 import com.neststudio.pocketshell.data.UiPrefs
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -55,6 +56,9 @@ import java.time.Instant
  * Project file browser: the session folder on the PC and its subfolders (not above it). Breadcrumbs jump to any
  * parent, search filters the folder by name, sort is remembered. Tap a folder to open it, a file to preview it;
  * long-press for the action sheet (view, download, copy path/name). Toolbar: upload a phone file here.
+ *
+ * PC mode ([pcIntent]): starts at "내 PC" (well-known folders and drives, path "") and may go anywhere; a folder can
+ * be opened as a new session there (terminal or an AI CLI), handed back to the caller as the result.
  */
 class FileBrowserActivity : AppCompatActivity() {
 
@@ -72,6 +76,13 @@ class FileBrowserActivity : AppCompatActivity() {
     private lateinit var messageView: TextView
     private lateinit var swipe: SwipeRefreshLayout
     private var pendingDownload: FileEntry? = null
+    private var pcMode = false
+    /** PC mode at "내 PC": the place behind each shown name. */
+    private var placePaths: Map<String, String> = emptyMap()
+    private var agents: List<ProjectAgent>? = null
+    private lateinit var toolbar: MaterialToolbar
+
+    private val atTop get() = pcMode && current.isEmpty()
 
     private val pickUpload = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) upload(uri, overwrite = false)
@@ -90,16 +101,17 @@ class FileBrowserActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).applySystemInsets(includeIme = false)
 
         val apiClient = (application as PkshellApp).api()
-        root = intent.getStringExtra(EXTRA_ROOT).orEmpty()
-        if (apiClient == null || root.isEmpty()) {
+        pcMode = intent.getBooleanExtra(EXTRA_PC, false)
+        root = if (pcMode) "" else intent.getStringExtra(EXTRA_ROOT).orEmpty()
+        if (apiClient == null || (!pcMode && root.isEmpty())) {
             Toast.makeText(this, R.string.files_no_folder, Toast.LENGTH_LONG).show()
             finish()
             return
         }
         api = apiClient
-        current = savedInstanceState?.getString(STATE_PATH)?.takeIf { PcPath.inside(it, root) } ?: root
+        current = savedInstanceState?.getString(STATE_PATH)?.takeIf { pcMode || PcPath.inside(it, root) } ?: root
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar = findViewById(R.id.toolbar)
         toolbar.subtitle = intent.getStringExtra(EXTRA_TITLE)
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
         toolbar.setNavigationOnClickListener { goUpOrFinish() }
@@ -125,8 +137,13 @@ class FileBrowserActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_UPLOAD, 2, R.string.files_upload).setIcon(R.drawable.ic_upload)
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_REFRESH, 3, R.string.refresh)
+        if (pcMode) {
+            toolbar.menu.add(0, MENU_OPEN_HERE, 0, R.string.pc_open_here).setIcon(R.drawable.ic_new_terminal_here)
+                .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
+                MENU_OPEN_HERE -> chooseLaunch(current)
                 MENU_SORT -> chooseSort()
                 MENU_UPLOAD -> pickUpload.launch(arrayOf("*/*"))
                 MENU_REFRESH -> load()
@@ -160,7 +177,7 @@ class FileBrowserActivity : AppCompatActivity() {
         list.adapter = adapter
         list.setOnItemClickListener { _, _, pos, _ ->
             val e = adapter.getItem(pos) ?: return@setOnItemClickListener
-            if (e.dir) open(PcPath.child(current, e.name)) else preview(e)
+            if (e.dir) open(pathOf(e)) else preview(e)
         }
         list.setOnItemLongClickListener { _, _, pos, _ ->
             adapter.getItem(pos)?.let { fileActions(it) }
@@ -178,7 +195,11 @@ class FileBrowserActivity : AppCompatActivity() {
         if (::current.isInitialized) outState.putString(STATE_PATH, current)
     }
 
+    /** Full PC path of a shown entry (at "내 PC" the place's own path). */
+    private fun pathOf(e: FileEntry): String = if (atTop) placePaths[e.name] ?: e.name else PcPath.child(current, e.name)
+
     private fun describe(e: FileEntry): String {
+        if (atTop) return placePaths[e.name].orEmpty()
         val time = runCatching { RelativeTime.format(Instant.parse(e.modified), Instant.now(), ZoneId.systemDefault()) }.getOrDefault("")
         return if (e.dir) time else listOf(FilePreview.humanSize(e.size), time).filter { it.isNotEmpty() }.joinToString(" · ")
     }
@@ -195,7 +216,7 @@ class FileBrowserActivity : AppCompatActivity() {
     /** Breadcrumbs: root > a > b; every segment except the last jumps there. */
     private fun renderCrumbs() {
         crumbsView.removeAllViews()
-        val crumbs = Crumbs.of(current, root)
+        val crumbs = if (pcMode) Crumbs.ofPc(current, getString(R.string.pc_browser_top)) else Crumbs.of(current, root)
         val d = resources.displayMetrics.density
         crumbs.forEachIndexed { i, (label, path) ->
             if (i > 0) {
@@ -224,7 +245,8 @@ class FileBrowserActivity : AppCompatActivity() {
 
     /** Applies search + sort to the loaded folder and updates the summary line. */
     private fun render() {
-        val shown = sort.apply(all.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) })
+        val matching = all.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
+        val shown = if (atTop) matching else sort.apply(matching) // places keep the host's order (folders, then drives)
         adapter.clear()
         adapter.addAll(shown)
         val dirs = all.count { it.dir }
@@ -253,6 +275,10 @@ class FileBrowserActivity : AppCompatActivity() {
     }
 
     private fun goUpOrFinish() {
+        if (pcMode) {
+            if (current.isEmpty()) finish() else open(PcPath.parentOrTop(current))
+            return
+        }
         val parent = PcPath.parentWithin(current, root)
         if (parent != null) open(parent) else finish()
     }
@@ -264,13 +290,22 @@ class FileBrowserActivity : AppCompatActivity() {
 
     private fun load() {
         renderCrumbs()
+        toolbar.menu.findItem(MENU_OPEN_HERE)?.isVisible = !atTop
+        toolbar.menu.findItem(MENU_UPLOAD)?.isVisible = !atTop
         swipe.isRefreshing = true
         lifecycleScope.launch {
             try {
-                all = api.listFiles(current).entries
+                if (atTop) {
+                    val places = api.places()
+                    placePaths = places.associate { it.name to it.path }
+                    all = places.map { FileEntry(it.name, true, 0, "") }
+                } else {
+                    all = api.listFiles(current).entries
+                }
                 render()
             } catch (e: ApiException) {
-                showMessage(if (e.code == 404 && e.body.isEmpty()) getString(R.string.files_host_old) else e.message.orEmpty())
+                val old = if (atTop) R.string.pc_host_old else R.string.files_host_old
+                showMessage(if (e.code == 404 && e.body.isEmpty()) getString(old) else e.message.orEmpty())
             } catch (e: IOException) {
                 showMessage(getString(R.string.files_load_failed, e.message.orEmpty()))
             } catch (e: JSONException) {
@@ -322,9 +357,10 @@ class FileBrowserActivity : AppCompatActivity() {
             row.setOnClickListener { sheet.dismiss(); run() }
             box.addView(row)
         }
-        val path = PcPath.child(current, e.name)
+        val path = pathOf(e)
         if (e.dir) {
             action(R.drawable.ic_folder_open, R.string.files_open) { open(path) }
+            if (pcMode) action(R.drawable.ic_new_terminal_here, R.string.pc_open_here) { chooseLaunch(path) }
         } else {
             action(R.drawable.ic_visibility, R.string.files_view) { preview(e) }
             action(R.drawable.ic_download, R.string.files_download) { startDownload(e) }
@@ -333,6 +369,32 @@ class FileBrowserActivity : AppCompatActivity() {
         action(R.drawable.ic_copy, R.string.files_copy_name) { copy(e.name) }
         sheet.setContentView(box)
         sheet.show()
+    }
+
+    /** PC mode: 터미널 or an AI CLI found on the PC, then back to the session list, which opens it. */
+    private fun chooseLaunch(path: String) {
+        if (path.isEmpty()) return
+        lifecycleScope.launch {
+            val found = agents ?: try {
+                api.projectOptions().agents
+            } catch (e: ApiException) {
+                emptyList()
+            } catch (e: IOException) {
+                emptyList()
+            } catch (e: JSONException) {
+                emptyList()
+            }.also { agents = it }
+            if (isFinishing) return@launch
+            val labels = arrayOf(getString(R.string.pc_open_terminal)) + found.map { it.name }.toTypedArray()
+            AlertDialog.Builder(this@FileBrowserActivity)
+                .setTitle(getString(R.string.pc_open_title, PcPath.name(path)))
+                .setItems(labels) { _, which ->
+                    setResult(RESULT_OK, Intent().putExtra(RESULT_PATH, path).putExtra(RESULT_AGENT, found.getOrNull(which - 1)?.id))
+                    finish()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
     }
 
     private fun copy(text: String) {
@@ -414,8 +476,16 @@ class FileBrowserActivity : AppCompatActivity() {
         private const val MENU_REFRESH = 2
         private const val MENU_SEARCH = 3
         private const val MENU_SORT = 4
+        private const val MENU_OPEN_HERE = 5
+        private const val EXTRA_PC = "pc"
+        const val RESULT_PATH = "path"
+        const val RESULT_AGENT = "agent"
 
         fun intent(context: Context, root: String, title: String): Intent =
             Intent(context, FileBrowserActivity::class.java).putExtra(EXTRA_ROOT, root).putExtra(EXTRA_TITLE, title)
+
+        /** The whole PC from "내 PC"; the result carries [RESULT_PATH] and [RESULT_AGENT] (null = terminal). */
+        fun pcIntent(context: Context, title: String): Intent =
+            Intent(context, FileBrowserActivity::class.java).putExtra(EXTRA_PC, true).putExtra(EXTRA_TITLE, title)
     }
 }

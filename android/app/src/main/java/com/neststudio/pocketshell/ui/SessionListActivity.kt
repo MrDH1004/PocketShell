@@ -61,6 +61,12 @@ class SessionListActivity : AppCompatActivity() {
     private var autoRefresh: kotlinx.coroutines.Job? = null
     private var loading = false
 
+    /** PC 탐색기 → a folder picked to open: a session there (terminal or the chosen AI CLI). */
+    private val pcBrowser = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        val path = r.data?.getStringExtra(FileBrowserActivity.RESULT_PATH)
+        if (r.resultCode == RESULT_OK && !path.isNullOrBlank()) openFolder(path, r.data?.getStringExtra(FileBrowserActivity.RESULT_AGENT))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -83,6 +89,8 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
         toolbar.setNavigationContentDescription(R.string.pcs_back)
         toolbar.setNavigationOnClickListener { finish() }
+        toolbar.menu.add(0, MENU_PC_BROWSER, 0, R.string.pc_browser).setIcon(R.drawable.ic_folder_open)
+            .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
@@ -91,6 +99,7 @@ class SessionListActivity : AppCompatActivity() {
         if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
+                MENU_PC_BROWSER -> pcBrowser.launch(FileBrowserActivity.pcIntent(this, app.pairing()?.displayName.orEmpty()))
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
@@ -432,6 +441,21 @@ class SessionListActivity : AppCompatActivity() {
         }
     }
 
+    private fun openFolder(path: String, agent: String?) {
+        val api = (application as PkshellApp).api() ?: return
+        lifecycleScope.launch {
+            try {
+                openSession(api.createSession(null, com.neststudio.pocketshell.core.PcPath.name(path), null, null, cwd = path, agent = agent))
+            } catch (e: ApiException) {
+                showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
+            } catch (e: IOException) {
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
+            } catch (e: org.json.JSONException) {
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
+            }
+        }
+    }
+
     private fun nameOf(s: SessionInfo) = s.title.ifBlank { s.shell.ifBlank { s.id } }
 
     /** Long press: 세션 종료 / 삭제 / 폴더까지 삭제, whichever apply to this row. Each asks before it acts. */
@@ -572,6 +596,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_DEBUG_UPDATE_URL = 4
         const val MENU_RECENT_LIMIT = 5
         const val MENU_VIEW_SETTINGS = 6
+        const val MENU_PC_BROWSER = 7
         const val HOST_RESTART_WAIT_MS = 5000L
         const val AUTO_REFRESH_MS = 5000L
     }

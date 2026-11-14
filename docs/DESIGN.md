@@ -61,6 +61,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - 프로젝트 파일(호스트 ≥ 0.2.20): 시작 폴더 = `GET /api/sessions/{id}`의 현재 cwd, 그 위로는 올라가지 않는다(폰 UI 제한).
   탐색기: 경로 이동 바(상위 폴더로 바로 이동), 이름 검색, 정렬(이름/최근 수정/크기, 폴더 먼저, 기억), 종류별 아이콘, 상대 시간, 폴더·파일 개수, 길게 누르면 작업 시트(보기/다운로드/열기/PC 경로·이름 복사). 뷰어: 줄 번호, 터미널 글꼴, 이미지 핀치 확대.
   - `GET /api/files?path=<절대경로>` → `{path, entries:[{name, dir, size, modified}]}` (폴더 먼저, 이름순)
+  - `GET /api/drives` (0.2.73+) → `{places:[{name, path, kind:"folder"|"drive"}]}`: 사용자 폴더·바탕 화면·문서·다운로드·트레이 프로젝트 폴더(없는 폴더·중복 제외), 그 뒤 준비된 드라이브(CD 제외). 폰 세션 목록의 **PC 탐색기**가 "내 PC"로 시작해 어디든 탐색, 폴더에서 "여기서 열기" → 터미널 / 감지된 AI CLI → `POST /api/sessions {cwd, title=폴더 이름, agent?}`.
   - `GET /api/files/content?path=` → 파일 바이트(range 지원). 폰: 텍스트(≤2MB, UTF-8→CP949) / 이미지 미리보기, 다운로드는 SAF CreateDocument.
   - `POST /api/files/upload?dir=&name=[&overwrite=1]` (본문 = 파일, ≤1GB, 임시파일 후 이동) → 있으면 409.
   - 페어링된 기기는 이미 셸 전체 권한이 있으므로 경로 샌드박스는 두지 않고 입력만 검증(절대경로, 순수 파일 이름).
@@ -81,7 +82,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 | GET | `/api/info` | `{name, version, fp, port, hosts}` |
 | GET | `/api/sessions` | `{sessions:[Session...]}` — host(running) + external + history 모두 |
 | GET | `/api/sessions/{id}` | Session |
-| POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈) |
+| POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?, agent?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈). 없는 Windows cwd는 400. `agent`("claude"/"codex", 0.2.73+)면 셸에 그 명령을 입력, PC에 없으면 400 |
 | POST | `/api/sessions/{id}/resume` | history → 새 Session |
 | DELETE | `/api/sessions/{id}` | 완전 삭제: running이면 종료를 기다린 뒤 기록까지 삭제(최근에도 안 남음), history면 삭제. `?folder=1`이면 세션의 폴더(cwd)도 휴지통으로 보냄(아래 "폴더 삭제") |
 | POST | `/api/sessions/{id}/end` | 종료만: host 세션은 셸을 끝내고 기록을 남김(최근으로 이동, 204; 실행 중이 아니면 409). `ext-<pid>`는 그 콘솔의 셸 프로세스 트리를 종료(서버 자신이 그 콘솔에서 실행 중이면 409) |

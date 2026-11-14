@@ -181,8 +181,21 @@ class ApiClient(
 
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
 
-    suspend fun createSession(shell: String, title: String?, cols: Int?, rows: Int?): SessionInfo {
-        val body = JSONObject().put("shell", shell)
+    /** `GET /api/drives`: where the PC browser starts (host ≥ 0.2.73; older hosts answer 404). */
+    suspend fun places(): List<com.neststudio.pocketshell.core.PcPlace> =
+        com.neststudio.pocketshell.core.PcPlace.parseList(request("GET", "/api/drives"))
+
+    /**
+     * New session; [shell] null = the host's default shell, [cwd] the folder it starts in, [agent] an AI CLI id
+     * ("claude" | "codex") the host starts in it (host ≥ 0.2.73).
+     */
+    suspend fun createSession(
+        shell: String?, title: String?, cols: Int?, rows: Int?, cwd: String? = null, agent: String? = null,
+    ): SessionInfo {
+        val body = JSONObject()
+        if (!shell.isNullOrBlank()) body.put("shell", shell)
+        if (!cwd.isNullOrBlank()) body.put("cwd", cwd)
+        if (!agent.isNullOrBlank()) body.put("agent", agent)
         if (!title.isNullOrBlank()) body.put("title", title)
         if (cols != null && rows != null) body.put("cols", cols).put("rows", rows)
         return SessionInfo.fromJson(JSONObject(request("POST", "/api/sessions", body)))

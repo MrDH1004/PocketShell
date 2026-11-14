@@ -70,6 +70,8 @@ public sealed class CreateSessionRequest
     public string? Title { get; set; }
     public int? Cols { get; set; }
     public int? Rows { get; set; }
+    /// <summary>AI CLI to start in the new session ("claude" | "codex", see ProjectStore.DetectAgents); null = shell only.</summary>
+    public string? Agent { get; set; }
 }
 
 public static class ControlMessages

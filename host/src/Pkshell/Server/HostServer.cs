@@ -847,7 +847,24 @@ public sealed class HostServer : IDisposable
         app.MapPost("/api/sessions", async (HttpContext ctx) =>
         {
             var req = await ReadBody<CreateSessionRequest>(ctx) ?? new CreateSessionRequest();
-            try { return Json(_sessions.Create(req).Snapshot()); }
+            if (!string.IsNullOrWhiteSpace(req.Cwd) && !req.Cwd.StartsWith('/') && !Directory.Exists(req.Cwd))
+                return Error(400, $"폴더가 없습니다: {req.Cwd}");
+            Pkshell.Core.Projects.ProjectAgent? agent = null;
+            if (!string.IsNullOrWhiteSpace(req.Agent))
+            {
+                agent = ProjectStore.DetectAgents().FirstOrDefault(a => string.Equals(a.Id, req.Agent, StringComparison.OrdinalIgnoreCase));
+                if (agent == null) return Error(400, "PC에서 선택한 AI CLI를 찾을 수 없습니다");
+            }
+            try
+            {
+                var s = _sessions.Create(req);
+                if (agent != null)
+                {
+                    s.WriteInput(Encoding.UTF8.GetBytes(agent.Command + "\r"));
+                    Log.Info($"session {s.Id}: started {agent.Id} in {req.Cwd} by {AuthOf(ctx).DeviceId ?? "local"}");
+                }
+                return Json(s.Snapshot());
+            }
             catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
             {
                 Log.Error($"create session failed: {ex.Message}");
@@ -1009,6 +1026,9 @@ public sealed class HostServer : IDisposable
             if (apk == null) return Error(404, "이 PC 서버에는 폰 앱 설치 파일이 없습니다. PC 서버를 업데이트하세요");
             return Results.File(apk.Path, "application/vnd.android.package-archive", apk.Name, enableRangeProcessing: true);
         });
+
+        // Phone PC browser start ("내 PC"): well-known folders, project folders and drives.
+        app.MapGet("/api/drives", () => Json(new { places = ProjectFiles.Places(ProjectStore.Load(_home).Roots) }));
 
         // Phone project file browser (DESIGN.md §4): list / download / upload by absolute PC path.
         app.MapGet("/api/files", (string? path) =>
