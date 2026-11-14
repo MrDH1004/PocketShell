@@ -394,7 +394,7 @@ class SessionListActivity : AppCompatActivity() {
         val api = (application as PkshellApp).api() ?: return
         lifecycleScope.launch {
             try {
-                openSession(api.createProject(root, name, agent))
+                openSession(api.createProject(root, name, agent, UiPrefs(this@SessionListActivity).lastGrid))
             } catch (e: ApiException) {
                 // The host explains why (folder exists, bad name …); show it as is when it says something.
                 showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_project, e))
@@ -431,7 +431,8 @@ class SessionListActivity : AppCompatActivity() {
         val api = (application as PkshellApp).api() ?: return
         lifecycleScope.launch {
             try {
-                val s = api.createSession(shell, title, null, null)
+                val grid = UiPrefs(this@SessionListActivity).lastGrid
+                val s = api.createSession(shell, title, grid?.first, grid?.second)
                 openSession(s)
             } catch (e: IOException) {
                 showMessage(ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
@@ -445,7 +446,9 @@ class SessionListActivity : AppCompatActivity() {
         val api = (application as PkshellApp).api() ?: return
         lifecycleScope.launch {
             try {
-                openSession(api.createSession(null, com.neststudio.pocketshell.core.PcPath.name(path), null, null, cwd = path, agent = agent))
+                // Start at the phone's last grid: an AI CLI draws for the size it starts at.
+                val grid = UiPrefs(this@SessionListActivity).lastGrid
+                openSession(api.createSession(null, com.neststudio.pocketshell.core.PcPath.name(path), grid?.first, grid?.second, cwd = path, agent = agent))
             } catch (e: ApiException) {
                 showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
             } catch (e: IOException) {

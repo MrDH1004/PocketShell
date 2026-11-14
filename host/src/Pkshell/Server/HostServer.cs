@@ -860,7 +860,7 @@ public sealed class HostServer : IDisposable
                 var s = _sessions.Create(req);
                 if (agent != null)
                 {
-                    s.WriteInput(Encoding.UTF8.GetBytes(agent.Command + "\r"));
+                    s.WriteWhenSized(Encoding.UTF8.GetBytes(agent.Command + "\r")); // once the phone / PC tab sizes settle
                     Log.Info($"session {s.Id}: started {agent.Id} in {req.Cwd} by {AuthOf(ctx).DeviceId ?? "local"}");
                 }
                 return Json(s.Snapshot());
@@ -903,7 +903,7 @@ public sealed class HostServer : IDisposable
             {
                 Directory.CreateDirectory(dir);
                 var s = _sessions.Create(new CreateSessionRequest { Cwd = dir, Title = name, Cols = req.Cols, Rows = req.Rows });
-                s.WriteInput(Encoding.UTF8.GetBytes(agent.Command + "\r"));
+                s.WriteWhenSized(Encoding.UTF8.GetBytes(agent.Command + "\r")); // once the phone / PC tab sizes settle
                 Log.Info($"project: {(existed ? "opened" : "created")} {dir} with {agent.Id} (session {s.Id}) by {AuthOf(ctx).DeviceId ?? "local"}");
                 return Json(s.Snapshot());
             }

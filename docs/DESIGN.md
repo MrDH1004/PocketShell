@@ -83,7 +83,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 | GET | `/api/info` | `{name, version, fp, port, hosts}` |
 | GET | `/api/sessions` | `{sessions:[Session...]}` — host(running) + external + history 모두 |
 | GET | `/api/sessions/{id}` | Session |
-| POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?, agent?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈). 없는 Windows cwd는 400. `agent`("claude"/"codex", 0.2.73+)면 셸에 그 명령을 입력, PC에 없으면 400 |
+| POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?, agent?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈). 없는 Windows cwd는 400. `agent`("claude"/"codex", 0.2.73+)면 셸에 그 명령을 입력, PC에 없으면 400. 0.2.77+: 명령은 창 크기가 정해진 뒤 입력(`HostSession.WriteWhenSized`: 클라이언트 접속·크기 변경 후 0.7초 조용하면, 아무도 안 붙으면 4초 뒤). 120칸으로 시작한 직후 폰(예: 63칸)·PC 탭으로 줄어들면 Claude Code가 입력창·들여쓰기를 옛 폭으로 그려 깨지기 때문. 폰은 마지막 터미널 크기(`UiPrefs.lastGrid`)를 cols/rows로 보냄(`/api/projects`도) |
 | POST | `/api/sessions/{id}/resume` | history → 새 Session |
 | DELETE | `/api/sessions/{id}` | 완전 삭제: running이면 종료를 기다린 뒤 기록까지 삭제(최근에도 안 남음), history면 삭제. `?folder=1`이면 세션의 폴더(cwd)도 휴지통으로 보냄(아래 "폴더 삭제") |
 | POST | `/api/sessions/{id}/end` | 종료만: host 세션은 셸을 끝내고 기록을 남김(최근으로 이동, 204; 실행 중이 아니면 409). `ext-<pid>`는 그 콘솔의 셸 프로세스 트리를 종료(서버 자신이 그 콘솔에서 실행 중이면 409) |

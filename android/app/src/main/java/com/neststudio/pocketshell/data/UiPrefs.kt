@@ -24,6 +24,18 @@ class UiPrefs(context: Context) {
         get() = prefs.getInt(K_SCROLL, DEFAULT_SCROLL_PERCENT).coerceIn(MIN_SCROLL_PERCENT, MAX_SCROLL_PERCENT)
         set(value) = prefs.edit().putInt(K_SCROLL, value.coerceIn(MIN_SCROLL_PERCENT, MAX_SCROLL_PERCENT)).apply()
 
+    /**
+     * The terminal grid the phone last had (cols to rows), sent when creating a session so the PC starts at the
+     * phone's width instead of 120 columns; null until a terminal was opened once.
+     */
+    var lastGrid: Pair<Int, Int>?
+        get() {
+            val c = prefs.getInt(K_LAST_COLS, 0)
+            val r = prefs.getInt(K_LAST_ROWS, 0)
+            return if (c > 0 && r > 0) c to r else null
+        }
+        set(value) = prefs.edit().putInt(K_LAST_COLS, value?.first ?: 0).putInt(K_LAST_ROWS, value?.second ?: 0).apply()
+
     /** Terminal font id, see TerminalFonts. */
     var fontId: String
         get() = prefs.getString(K_FONT, null).orEmpty()
@@ -108,6 +120,8 @@ class UiPrefs(context: Context) {
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
         private const val K_SCROLL = "scroll_percent"
+        private const val K_LAST_COLS = "last_cols"
+        private const val K_LAST_ROWS = "last_rows"
 
         /** Choices offered in the menu. */
         val RECENT_LIMIT_CHOICES = intArrayOf(0, 3, 5, 8, 10, 15, 20, 30)

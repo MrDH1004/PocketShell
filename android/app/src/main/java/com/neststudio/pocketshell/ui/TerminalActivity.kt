@@ -550,6 +550,7 @@ class TerminalActivity : AppCompatActivity() {
         val first = viewCols == 0
         viewCols = cols
         viewRows = rows
+        if (sessionKind != SessionInfo.KIND_EXTERNAL && cols > 0 && rows > 0) uiPrefs.lastGrid = cols to rows
         if (first) maybeConnect() else connection?.sendResize(cols, rows)
     }
 

@@ -217,8 +217,9 @@ class ApiClient(
     suspend fun projectOptions(): ProjectOptions = ProjectOptions.parse(request("GET", "/api/projects"))
 
     /** `POST /api/projects`: `<root>\<name>` (created if missing) + a session there running the agent CLI. */
-    suspend fun createProject(root: String, name: String, agent: String): SessionInfo {
+    suspend fun createProject(root: String, name: String, agent: String, grid: Pair<Int, Int>? = null): SessionInfo {
         val body = JSONObject().put("root", root).put("name", name).put("agent", agent)
+        if (grid != null) body.put("cols", grid.first).put("rows", grid.second)
         return SessionInfo.fromJson(JSONObject(request("POST", "/api/projects", body)))
     }
 

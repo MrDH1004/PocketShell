@@ -155,6 +155,7 @@ public sealed class HostSession : IDisposable
             {
                 _clients.Add(client);
                 ApplySizePolicyLocked();
+                ArmStartLocked();
             }
             var (replay, sub) = Hub.Subscribe();
             var hello = Snapshot();
@@ -179,7 +180,11 @@ public sealed class HostSession : IDisposable
         {
             client.Cols = cols;
             client.Rows = rows;
-            if (_meta.State == "running" && _clients.Contains(client)) ApplySizePolicyLocked();
+            if (_meta.State == "running" && _clients.Contains(client))
+            {
+                ApplySizePolicyLocked();
+                ArmStartLocked();
+            }
         }
     }
 
@@ -199,6 +204,54 @@ public sealed class HostSession : IDisposable
     public bool HasClientOfType(string type)
     {
         lock (Hub.SyncRoot) return _clients.Any(c => c.Type == type);
+    }
+
+    /// <summary>Quiet time after the last attach or resize before a deferred start command is typed.</summary>
+    public static TimeSpan StartSettle { get; set; } = TimeSpan.FromMilliseconds(700);
+    /// <summary>The deferred start command is typed at the latest this long after it was asked for.</summary>
+    public static TimeSpan StartDeadline { get; set; } = TimeSpan.FromSeconds(4);
+
+    private byte[]? _pendingStart;
+    private DateTime _startBy;
+    private Timer? _startTimer;
+
+    /// <summary>
+    /// Types <paramref name="data"/> (an AI CLI start command) once the window size is settled: a client attached and
+    /// no attach or resize for <see cref="StartSettle"/>, or at <see cref="StartDeadline"/>. A full-screen CLI started
+    /// at the default 120 columns and resized right after (phone 63, PC tab 48) draws its input box and indentation
+    /// for the old width.
+    /// </summary>
+    public void WriteWhenSized(byte[] data)
+    {
+        lock (Hub.SyncRoot)
+        {
+            _pendingStart = data;
+            _startBy = DateTime.UtcNow + StartDeadline;
+            ArmStartLocked();
+        }
+    }
+
+    private void ArmStartLocked()
+    {
+        if (_pendingStart == null) return;
+        var left = _startBy - DateTime.UtcNow;
+        var wait = _clients.Count == 0 ? left : (StartSettle < left ? StartSettle : left);
+        if (wait < TimeSpan.Zero) wait = TimeSpan.Zero;
+        _startTimer?.Dispose();
+        _startTimer = new Timer(_ => FlushStart(), null, wait, Timeout.InfiniteTimeSpan);
+    }
+
+    private void FlushStart()
+    {
+        byte[]? data;
+        lock (Hub.SyncRoot)
+        {
+            data = _pendingStart;
+            _pendingStart = null;
+            _startTimer?.Dispose();
+            _startTimer = null;
+        }
+        if (data != null) WriteInput(data);
     }
 
     public void WriteInput(ReadOnlySpan<byte> data)
