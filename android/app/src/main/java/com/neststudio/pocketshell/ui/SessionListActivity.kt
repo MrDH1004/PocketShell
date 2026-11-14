@@ -462,7 +462,7 @@ class SessionListActivity : AppCompatActivity() {
         }
     }
 
-    private fun nameOf(s: SessionInfo) = s.title.ifBlank { s.shell.ifBlank { s.id } }
+    private fun nameOf(s: SessionInfo) = s.displayTitle
 
     /** Long press: 세션 종료 / 삭제 / 폴더까지 삭제, whichever apply to this row. Each asks before it acts. */
     private fun showSessionActions(s: SessionInfo) {
@@ -670,7 +670,7 @@ private class SessionAdapter(
             is Row.Item -> {
                 val s = row.session
                 val v = holder.itemView
-                v.findViewById<TextView>(R.id.title).text = s.title.ifBlank { s.shell.ifBlank { s.id } }
+                v.findViewById<TextView>(R.id.title).text = s.displayTitle
                 val live = s.isExternal || s.isRunningHost
                 v.findViewById<View>(R.id.stateDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(v.context, if (live) R.color.live else R.color.text_muted),

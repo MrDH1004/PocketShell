@@ -28,6 +28,18 @@ data class SessionInfo(
     val folderDeletable: Boolean = false,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
+
+    /**
+     * Name shown for the session (list card, terminal top bar): the project folder's name when the folder is known.
+     * Claude Code / Codex set the window title to the conversation's topic ("✳ 조작 가능한 모든 것 MCP"), which says
+     * little about where it runs. Without a folder: the title, then the shell, then the id.
+     */
+    val displayTitle: String
+        get() {
+            val folder = cwd.trim().trimEnd('\\', '/').substringAfterLast('\\').substringAfterLast('/')
+            return folder.ifBlank { title.ifBlank { shell.ifBlank { id } } }
+        }
+
     /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
     val isHistory: Boolean get() = kind == KIND_HISTORY || kind == KIND_RECENT || (kind == KIND_HOST && state == STATE_EXITED)
     val isRunningHost: Boolean get() = kind == KIND_HOST && state == STATE_RUNNING

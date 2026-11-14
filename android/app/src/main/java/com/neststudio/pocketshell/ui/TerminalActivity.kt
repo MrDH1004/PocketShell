@@ -616,7 +616,7 @@ class TerminalActivity : AppCompatActivity() {
         override fun onControl(message: ServerMessage) {
             when (message) {
                 is ServerMessage.Hello -> message.session?.let { s ->
-                    titleView.text = s.title.ifBlank { s.id }
+                    titleView.text = s.displayTitle
                 }
                 is ServerMessage.Size -> {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
@@ -701,7 +701,7 @@ class TerminalActivity : AppCompatActivity() {
     private fun switchTo(s: SessionInfo) {
         sessionId = s.id
         sessionKind = s.kind
-        titleView.text = s.title.ifBlank { s.id }
+        titleView.text = s.displayTitle
         val c = connection ?: return
         if (resumed && viewCols > 0) c.switchSession(s.id) else c.sessionId = s.id
     }
@@ -1050,6 +1050,6 @@ class TerminalActivity : AppCompatActivity() {
                 .putExtra(EXTRA_ID, s.id)
                 .putExtra(EXTRA_KIND, if (s.isHistory) SessionInfo.KIND_HISTORY else s.kind)
                 .putExtra(EXTRA_PID, s.pid ?: -1)
-                .putExtra(EXTRA_TITLE, s.title)
+                .putExtra(EXTRA_TITLE, s.displayTitle)
     }
 }

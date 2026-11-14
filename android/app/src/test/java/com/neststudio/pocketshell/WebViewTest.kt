@@ -37,6 +37,17 @@ class WebViewTest {
     }
 
     @Test
+    fun sessionShowsItsProjectFolderName() {
+        fun s(title: String, cwd: String) = com.neststudio.pocketshell.core.SessionInfo(
+            "id1", "external", title, "pwsh", cwd, "running", "", "", 0, 0, null, null, "claude",
+        )
+        assertEquals("flowdesk", s("✳ 조작 가능한 모든 것 MCP", "E:\\AIWork\\flowdesk").displayTitle)
+        assertEquals("pkshell-qa2", s("claude", "C:\\Users\\me\\pkshell-qa2\\").displayTitle)
+        assertEquals("C:", s("x", "C:\\").displayTitle)
+        assertEquals("제목", s("제목", "").displayTitle)
+    }
+
+    @Test
     fun basicCredentials() = assertEquals("Basic dTpw", ProxyHead.basic("u", "p"))
 
     @Test
