@@ -91,6 +91,8 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener { finish() }
         toolbar.menu.add(0, MENU_PC_BROWSER, 0, R.string.pc_browser).setIcon(R.drawable.ic_folder_open)
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+        toolbar.menu.add(0, MENU_WEB, 0, R.string.web_view).setIcon(R.drawable.ic_language)
+            .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
@@ -100,6 +102,7 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_PC_BROWSER -> pcBrowser.launch(FileBrowserActivity.pcIntent(this, app.pairing()?.displayName.orEmpty()))
+                MENU_WEB -> startActivity(WebActivity.intent(this))
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
@@ -600,6 +603,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_RECENT_LIMIT = 5
         const val MENU_VIEW_SETTINGS = 6
         const val MENU_PC_BROWSER = 7
+        const val MENU_WEB = 8
         const val HOST_RESTART_WAIT_MS = 5000L
         const val AUTO_REFRESH_MS = 5000L
     }

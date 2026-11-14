@@ -435,6 +435,7 @@ public sealed class HostServer : IDisposable
         app.Use(AuthMiddleware);
         MapApi(app);
         app.Map("/ws/sessions/{id}", HandleWs);
+        app.Map("/ws/tunnel", HandleTunnel);
         return app;
     }
 
@@ -1327,6 +1328,92 @@ public sealed class HostServer : IDisposable
         {
             _conns.TryRemove(conn, out _);
             cts.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Phone web view relay (0.2.81+): `/ws/tunnel?host=H&amp;port=P` opens a TCP connection from this PC to H:P and
+    /// relays raw bytes both ways as binary WebSocket messages. The phone's in-app proxy sends each WebView
+    /// connection (HTTP or an HTTPS CONNECT tunnel) through one of these, so pages on networks only the PC reaches
+    /// (company intranet) work unmodified: links, cookies and TLS are end to end between WebView and the site.
+    /// Same device auth as the rest (a paired device already has a shell on this PC, so this adds no reach).
+    /// A failed connect answers 502 before the upgrade.
+    /// </summary>
+    private async Task HandleTunnel(HttpContext ctx)
+    {
+        if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+        var target = ctx.Request.Query["host"].ToString();
+        if (string.IsNullOrWhiteSpace(target) || target.Length > 255 || target.Any(char.IsWhiteSpace)
+            || !int.TryParse(ctx.Request.Query["port"], out var port) || port is < 1 or > 65535)
+        {
+            ctx.Response.StatusCode = 400;
+            return;
+        }
+        var who = AuthOf(ctx).DeviceId ?? "local";
+        using var tcp = new System.Net.Sockets.TcpClient();
+        try
+        {
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
+            connectCts.CancelAfter(TimeSpan.FromSeconds(10));
+            await tcp.ConnectAsync(target, port, connectCts.Token);
+        }
+        catch (Exception ex) when (ex is System.Net.Sockets.SocketException or OperationCanceledException or ArgumentException)
+        {
+            Log.Info($"web tunnel {target}:{port} by {who} failed: {ex.Message}");
+            ctx.Response.StatusCode = 502;
+            await ctx.Response.WriteAsync(ex is OperationCanceledException ? "timed out" : ex.Message);
+            return;
+        }
+        tcp.NoDelay = true;
+        using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+        var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
+        _conns[conn] = 0;
+        if (conn.DeviceId != null && !_auth.Devices.IsActive(conn.DeviceId))
+        {
+            _conns.TryRemove(conn, out _);
+            await conn.CloseAsync(4401, "device revoked");
+            return;
+        }
+        Log.Info($"web tunnel {target}:{port} opened by {who}");
+        long up = 0, down = 0;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
+        var stream = tcp.GetStream();
+        try
+        {
+            var fromPc = Task.Run(async () =>
+            {
+                var buf = new byte[64 * 1024];
+                int n;
+                while ((n = await stream.ReadAsync(buf, cts.Token)) > 0)
+                {
+                    down += n;
+                    await conn.SendAsync(buf.AsMemory(0, n), false, cts.Token);
+                }
+            });
+            var toPc = Task.Run(async () =>
+            {
+                var buf = new byte[64 * 1024];
+                while (!cts.IsCancellationRequested)
+                {
+                    var res = await ws.ReceiveAsync(buf, cts.Token);
+                    if (res.MessageType == WebSocketMessageType.Close) break;
+                    if (res.Count > 0)
+                    {
+                        up += res.Count;
+                        await stream.WriteAsync(buf.AsMemory(0, res.Count), cts.Token);
+                    }
+                }
+            });
+            await Task.WhenAny(fromPc, toPc);
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or IOException) { }
+        finally
+        {
+            cts.Cancel();
+            _conns.TryRemove(conn, out _);
+            try { await conn.CloseAsync((int)WebSocketCloseStatus.NormalClosure, "done"); }
+            catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException) { }
+            Log.Info($"web tunnel {target}:{port} closed ({up} B up, {down} B down)");
         }
     }
 

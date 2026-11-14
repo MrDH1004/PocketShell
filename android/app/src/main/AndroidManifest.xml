@@ -60,6 +60,12 @@
             android:name=".ui.FileViewerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.WebActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Serves downloaded update APKs (cache/updates/) to the package installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"

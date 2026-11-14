@@ -65,6 +65,12 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   - `GET /api/files/content?path=` → 파일 바이트(range 지원). 폰: 텍스트(≤2MB, UTF-8→CP949) / 이미지 미리보기, 다운로드는 SAF CreateDocument.
   - `POST /api/files/upload?dir=&name=[&overwrite=1]` (본문 = 파일, ≤1GB, 임시파일 후 이동) → 있으면 409.
   - `POST /api/files/op` (0.2.76+) body `{op, paths?, dest?, name?}` → `{done, paths, errors}`: `copy`/`move`는 paths를 dest 폴더로(같은 이름이 있으면 Explorer식 새 이름 "a - 복사본.txt"·"a (2).txt", 덮어쓰기 없음, 폴더를 자기 안으로는 거절, 다른 드라이브 폴더 이동은 복사 후 삭제, 정션은 건너뜀), `delete`는 휴지통(`RecycleBin.Send`), `rename`은 paths[0]을 name으로(있으면 409, 대소문자만 바꾸기 가능), `mkdir`은 dest에 name(없으면 "새 폴더", 겹치면 "새 폴더 (2)"). 항목별 실패는 errors에. 폰은 길게 눌러 선택 모드, 복사·잘라내기는 앱 안 클립보드(같은 PC만)에 두고 다른 폴더에서 붙여넣기.
+- 웹 보기(0.2.81+): PC가 닿는 웹(회사 내부망, PC 자신의 localhost)을 폰 앱 안에서 연다.
+  - 호스트 `wss://…/ws/tunnel?host=H&port=P`: 기기 토큰 인증(다른 API와 같음), PC에서 H:P로 TCP 연결 후 바이트를 그대로 이진 메시지로 중계. 연결 실패는 업그레이드 전에 502 + 이유. 열림·닫힘(주고받은 바이트)을 host.log에 남김. 페어링한 기기는 이미 PC 셸이 있으므로 새 권한은 아님.
+  - 폰 `WebActivity`: `androidx.webkit.ProxyController`로 앱 WebView의 모든 요청을 `LocalWebProxy`(127.0.0.1 임의 포트, 화면이 열려 있을 때만)로 보냄. `removeImplicitRules`라 localhost도 PC의 localhost. 프록시는 CONNECT(https·wss)는 터널, 평문 HTTP는 요청 줄을 원본 형식으로 바꾸고 `Connection: close`로 한 터널 한 요청(`core/ProxyHead`). 링크·쿠키·TLS는 WebView와 사이트 사이에서 그대로 동작(주소 재작성 없음).
+  - 루프백 포트는 다른 앱도 닿을 수 있어, 실행마다 임의 Basic 비밀번호를 요구(없으면 407). WebView는 `onReceivedHttpAuthRequest`(realm "PocketShell")에서 그 값으로 응답. 사이트 자체 로그인(Basic 등)은 입력 창, 인증서 오류는 경고 후 사용자가 계속/취소.
+  - 주소창(스킴 없으면 http://), 뒤로·앞으로·새로고침, 즐겨찾기(⋮ > 추가, 목록에서 길게 눌러 삭제), 마지막 주소 기억. 다운로드는 미지원.
+  - 한계: PC가 꺼져 있거나 호스트가 안 돌면 안 열림. 사내 보안 정책 확인은 사용자 몫.
   - 페어링된 기기는 이미 셸 전체 권한이 있으므로 경로 샌드박스는 두지 않고 입력만 검증(절대경로, 순수 파일 이름).
 - 셸 실행 명령:
   - cmd: `cmd.exe` + 환경변수 `PROMPT=$E]9;9;$P$E\$P$G` (OSC 9;9로 cwd 보고)

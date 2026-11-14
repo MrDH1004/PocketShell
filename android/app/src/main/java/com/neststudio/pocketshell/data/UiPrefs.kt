@@ -36,6 +36,15 @@ class UiPrefs(context: Context) {
         }
         set(value) = prefs.edit().putInt(K_LAST_COLS, value?.first ?: 0).putInt(K_LAST_ROWS, value?.second ?: 0).apply()
 
+    /** Web view: saved addresses (newest first) and the last page opened. */
+    var webBookmarks: List<com.neststudio.pocketshell.core.WebBookmark>
+        get() = com.neststudio.pocketshell.core.WebBookmarks.parse(prefs.getString(K_WEB_BOOKMARKS, null).orEmpty())
+        set(value) = prefs.edit().putString(K_WEB_BOOKMARKS, com.neststudio.pocketshell.core.WebBookmarks.toText(value)).apply()
+
+    var webLastUrl: String
+        get() = prefs.getString(K_WEB_LAST, null).orEmpty()
+        set(value) = prefs.edit().putString(K_WEB_LAST, value).apply()
+
     /** Terminal font id, see TerminalFonts. */
     var fontId: String
         get() = prefs.getString(K_FONT, null).orEmpty()
@@ -120,6 +129,8 @@ class UiPrefs(context: Context) {
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
         private const val K_SCROLL = "scroll_percent"
+        private const val K_WEB_BOOKMARKS = "web_bookmarks"
+        private const val K_WEB_LAST = "web_last_url"
         private const val K_LAST_COLS = "last_cols"
         private const val K_LAST_ROWS = "last_rows"
 

@@ -173,6 +173,12 @@ object ClientProtocol {
             "?client=android&cols=$cols&rows=$rows&openPcTab=${if (openPcTab) 1 else 0}"
     }
 
+    /** `wss://host:port/ws/tunnel?host=T&port=P` (host ≥ 0.2.81): a TCP connection from the PC to T:P. */
+    fun tunnelUrl(host: String, port: Int, target: String, targetPort: Int): String {
+        val h = if (host.contains(':') && !host.startsWith("[")) "[$host]" else host
+        return "wss://$h:$port/ws/tunnel?host=${urlEncode(target)}&port=$targetPort"
+    }
+
     fun baseUrl(host: String, port: Int): String {
         val h = if (host.contains(':') && !host.startsWith("[")) "[$host]" else host
         return "https://$h:$port"

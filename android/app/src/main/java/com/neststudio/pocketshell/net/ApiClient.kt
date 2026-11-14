@@ -194,6 +194,9 @@ class ApiClient(
         return com.neststudio.pocketshell.core.FileOpResult.parse(request("POST", "/api/files/op", body, client = slow))
     }
 
+    /** A TCP connection from the PC to [target]:[targetPort] for the web view (blocking, host ≥ 0.2.81). */
+    fun openTunnel(target: String, targetPort: Int): WebTunnel = WebTunnel.open(http, hosts, port, token, target, targetPort)
+
     suspend fun places(): List<com.neststudio.pocketshell.core.PcPlace> =
         com.neststudio.pocketshell.core.PcPlace.parseList(request("GET", "/api/drives"))
 
