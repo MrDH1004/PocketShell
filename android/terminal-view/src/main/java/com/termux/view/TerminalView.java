@@ -250,8 +250,10 @@ public final class TerminalView extends View {
                     if (!mEmulator.isAlternateBufferActive()) startLocalFling(e2, velocityY);
                     return true;
                 }
+                // App with mouse tracking: wheel reports, bounded to about half a screen times the sensitivity.
                 float SCALE = 0.25f;
-                mScroller.fling(0, 0, 0, -(int) (velocityY * SCALE), 0, 0, -mEmulator.mRows / 2, mEmulator.mRows / 2);
+                int bound = Math.max(1, (int) (mEmulator.mRows / 2 * mScrollSensitivity));
+                mScroller.fling(0, 0, 0, (int) (flingVelocity(velocityY) * SCALE), 0, 0, -bound, bound);
 
                 post(new Runnable() {
                     private int mLastY = 0;

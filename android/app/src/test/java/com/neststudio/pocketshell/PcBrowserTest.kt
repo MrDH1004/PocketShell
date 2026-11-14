@@ -1,6 +1,8 @@
 package com.neststudio.pocketshell
 
 import com.neststudio.pocketshell.core.Crumbs
+import com.neststudio.pocketshell.core.FileClipboard
+import com.neststudio.pocketshell.core.FileOpResult
 import com.neststudio.pocketshell.core.PcPath
 import com.neststudio.pocketshell.core.PcPlace
 import org.junit.Assert.assertEquals
@@ -30,6 +32,25 @@ class PcBrowserTest {
             Crumbs.ofPc("C:\\Work\\app", "내 PC"),
         )
         assertEquals(listOf("내 PC" to "", "D:" to "D:\\"), Crumbs.ofPc("D:\\", "내 PC"))
+    }
+
+    @Test
+    fun clipboardKnowsWhenCutItemsAreAlreadyHere() {
+        FileClipboard.put("pc1", listOf("C:\\Work\\a.txt", "C:\\Work\\sub"), cut = true)
+        assertEquals(true, FileClipboard.allIn("C:\\Work"))
+        assertEquals(true, FileClipboard.allIn("c:\\work\\"))
+        assertEquals(false, FileClipboard.allIn("C:\\Work\\sub"))
+        FileClipboard.clear()
+        assertEquals(true, FileClipboard.isEmpty)
+        assertEquals(false, FileClipboard.allIn("C:\\Work"))
+    }
+
+    @Test
+    fun fileOpResultParse() {
+        assertEquals(
+            FileOpResult(1, listOf("C:\\a - 복사본.txt"), listOf("b.txt: 잠김")),
+            FileOpResult.parse("""{"done":1,"paths":["C:\\a - 복사본.txt"],"errors":["b.txt: 잠김"]}"""),
+        )
     }
 
     @Test

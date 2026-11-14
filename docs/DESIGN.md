@@ -64,6 +64,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   - `GET /api/drives` (0.2.73+) → `{places:[{name, path, kind:"folder"|"drive"}]}`: 사용자 폴더·바탕 화면·문서·다운로드·트레이 프로젝트 폴더(없는 폴더·중복 제외), 그 뒤 준비된 드라이브(CD 제외). 폰 세션 목록의 **PC 탐색기**가 "내 PC"로 시작해 어디든 탐색, 폴더에서 "여기서 열기" → 터미널 / 감지된 AI CLI → `POST /api/sessions {cwd, title=폴더 이름, agent?}`.
   - `GET /api/files/content?path=` → 파일 바이트(range 지원). 폰: 텍스트(≤2MB, UTF-8→CP949) / 이미지 미리보기, 다운로드는 SAF CreateDocument.
   - `POST /api/files/upload?dir=&name=[&overwrite=1]` (본문 = 파일, ≤1GB, 임시파일 후 이동) → 있으면 409.
+  - `POST /api/files/op` (0.2.76+) body `{op, paths?, dest?, name?}` → `{done, paths, errors}`: `copy`/`move`는 paths를 dest 폴더로(같은 이름이 있으면 Explorer식 새 이름 "a - 복사본.txt"·"a (2).txt", 덮어쓰기 없음, 폴더를 자기 안으로는 거절, 다른 드라이브 폴더 이동은 복사 후 삭제, 정션은 건너뜀), `delete`는 휴지통(`RecycleBin.Send`), `rename`은 paths[0]을 name으로(있으면 409, 대소문자만 바꾸기 가능), `mkdir`은 dest에 name(없으면 "새 폴더", 겹치면 "새 폴더 (2)"). 항목별 실패는 errors에. 폰은 길게 눌러 선택 모드, 복사·잘라내기는 앱 안 클립보드(같은 PC만)에 두고 다른 폴더에서 붙여넣기.
   - 페어링된 기기는 이미 셸 전체 권한이 있으므로 경로 샌드박스는 두지 않고 입력만 검증(절대경로, 순수 파일 이름).
 - 셸 실행 명령:
   - cmd: `cmd.exe` + 환경변수 `PROMPT=$E]9;9;$P$E\$P$G` (OSC 9;9로 cwd 보고)

@@ -1071,6 +1071,64 @@ public sealed class HostServer : IDisposable
             catch (IOException ex) { return Error(400, ex.Message); }
         });
 
+        // Phone file browser Explorer basics: copy / move / delete (Recycle Bin) / rename / new folder.
+        app.MapPost("/api/files/op", async (HttpContext ctx) =>
+        {
+            var req = await ReadBody<FileOpRequest>(ctx);
+            if (req == null) return Error(400, "요청 본문이 없습니다");
+            var paths = (req.Paths ?? []).Select(ProjectFiles.Normalize).ToList();
+            if (paths.Any(p => p == null)) return Error(400, "절대 경로가 필요합니다");
+            var sources = paths.Select(p => p!).ToList();
+            var who = AuthOf(ctx).DeviceId ?? "local";
+            try
+            {
+                switch (req.Op)
+                {
+                    case "copy" or "move":
+                    {
+                        var dest = ProjectFiles.Normalize(req.Dest);
+                        if (dest == null) return Error(400, "대상 폴더 경로가 필요합니다");
+                        if (sources.Count == 0) return Error(400, "항목이 없습니다");
+                        var r = req.Op == "copy" ? FileOps.Copy(sources, dest) : FileOps.Move(sources, dest);
+                        Log.Info($"files: {req.Op} {r.Done}/{sources.Count} to {dest} by {who}");
+                        return Json(r);
+                    }
+                    case "delete":
+                    {
+                        if (sources.Count == 0) return Error(400, "항목이 없습니다");
+                        var r = FileOps.Delete(sources, Pkshell.Core.Projects.RecycleBin.Send);
+                        Log.Info($"files: recycled {r.Done}/{sources.Count} by {who}: {string.Join(", ", r.Paths)}");
+                        return Json(r);
+                    }
+                    case "rename":
+                    {
+                        if (sources.Count != 1) return Error(400, "이름을 바꿀 항목 하나가 필요합니다");
+                        var invalid = ProjectFiles.ValidateName(req.Name);
+                        if (invalid != null || req.Name == null) return Error(400, invalid ?? "이름이 없습니다");
+                        var to = FileOps.Rename(sources[0], req.Name);
+                        Log.Info($"files: renamed {sources[0]} -> {to} by {who}");
+                        return Json(new FileOpResult(1, [to], []));
+                    }
+                    case "mkdir":
+                    {
+                        var dest = ProjectFiles.Normalize(req.Dest);
+                        if (dest == null) return Error(400, "대상 폴더 경로가 필요합니다");
+                        if (!string.IsNullOrWhiteSpace(req.Name) && ProjectFiles.ValidateName(req.Name) is { } bad) return Error(400, bad);
+                        var made = FileOps.MakeDir(dest, req.Name);
+                        Log.Info($"files: new folder {made} by {who}");
+                        return Json(new FileOpResult(1, [made], []));
+                    }
+                    default:
+                        return Error(400, $"모르는 작업입니다: {req.Op}");
+                }
+            }
+            catch (FileExistsException ex) { return Error(409, ex.Message); }
+            catch (FileNotFoundException ex) { return Error(404, ex.Message); }
+            catch (DirectoryNotFoundException ex) { return Error(404, $"폴더가 없습니다: {ex.Message}"); }
+            catch (UnauthorizedAccessException) { return Error(403, "접근 권한이 없습니다"); }
+            catch (IOException ex) { return Error(400, ex.Message); }
+        });
+
         app.MapPost("/api/external/{pid:int}/adopt", (int pid) =>
         {
             var ext = _externals.Get(pid);

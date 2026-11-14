@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A selected file browser row: the row shape filled with the accent container colour. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ripple">
+    <item>
+        <shape><corners android:radius="10dp" /><solid android:color="@color/accent_container" /></shape>
+    </item>
+</ripple>

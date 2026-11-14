@@ -9,6 +9,7 @@ android {
     defaultConfig {
         minSdk = 26
         consumerProguardFiles("proguard-rules.pro")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -25,4 +26,6 @@ dependencies {
     implementation("androidx.annotation:annotation:1.9.1")
     api(project(":terminal-emulator"))
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

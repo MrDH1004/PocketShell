@@ -182,6 +182,18 @@ class ApiClient(
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
 
     /** `GET /api/drives`: where the PC browser starts (host ≥ 0.2.73; older hosts answer 404). */
+    /**
+     * `POST /api/files/op` (host ≥ 0.2.76): [op] "copy" | "move" | "delete" | "rename" | "mkdir" on [paths], into
+     * [dest] (copy, move, mkdir), with [name] (rename, mkdir).
+     */
+    suspend fun fileOp(op: String, paths: List<String>, dest: String? = null, name: String? = null): com.neststudio.pocketshell.core.FileOpResult {
+        val body = JSONObject().put("op", op).put("paths", org.json.JSONArray(paths))
+        if (dest != null) body.put("dest", dest)
+        if (name != null) body.put("name", name)
+        val slow = http.newBuilder().readTimeout(10, TimeUnit.MINUTES).build() // a big folder copy takes a while
+        return com.neststudio.pocketshell.core.FileOpResult.parse(request("POST", "/api/files/op", body, client = slow))
+    }
+
     suspend fun places(): List<com.neststudio.pocketshell.core.PcPlace> =
         com.neststudio.pocketshell.core.PcPlace.parseList(request("GET", "/api/drives"))
 

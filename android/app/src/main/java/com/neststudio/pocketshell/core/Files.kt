@@ -40,6 +40,49 @@ data class PcPlace(val name: String, val path: String, val drive: Boolean) {
     }
 }
 
+/** `POST /api/files/op` (host ≥ 0.2.76) → `{done, paths, errors}`. */
+data class FileOpResult(val done: Int, val paths: List<String>, val errors: List<String>) {
+    companion object {
+        fun parse(text: String): FileOpResult {
+            val o = JSONObject(text)
+            fun strings(key: String): List<String> {
+                val a = o.optJSONArray(key) ?: return emptyList()
+                return (0 until a.length()).map { a.optString(it) }
+            }
+            return FileOpResult(o.optInt("done"), strings("paths"), strings("errors"))
+        }
+    }
+}
+
+/**
+ * The file browser's copy / cut clipboard (app-wide, so it survives going to another folder or PC browser screen).
+ * [pcId] keeps a paste on the PC the items came from.
+ */
+object FileClipboard {
+    var pcId: String = ""
+        private set
+    var paths: List<String> = emptyList()
+        private set
+    var cut: Boolean = false
+        private set
+
+    val isEmpty get() = paths.isEmpty()
+
+    fun put(pcId: String, paths: List<String>, cut: Boolean) {
+        this.pcId = pcId
+        this.paths = paths
+        this.cut = cut
+    }
+
+    fun clear() {
+        paths = emptyList()
+        cut = false
+    }
+
+    /** True when every item already sits in [dir] (a cut pasted there would do nothing). */
+    fun allIn(dir: String): Boolean = paths.isNotEmpty() && paths.all { PcPath.parentOrTop(it).trimEnd('\\').equals(dir.trimEnd('\\'), ignoreCase = true) }
+}
+
 /** Windows path helpers for the file browser (the host is a Windows PC). */
 object PcPath {
     fun child(dir: String, name: String): String = if (dir.endsWith("\\")) dir + name else "$dir\\$name"

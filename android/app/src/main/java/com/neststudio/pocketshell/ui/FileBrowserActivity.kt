@@ -24,7 +24,9 @@ import com.neststudio.pocketshell.R
 import com.neststudio.pocketshell.core.Crumbs
 import com.neststudio.pocketshell.core.FileCategory
 import com.neststudio.pocketshell.core.FileEntry
+import com.neststudio.pocketshell.core.FileClipboard
 import com.neststudio.pocketshell.core.FileKinds
+import com.neststudio.pocketshell.core.FileOpResult
 import com.neststudio.pocketshell.core.FilePreview
 import com.neststudio.pocketshell.core.FileSort
 import com.neststudio.pocketshell.core.PcPath
@@ -81,8 +83,15 @@ class FileBrowserActivity : AppCompatActivity() {
     private var placePaths: Map<String, String> = emptyMap()
     private var agents: List<ProjectAgent>? = null
     private lateinit var toolbar: MaterialToolbar
+    /** Names selected in the current folder (selection mode while not empty). */
+    private val selected = linkedSetOf<String>()
+    private var pcId = ""
+    private var baseTitle: CharSequence? = null
+    private lateinit var pasteBar: View
+    private lateinit var pasteText: TextView
 
     private val atTop get() = pcMode && current.isEmpty()
+    private val selecting get() = selected.isNotEmpty()
 
     private val pickUpload = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) upload(uri, overwrite = false)
@@ -113,8 +122,11 @@ class FileBrowserActivity : AppCompatActivity() {
 
         toolbar = findViewById(R.id.toolbar)
         toolbar.subtitle = intent.getStringExtra(EXTRA_TITLE)
+        if (pcMode) toolbar.setTitle(R.string.pc_browser)
+        baseTitle = toolbar.title
+        pcId = (application as PkshellApp).pairing()?.id.orEmpty()
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
-        toolbar.setNavigationOnClickListener { goUpOrFinish() }
+        toolbar.setNavigationOnClickListener { if (selecting) clearSelection() else goUpOrFinish() }
         prefs = UiPrefs(this)
         sort = FileSort.of(prefs.fileSort)
         val search = SearchView(this).apply {
@@ -136,20 +148,48 @@ class FileBrowserActivity : AppCompatActivity() {
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_UPLOAD, 2, R.string.files_upload).setIcon(R.drawable.ic_upload)
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
-        toolbar.menu.add(0, MENU_REFRESH, 3, R.string.refresh)
+        toolbar.menu.add(0, MENU_NEW_FOLDER, 3, R.string.files_new_folder).setIcon(R.drawable.ic_new_folder)
+        toolbar.menu.add(0, MENU_REFRESH, 4, R.string.refresh)
         if (pcMode) {
             toolbar.menu.add(0, MENU_OPEN_HERE, 0, R.string.pc_open_here).setIcon(R.drawable.ic_new_terminal_here)
                 .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
+        // Selection mode (long-press an entry): Explorer basics on the selected items.
+        fun selectAction(id: Int, label: Int, icon: Int, always: Boolean) =
+            toolbar.menu.add(1, id, 10 + id, label).setIcon(icon)
+                .setShowAsAction(if (always) android.view.MenuItem.SHOW_AS_ACTION_ALWAYS else android.view.MenuItem.SHOW_AS_ACTION_NEVER)
+        selectAction(MENU_COPY, R.string.files_copy, R.drawable.ic_copy, true)
+        selectAction(MENU_CUT, R.string.files_cut, R.drawable.ic_cut, true)
+        selectAction(MENU_DELETE, R.string.files_delete, R.drawable.ic_delete, true)
+        selectAction(MENU_RENAME, R.string.files_rename, R.drawable.ic_edit, false)
+        selectAction(MENU_MORE, R.string.files_more, R.drawable.ic_more_vert, false)
+        selectAction(MENU_SELECT_ALL, R.string.files_select_all, R.drawable.ic_check, false)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_OPEN_HERE -> chooseLaunch(current)
                 MENU_SORT -> chooseSort()
                 MENU_UPLOAD -> pickUpload.launch(arrayOf("*/*"))
+                MENU_NEW_FOLDER -> newFolder()
                 MENU_REFRESH -> load()
+                MENU_COPY -> toClipboard(cut = false)
+                MENU_CUT -> toClipboard(cut = true)
+                MENU_DELETE -> confirmDelete()
+                MENU_RENAME -> selectedEntries().singleOrNull()?.let { rename(it) }
+                MENU_MORE -> selectedEntries().singleOrNull()?.let { e -> clearSelection(); fileActions(e) }
+                MENU_SELECT_ALL -> {
+                    for (i in 0 until adapter.count) adapter.getItem(i)?.let { e -> selected.add(e.name) }
+                    updateMode()
+                }
             }
             true
         }
+        pasteBar = findViewById(R.id.pasteBar)
+        pasteText = findViewById(R.id.pasteText)
+        findViewById<View>(R.id.pasteCancel).setOnClickListener {
+            FileClipboard.clear()
+            updatePasteBar()
+        }
+        findViewById<View>(R.id.pasteHere).setOnClickListener { paste() }
 
         crumbsView = findViewById(R.id.crumbs)
         crumbScroll = findViewById(R.id.crumbScroll)
@@ -164,10 +204,12 @@ class FileBrowserActivity : AppCompatActivity() {
                 val e = getItem(position) ?: return v
                 val icon = v.findViewById<ImageView>(R.id.icon)
                 val cat = FileKinds.category(e)
-                icon.setImageResource(iconFor(cat))
+                val on = e.name in selected
+                icon.setImageResource(if (on) R.drawable.ic_check else iconFor(cat))
                 icon.imageTintList = ColorStateList.valueOf(
-                    ContextCompat.getColor(context, if (cat == FileCategory.FOLDER) R.color.accent else R.color.text_secondary),
+                    ContextCompat.getColor(context, if (on || cat == FileCategory.FOLDER) R.color.accent else R.color.text_secondary),
                 )
+                v.setBackgroundResource(if (on) R.drawable.bg_row_selected else R.drawable.bg_row)
                 v.findViewById<TextView>(android.R.id.text1).text = e.name
                 v.findViewById<TextView>(android.R.id.text2).text = describe(e)
                 return v
@@ -177,17 +219,28 @@ class FileBrowserActivity : AppCompatActivity() {
         list.adapter = adapter
         list.setOnItemClickListener { _, _, pos, _ ->
             val e = adapter.getItem(pos) ?: return@setOnItemClickListener
-            if (e.dir) open(pathOf(e)) else preview(e)
+            when {
+                selecting -> toggle(e)
+                e.dir && pcMode -> chooseLaunch(pathOf(e), enter = true)
+                e.dir -> open(pathOf(e))
+                else -> preview(e)
+            }
         }
         list.setOnItemLongClickListener { _, _, pos, _ ->
-            adapter.getItem(pos)?.let { fileActions(it) }
+            val e = adapter.getItem(pos) ?: return@setOnItemLongClickListener true
+            if (atTop) fileActions(e) else toggle(e) // "내 PC" places are not files to copy or delete
             true
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = goUpOrFinish()
+            override fun handleOnBackPressed() = if (selecting) clearSelection() else goUpOrFinish()
         })
         load()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::pasteBar.isInitialized) updatePasteBar() // copied or cut in another browser screen
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -285,13 +338,16 @@ class FileBrowserActivity : AppCompatActivity() {
 
     private fun open(path: String) {
         current = path
+        selected.clear()
+        // A name filter is for one folder: going elsewhere with it would hide the new folder's items.
+        toolbar.menu.findItem(MENU_SEARCH)?.collapseActionView()
+        query = ""
         load()
     }
 
     private fun load() {
         renderCrumbs()
-        toolbar.menu.findItem(MENU_OPEN_HERE)?.isVisible = !atTop
-        toolbar.menu.findItem(MENU_UPLOAD)?.isVisible = !atTop
+        updateMode()
         swipe.isRefreshing = true
         lifecycleScope.launch {
             try {
@@ -371,8 +427,170 @@ class FileBrowserActivity : AppCompatActivity() {
         sheet.show()
     }
 
-    /** PC mode: 터미널 or an AI CLI found on the PC, then back to the session list, which opens it. */
-    private fun chooseLaunch(path: String) {
+    private fun toggle(e: FileEntry) {
+        if (!selected.remove(e.name)) selected.add(e.name)
+        updateMode()
+    }
+
+    private fun clearSelection() {
+        selected.clear()
+        updateMode()
+    }
+
+    private fun selectedEntries(): List<FileEntry> = all.filter { it.name in selected }
+
+    private fun selectedPaths(): List<String> = selected.map { PcPath.child(current, it) }
+
+    /** Toolbar for the mode (browsing or selection), the selection marks and the paste bar. */
+    private fun updateMode() {
+        val n = selected.size
+        val menu = toolbar.menu
+        menu.setGroupVisible(1, selecting)
+        menu.findItem(MENU_RENAME)?.isVisible = n == 1
+        menu.findItem(MENU_MORE)?.isVisible = n == 1
+        menu.findItem(MENU_SEARCH)?.let { it.isVisible = !selecting || it.isActionViewExpanded }
+        menu.findItem(MENU_SORT)?.isVisible = !selecting
+        menu.findItem(MENU_REFRESH)?.isVisible = !selecting
+        menu.findItem(MENU_UPLOAD)?.isVisible = !selecting && !atTop
+        menu.findItem(MENU_NEW_FOLDER)?.isVisible = !selecting && !atTop
+        menu.findItem(MENU_OPEN_HERE)?.isVisible = !selecting && !atTop
+        toolbar.title = if (selecting) getString(R.string.files_selected, n) else baseTitle
+        toolbar.setNavigationIcon(if (selecting) R.drawable.ic_close else R.drawable.ic_arrow_back)
+        toolbar.navigationContentDescription = getString(if (selecting) R.string.files_select_done else R.string.back)
+        adapter.notifyDataSetChanged()
+        updatePasteBar()
+    }
+
+    private fun updatePasteBar() {
+        val show = !FileClipboard.isEmpty && FileClipboard.pcId == pcId && !atTop && !selecting
+        pasteBar.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) {
+            val n = FileClipboard.paths.size
+            pasteText.text = getString(if (FileClipboard.cut) R.string.files_clip_cut else R.string.files_clip_copied, n)
+        }
+    }
+
+    private fun toClipboard(cut: Boolean) {
+        FileClipboard.put(pcId, selectedPaths(), cut)
+        clearSelection()
+    }
+
+    private fun paste() {
+        val clip = FileClipboard
+        if (clip.cut && clip.allIn(current)) {
+            Toast.makeText(this, R.string.files_clip_same_folder, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val paths = clip.paths
+        val cut = clip.cut
+        val dest = current
+        Toast.makeText(this, R.string.files_pasting, Toast.LENGTH_SHORT).show()
+        runOp({ api.fileOp(if (cut) "move" else "copy", paths, dest = dest) }) { r ->
+            if (cut) FileClipboard.clear() // moved: the old paths are gone (a copy can be pasted again, as in Explorer)
+            getString(R.string.files_pasted, r.done)
+        }
+    }
+
+    private fun confirmDelete() {
+        val paths = selectedPaths()
+        if (paths.isEmpty()) return
+        val message = if (paths.size == 1) getString(R.string.files_delete_one, selected.first())
+        else getString(R.string.files_delete_many, paths.size)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.files_delete_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.files_delete_confirm) { _, _ ->
+                clearSelection()
+                runOp({ api.fileOp("delete", paths) }) { r -> getString(R.string.files_deleted, r.done) }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun rename(e: FileEntry) {
+        askName(R.string.files_rename, e.name, selectStem = !e.dir) { name ->
+            if (name == e.name) return@askName
+            clearSelection()
+            runOp({ api.fileOp("rename", listOf(PcPath.child(current, e.name)), name = name) }) { null }
+        }
+    }
+
+    private fun newFolder() {
+        askName(R.string.files_new_folder, getString(R.string.files_new_folder), selectStem = false) { name ->
+            runOp({ api.fileOp("mkdir", emptyList(), dest = current, name = name) }) { null }
+        }
+    }
+
+    /** Name dialog; [selectStem] selects the name without its extension (renaming a file). */
+    private fun askName(title: Int, initial: String, selectStem: Boolean, done: (String) -> Unit) {
+        val d = resources.displayMetrics.density
+        val input = android.widget.EditText(this).apply {
+            setText(initial)
+            hint = getString(R.string.files_name_hint)
+            isSingleLine = true
+            val dot = initial.lastIndexOf('.')
+            if (selectStem && dot > 0) setSelection(0, dot) else selectAll()
+        }
+        val box = android.widget.FrameLayout(this).apply {
+            setPadding((d * 24).toInt(), (d * 8).toInt(), (d * 24).toInt(), 0)
+            addView(input)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(box)
+            .setPositiveButton(R.string.confirm) { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) done(name)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        input.requestFocus()
+    }
+
+    /**
+     * Runs a file operation, then reloads the folder. [success] gives the toast text (null = none); items that
+     * failed are listed in a dialog.
+     */
+    private fun runOp(block: suspend () -> FileOpResult, success: (FileOpResult) -> String?) {
+        val dir = current
+        swipe.isRefreshing = true
+        lifecycleScope.launch {
+            try {
+                val r = block()
+                success(r)?.let { if (r.done > 0) Toast.makeText(this@FileBrowserActivity, it, Toast.LENGTH_SHORT).show() }
+                if (r.errors.isNotEmpty() && !isFinishing) {
+                    AlertDialog.Builder(this@FileBrowserActivity)
+                        .setTitle(R.string.files_op_failed)
+                        .setMessage(r.errors.take(20).joinToString("\n"))
+                        .setPositiveButton(R.string.confirm, null)
+                        .show()
+                }
+            } catch (e: ApiException) {
+                val text = if (e.code == 404 && e.body.isEmpty()) getString(R.string.files_op_host_old) else e.message.orEmpty()
+                opFailed(text)
+            } catch (e: IOException) {
+                opFailed(getString(R.string.retry_connect_hint) + ErrorText.cause(this@FileBrowserActivity, "${e.javaClass.simpleName}: ${e.message}"))
+            } catch (e: JSONException) {
+                opFailed(e.message.orEmpty())
+            } finally {
+                swipe.isRefreshing = false
+                if (dir == current) load()
+            }
+        }
+    }
+
+    private fun opFailed(text: String) {
+        if (isFinishing) return
+        AlertDialog.Builder(this).setTitle(R.string.files_op_failed).setMessage(text).setPositiveButton(R.string.confirm, null).show()
+    }
+
+    /**
+     * PC mode: 터미널 or an AI CLI found on the PC, then back to the session list, which opens it. With [enter]
+     * (tapping a folder) "들어가기" comes first and just opens the folder.
+     */
+    private fun chooseLaunch(path: String, enter: Boolean = false) {
         if (path.isEmpty()) return
         lifecycleScope.launch {
             val found = agents ?: try {
@@ -385,10 +603,16 @@ class FileBrowserActivity : AppCompatActivity() {
                 emptyList()
             }.also { agents = it }
             if (isFinishing) return@launch
-            val labels = arrayOf(getString(R.string.pc_open_terminal)) + found.map { it.name }.toTypedArray()
+            val first = if (enter) listOf(getString(R.string.pc_enter)) else emptyList()
+            val labels = (first + getString(R.string.pc_open_terminal) + found.map { it.name }).toTypedArray()
             AlertDialog.Builder(this@FileBrowserActivity)
-                .setTitle(getString(R.string.pc_open_title, PcPath.name(path)))
-                .setItems(labels) { _, which ->
+                .setTitle(if (enter) PcPath.name(path) else getString(R.string.pc_open_title, PcPath.name(path)))
+                .setItems(labels) { _, picked ->
+                    val which = picked - first.size
+                    if (which < 0) {
+                        open(path)
+                        return@setItems
+                    }
                     setResult(RESULT_OK, Intent().putExtra(RESULT_PATH, path).putExtra(RESULT_AGENT, found.getOrNull(which - 1)?.id))
                     finish()
                 }
@@ -477,6 +701,13 @@ class FileBrowserActivity : AppCompatActivity() {
         private const val MENU_SEARCH = 3
         private const val MENU_SORT = 4
         private const val MENU_OPEN_HERE = 5
+        private const val MENU_NEW_FOLDER = 6
+        private const val MENU_COPY = 7
+        private const val MENU_CUT = 8
+        private const val MENU_DELETE = 9
+        private const val MENU_RENAME = 10
+        private const val MENU_MORE = 11
+        private const val MENU_SELECT_ALL = 12
         private const val EXTRA_PC = "pc"
         const val RESULT_PATH = "path"
         const val RESULT_AGENT = "agent"
