@@ -101,6 +101,15 @@ class FileBrowserActivity : AppCompatActivity() {
         pendingDownload = null
         if (uri != null && e != null) FileTransfers.download(this, api, PcPath.child(current, e.name), uri, e.name)
     }
+    /** Several selected files on Android 8–9: the user picks a folder once and every file is saved into it. */
+    private var pendingDownloads: List<FileEntry> = emptyList()
+    private val saveDownloadsTo = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        val files = pendingDownloads
+        pendingDownloads = emptyList()
+        if (tree != null && files.isNotEmpty()) {
+            FileTransfers.downloadAll(this, api, files.map { PcPath.child(current, it.name) to it.name }, tree)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -158,6 +167,8 @@ class FileBrowserActivity : AppCompatActivity() {
         fun selectAction(id: Int, label: Int, icon: Int, always: Boolean) =
             toolbar.menu.add(1, id, 10 + id, label).setIcon(icon)
                 .setShowAsAction(if (always) android.view.MenuItem.SHOW_AS_ACTION_ALWAYS else android.view.MenuItem.SHOW_AS_ACTION_NEVER)
+        toolbar.menu.add(1, MENU_DOWNLOAD, 16, R.string.files_download).setIcon(R.drawable.ic_download)
+            .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         selectAction(MENU_COPY, R.string.files_copy, R.drawable.ic_copy, true)
         selectAction(MENU_CUT, R.string.files_cut, R.drawable.ic_cut, true)
         selectAction(MENU_DELETE, R.string.files_delete, R.drawable.ic_delete, true)
@@ -171,6 +182,7 @@ class FileBrowserActivity : AppCompatActivity() {
                 MENU_UPLOAD -> pickUpload.launch(arrayOf("*/*"))
                 MENU_NEW_FOLDER -> newFolder()
                 MENU_REFRESH -> load()
+                MENU_DOWNLOAD -> downloadSelected()
                 MENU_COPY -> toClipboard(cut = false)
                 MENU_CUT -> toClipboard(cut = true)
                 MENU_DELETE -> confirmDelete()
@@ -448,6 +460,7 @@ class FileBrowserActivity : AppCompatActivity() {
         menu.setGroupVisible(1, selecting)
         menu.findItem(MENU_RENAME)?.isVisible = n == 1
         menu.findItem(MENU_MORE)?.isVisible = n == 1
+        menu.findItem(MENU_DOWNLOAD)?.isVisible = selectedEntries().any { !it.dir }
         menu.findItem(MENU_SEARCH)?.let { it.isVisible = !selecting || it.isActionViewExpanded }
         menu.findItem(MENU_SORT)?.isVisible = !selecting
         menu.findItem(MENU_REFRESH)?.isVisible = !selecting
@@ -627,6 +640,22 @@ class FileBrowserActivity : AppCompatActivity() {
         Toast.makeText(this, R.string.files_copied, Toast.LENGTH_SHORT).show()
     }
 
+    /** Download button in selection mode: one file asks where to save it, several go to the Download folder. Folders are skipped. */
+    private fun downloadSelected() {
+        val chosen = selectedEntries()
+        val files = chosen.filter { !it.dir }
+        if (files.isEmpty()) return
+        if (files.size < chosen.size) Toast.makeText(this, R.string.files_download_skip_dirs, Toast.LENGTH_SHORT).show()
+        clearSelection()
+        if (files.size == 1) startDownload(files[0])
+        else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            FileTransfers.downloadAll(this, api, files.map { PcPath.child(current, it.name) to it.name }, null)
+        } else {
+            pendingDownloads = files
+            saveDownloadsTo.launch(null)
+        }
+    }
+
     private fun startDownload(e: FileEntry) {
         pendingDownload = e
         saveDownload.launch(e.name)
@@ -708,6 +737,7 @@ class FileBrowserActivity : AppCompatActivity() {
         private const val MENU_RENAME = 10
         private const val MENU_MORE = 11
         private const val MENU_SELECT_ALL = 12
+        private const val MENU_DOWNLOAD = 13
         private const val EXTRA_PC = "pc"
         const val RESULT_PATH = "path"
         const val RESULT_AGENT = "agent"

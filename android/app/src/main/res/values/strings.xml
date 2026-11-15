@@ -67,6 +67,10 @@
     <string name="files_download">다운로드</string>
     <string name="files_downloading">%1$s 다운로드 중…</string>
     <string name="files_downloaded">%1$s 저장했습니다</string>
+    <string name="files_downloading_many">파일 %1$d개 다운로드 중…</string>
+    <string name="files_downloaded_many">파일 %1$d개 저장했습니다</string>
+    <string name="files_downloaded_many_downloads">파일 %1$d개를 다운로드 폴더에 저장했습니다</string>
+    <string name="files_download_skip_dirs">폴더는 빼고 파일만 받습니다</string>
     <string name="files_download_failed">다운로드하지 못했습니다</string>
     <string name="files_upload">업로드</string>
     <string name="files_uploading">%1$s 업로드 중…</string>
