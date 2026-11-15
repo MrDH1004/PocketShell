@@ -70,7 +70,12 @@
     <string name="files_downloading_many">파일 %1$d개 다운로드 중…</string>
     <string name="files_downloaded_many">파일 %1$d개 저장했습니다</string>
     <string name="files_downloaded_many_downloads">파일 %1$d개를 다운로드 폴더에 저장했습니다</string>
-    <string name="files_download_skip_dirs">폴더는 빼고 파일만 받습니다</string>
+    <string name="files_download_progress">%1$d / %2$d · %3$s</string>
+    <string name="files_download_scanning">폴더 안 파일을 확인하는 중…</string>
+    <string name="files_download_confirm">파일 %1$d개(%2$s)를 폴더 구조 그대로 다운로드 폴더에 받습니다.</string>
+    <string name="files_download_too_many">파일이 %1$d개를 넘어 받지 않았습니다. 더 작은 폴더를 고르세요.</string>
+    <string name="files_download_empty">받을 파일이 없습니다 (빈 폴더)</string>
+    <string name="files_download_cancelled">다운로드를 취소했습니다. 이미 받은 파일은 남아 있습니다.</string>
     <string name="files_download_failed">다운로드하지 못했습니다</string>
     <string name="files_upload">업로드</string>
     <string name="files_uploading">%1$s 업로드 중…</string>

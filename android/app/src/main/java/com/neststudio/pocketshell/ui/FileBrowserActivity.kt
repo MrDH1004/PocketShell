@@ -101,14 +101,12 @@ class FileBrowserActivity : AppCompatActivity() {
         pendingDownload = null
         if (uri != null && e != null) FileTransfers.download(this, api, PcPath.child(current, e.name), uri, e.name)
     }
-    /** Several selected files on Android 8–9: the user picks a folder once and every file is saved into it. */
-    private var pendingDownloads: List<FileEntry> = emptyList()
+    /** Several files or a folder on Android 8–9: the user picks a folder once and everything is saved into it. */
+    private var pendingDownloads: List<FileTransfers.Item> = emptyList()
     private val saveDownloadsTo = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
-        val files = pendingDownloads
+        val items = pendingDownloads
         pendingDownloads = emptyList()
-        if (tree != null && files.isNotEmpty()) {
-            FileTransfers.downloadAll(this, api, files.map { PcPath.child(current, it.name) to it.name }, tree)
-        }
+        if (tree != null && items.isNotEmpty()) FileTransfers.downloadAll(this, api, items, tree)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -460,7 +458,6 @@ class FileBrowserActivity : AppCompatActivity() {
         menu.setGroupVisible(1, selecting)
         menu.findItem(MENU_RENAME)?.isVisible = n == 1
         menu.findItem(MENU_MORE)?.isVisible = n == 1
-        menu.findItem(MENU_DOWNLOAD)?.isVisible = selectedEntries().any { !it.dir }
         menu.findItem(MENU_SEARCH)?.let { it.isVisible = !selecting || it.isActionViewExpanded }
         menu.findItem(MENU_SORT)?.isVisible = !selecting
         menu.findItem(MENU_REFRESH)?.isVisible = !selecting
@@ -640,19 +637,53 @@ class FileBrowserActivity : AppCompatActivity() {
         Toast.makeText(this, R.string.files_copied, Toast.LENGTH_SHORT).show()
     }
 
-    /** Download button in selection mode: one file asks where to save it, several go to the Download folder. Folders are skipped. */
+    /**
+     * Download button in selection mode: one file asks where to save it; several files or folders go to the Download
+     * folder, a folder with everything under it (structure kept). With a folder, the count and size are confirmed first.
+     */
     private fun downloadSelected() {
         val chosen = selectedEntries()
-        val files = chosen.filter { !it.dir }
-        if (files.isEmpty()) return
-        if (files.size < chosen.size) Toast.makeText(this, R.string.files_download_skip_dirs, Toast.LENGTH_SHORT).show()
+        if (chosen.isEmpty()) return
         clearSelection()
-        if (files.size == 1) startDownload(files[0])
-        else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            FileTransfers.downloadAll(this, api, files.map { PcPath.child(current, it.name) to it.name }, null)
-        } else {
-            pendingDownloads = files
-            saveDownloadsTo.launch(null)
+        if (chosen.size == 1 && !chosen[0].dir) {
+            startDownload(chosen[0])
+            return
+        }
+        val base = current
+        val hasDir = chosen.any { it.dir }
+        lifecycleScope.launch {
+            if (hasDir) Toast.makeText(this@FileBrowserActivity, R.string.files_download_scanning, Toast.LENGTH_SHORT).show()
+            val items = try {
+                FileTransfers.plan(api, base, chosen)
+            } catch (e: FileTransfers.TooMany) {
+                if (!isFinishing) AlertDialog.Builder(this@FileBrowserActivity).setTitle(R.string.files_download)
+                    .setMessage(getString(R.string.files_download_too_many, FileTransfers.MAX_FILES))
+                    .setPositiveButton(R.string.confirm, null).show()
+                return@launch
+            } catch (e: IOException) {
+                showError(getString(R.string.files_download_failed), "${e.javaClass.simpleName}: ${e.message}")
+                return@launch
+            }
+            if (isFinishing) return@launch
+            if (items.isEmpty()) {
+                Toast.makeText(this@FileBrowserActivity, R.string.files_download_empty, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val start = {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    FileTransfers.downloadAll(this@FileBrowserActivity, api, items, null)
+                } else {
+                    pendingDownloads = items
+                    saveDownloadsTo.launch(null)
+                }
+            }
+            if (!hasDir) start()
+            else AlertDialog.Builder(this@FileBrowserActivity)
+                .setTitle(R.string.files_download)
+                .setMessage(getString(R.string.files_download_confirm, items.size, FilePreview.humanSize(items.sumOf { it.size })))
+                .setPositiveButton(R.string.files_download) { _, _ -> start() }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
         }
     }
 
