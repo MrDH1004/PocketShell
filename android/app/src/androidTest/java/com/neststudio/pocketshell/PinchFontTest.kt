@@ -13,8 +13,8 @@ import org.junit.runner.RunWith
 
 /**
  * Device check against a paired PC: opens the session named by the instrumentation argument `session` (from the
- * first PC in the list), pinches the terminal in and out with real two-finger gestures and logs the grid the
- * status reports after each ("PinchFontTest" tag). Skipped without the argument or when the session is not listed.
+ * first PC in the list), pinches the terminal in and out with real two-finger gestures (a gallery zoom: the grid
+ * should stay the same) and logs the grid the status reports after each ("PinchFontTest" tag). Skipped without the argument or when the session is not listed.
  */
 @RunWith(AndroidJUnit4::class)
 class PinchFontTest {
