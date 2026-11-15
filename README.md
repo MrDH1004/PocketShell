@@ -25,6 +25,30 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 | `assets/` | 아이콘 (`scripts/make_icons.py`로 생성) |
 | `docs/DESIGN.md` | 프로토콜/구조 계약 |
 
+## AI로 자동 설치 (Claude Code · Codex)
+PC에서 Claude Code나 Codex를 열고 아래 글을 그대로 붙여 넣으면 설치부터 폰 연결 PIN까지 진행함.
+
+```text
+PocketShell(https://github.com/MrDH1004/PocketShell) PC 호스트를 이 Windows PC에 설치하고 폰 연결 준비까지 해줘.
+PowerShell로 하고, 단계마다 결과를 확인한 뒤 다음으로 넘어가. 실패하면 멈추고 원인을 알려줘.
+
+1. 설치 여부: "$env:LOCALAPPDATA\Programs\PocketShell\psh.exe"가 있으면 다시 설치하지 마
+   (재설치는 실행 중인 세션을 끝냄). `psh.exe update --check`로 버전만 알려 주고 4번으로 가.
+2. 내려받기: https://api.github.com/repos/MrDH1004/PocketShell/releases/latest 에서
+   PocketShell-Setup-v*.exe와 SHA256SUMS.txt를 임시 폴더에 받고, Get-FileHash로 SHA256을 대조해. 다르면 멈춰.
+3. 설치: `PocketShell-Setup-v*.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART`를 끝날 때까지 기다려.
+   .NET 8 런타임이 없으면 관리자 권한 확인 창이 뜨니 나한테 '예'를 누르라고 말해 줘.
+   끝나면 "$env:LOCALAPPDATA\Programs\PocketShell\PocketShell.exe"를 실행해 (트레이 + 서버, 로그인 시 자동 실행 켜짐).
+4. 서버 확인: `psh.exe list`가 오류 없이 나올 때까지 최대 30초 기다려.
+5. 프로젝트 폴더: 폰에서 새 프로젝트를 만들 상위 폴더를 나한테 물어보고,
+   "$env:APPDATA\PocketShell\projects.json"의 "roots" 배열에 추가해 (기존 항목 유지, 없으면 {"roots":[...]}로 생성, BOM 없는 UTF-8).
+   폴더가 없으면 만들지 물어봐. 건너뛰겠다고 하면 넘어가.
+6. AI CLI: claude, codex가 PATH에 있는지 알려 줘 (있는 것만 폰에서 고를 수 있음).
+7. 페어링: `psh.exe pair`를 실행해 PIN·지문·주소를 보여 주고, 폰에서 할 일을 알려 줘:
+   같은 릴리스의 pocketshell-android-v*.apk 설치 → PC 추가 → 이 PC 선택(또는 주소 입력) → PIN 입력 → 지문이 같은지 확인.
+   PIN은 5분 뒤 만료되니 늦으면 `psh.exe pair`를 다시 실행해.
+```
+
 ## 빠른 시작
 1. PC: [Releases](../../releases/latest)에서 `PocketShell-Setup-v*.exe`를 받아 실행 (원클릭 설치)
    - `%LOCALAPPDATA%\Programs\PocketShell`에 설치(관리자 권한 불필요), 시작 메뉴 등록. .NET 8 Desktop + ASP.NET Core 런타임이 없으면 Microsoft에서 받아 설치함(이때만 관리자 권한 확인).
