@@ -151,9 +151,33 @@ class ConsoleHistory(private val maxLines: Int = 3000) {
     /** First row of the logical line (joined PC rows) that row [idx] belongs to. */
     private fun groupStart(idx: Int): Int {
         if (pcCols <= 0) return idx
+        diffHead(idx).let { if (it >= 0) return it }
         var s = idx
         while (s > 0 && idx - s < MAX_GROUP && Reflow.joins(info(line(s - 1)), info(line(s)), pcCols)) s--
         return s
+    }
+
+    /**
+     * First row of the diff / code line that row [idx] continues (Reflow.diffContinues): its numbered row, or, when
+     * that has left the history (Claude Code redraws its screen), the first of a run of rows with the same sign in
+     * the same column cut at the same width (Reflow.headlessDiff). -1 when none.
+     */
+    private fun diffHead(idx: Int): Int {
+        val row = info(line(idx))
+        if (row.blank || row.numbered) return -1
+        val signed = row.lead == '+' || row.lead == '-'
+        var k = idx
+        while (k > 0 && idx - k < MAX_GROUP) {
+            val above = info(line(k - 1))
+            if (above.numbered) {
+                if (above.headSignCol >= 0 && (k..idx).all { Reflow.diffContinues(above, info(line(it))) }) return k - 1
+                break
+            }
+            if (above.blank || above.indent != row.indent || (signed && above.lead != row.lead)) break
+            k--
+        }
+        if (k == idx) return -1
+        return if (Reflow.headlessDiff((k..idx).map { info(line(it)) }, pcCols)) k else -1
     }
 
     /**

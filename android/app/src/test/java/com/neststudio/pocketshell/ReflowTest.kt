@@ -92,6 +92,51 @@ class ReflowTest {
     }
 
     @Test
+    fun claudeDiffLineCutAtItsOwnWidthIsJoinedAndFillsThePhone() {
+        // Claude Code cuts diff text at a fixed column (mid-word) and repeats the sign; continuation rows have no number.
+        val added = listOf(
+            "     59 +aaaa bbbb cccc dddd eeee ffff gg",
+            "        +gg hhhh iiii jjjj kkkk llll mmm",
+            "        +nnnn",
+        )
+        val r = Reflow.layoutGroup(added, 48)
+        assertEquals(listOf("     59 +aaaa bbbb cccc dddd eeee ffff gggg hhhh", "         iiii jjjj kkkk llll mmm nnnn"), r.lines.map(::strip))
+        // A row ending short of the others lost the space at the cut.
+        val ate = Reflow.layoutGroup(listOf("     59 +aaaa bbbb cccc dddd eeee ffff gg", "        +hhh iiii jjjj kkkk llll mmmm", "        +nn"), 80)
+        assertEquals(listOf("     59 +aaaa bbbb cccc dddd eeee ffff gghhh iiii jjjj kkkk llll mmmm nn"), ate.lines.map(::strip))
+        val spaced = Reflow.layoutGroup(listOf("     59 +aaaa bbbb cccc dddd eeee ffff", "        +gg hhhh iiii jjjj kkkk llll mmm"), 80)
+        assertEquals(listOf("     59 +aaaa bbbb cccc dddd eeee ffff gg hhhh iiii jjjj kkkk llll mmm"), spaced.lines.map(::strip))
+        // Context line: the continuation starts at the text column.
+        val ctx = Reflow.layoutGroup(listOf("     60    글꼴 = 시스템 monospace / D2C", "         oding / JetBrains"), 48)
+        assertEquals(listOf("     60    글꼴 = 시스템 monospace / D2Coding /", "         JetBrains"), ctx.lines.map(::strip))
+        // A code line's own indentation is not left alone on the first line.
+        val code = Reflow.layout("     12 -        h.accept(sb.toString().toByteArray())", 40)
+        assertEquals("     12 -        h.accept(sb.toString().", strip(code.lines[0]))
+        val head = Reflow.info(added[0])
+        assertEquals(true, Reflow.diffContinues(head, Reflow.info(added[1])))
+        assertEquals(false, Reflow.diffContinues(head, Reflow.info("     60 +next line")))   // its own number
+        assertEquals(false, Reflow.diffContinues(head, Reflow.info("        -removed")))    // other sign
+        assertEquals(false, Reflow.diffContinues(head, Reflow.info("  ⎿ Done")))            // other column
+    }
+
+    @Test
+    fun historyJoinsClaudeDiffRows() {
+        val h = ConsoleHistory()
+        h.pcCols = 48
+        val sb = StringBuilder("$esc[?25l$esc[H")
+        listOf(
+            "     58  context",
+            "     59 +aaaa bbbb cccc dddd eeee ffff gg",
+            "        +gg hhhh",
+            "     60 +next",
+        ).forEachIndexed { i, r -> sb.append("$esc[${i + 1};1H").append(r).append("$esc[0m$esc[K") }
+        h.accept(sb.toString().toByteArray())
+        val out = String(h.render(3, 0, 48), Charsets.UTF_8)
+        val rows = Regex("$esc\\[(\\d+);1H$esc\\[0m$esc\\[K(.*?)$esc\\[0m(?=$esc\\[\\d+;\\d+H|$)").findAll(out).map { strip(it.groupValues[2]) }.toList()
+        assertEquals(listOf("     58  context", "     59 +aaaa bbbb cccc dddd eeee ffff gggg hhhh", "     60 +next"), rows)
+    }
+
+    @Test
     fun historyJoinsWrappedRowsWhenPcWidthKnown() {
         val h = ConsoleHistory()
         h.pcCols = 20

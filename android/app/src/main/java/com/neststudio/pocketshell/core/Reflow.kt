@@ -42,6 +42,14 @@ object Reflow {
         val gutter: Boolean = false,
         /** The last word holds a wide (CJK) character: an ordinary word, however many cells it takes. */
         val lastWordWide: Boolean = false,
+        /**
+         * Diff / code view row with a line number: the sign after "number " ('+', '-', or ' ' for context) and its
+         * column; -1 when the row has none. Rows of that source line the PC program wrapped follow without a number.
+         */
+        val headSign: Char = ' ',
+        val headSignCol: Int = -1,
+        /** First non-blank character (0 when blank). */
+        val lead: Char = '\u0000',
     ) {
         val blank: Boolean get() = indent >= width
     }
@@ -73,12 +81,29 @@ object Reflow {
         if (cursorRow == 0 && cursorCol > 0) markCursor(first, cursorCol - 1)
         if (bodies.size == 1) {
             val inf0 = info(first)
-            val hang = hangOf(inf0, cols)
+            // A diff / code row's text starts after its sign (its own indentation is code, not a hanging indent).
+            val textCol = if (inf0.blank) 0 else if (inf0.headSign != ' ' && inf0.headSignCol >= 0) inf0.headSignCol + 1 else inf0.textStart
+            val hang = minOf(textCol, cols / 3)
             squeeze(first, cols)
-            return wrap(first, cols, hang, if (inf0.blank) 0 else inf0.textStart)
+            return wrap(first, cols, hang, textCol)
+        }
+        var head = info(first)
+        if (head.headSignCol < 0 && !head.numbered && head.indent >= 4 && (head.lead == '+' || head.lead == '-')) {
+            val dh = asDiffHead(head) // a headless diff run (ConsoleHistory only groups those that qualify)
+            if (diffContinues(dh, info(bodies[1]))) head = dh
+        }
+        if (head.headSignCol >= 0 && diffContinues(head, info(bodies[1]))) {
+            val rows = ArrayList<ArrayList<Cell>>()
+            rows.add(first)
+            for (r in 1 until bodies.size) {
+                val row = parse(bodies[r])
+                if (cursorRow == r && cursorCol > 0) markCursor(row, cursorCol - 1)
+                rows.add(row)
+            }
+            return layoutDiff(head, rows, cols)
         }
         val cells = ArrayList(first)
-        var prev = info(first)
+        var prev = head
         for (r in 1 until bodies.size) {
             val row = parse(bodies[r])
             if (cursorRow == r && cursorCol > 0) markCursor(row, cursorCol - 1)
@@ -157,7 +182,74 @@ object Reflow {
             }
             textStart = col
         }
-        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox, numbered, gutter, lastWordWide)
+        var headSign = ' '
+        var headSignCol = -1
+        if (numbered && m + 1 < end && cells[m].space && cells[m + 1].text.let { it == "+" || it == "-" || it == " " }) {
+            headSign = cells[m + 1].text[0]
+            headSignCol = indent + firstWord + 1
+        }
+        val lead = if (k < end) cells[k].text[0] else '\u0000'
+        return RowInfo(width, indent, textStart, firstWord, lastWord, isMarker || firstBox, lastBox, numbered, gutter, lastWordWide,
+            headSign, headSignCol, lead)
+    }
+
+    /**
+     * True when [row] is part of the source line [head] (a numbered diff / code row) that the PC program cut at its
+     * own width (Claude Code cuts diff text at a fixed column, mid-word, and repeats the sign): an added / removed
+     * line continues with the same sign in the sign column, a context line with text at the text column. Such rows
+     * carry no line number of their own.
+     */
+    fun diffContinues(head: RowInfo, row: RowInfo): Boolean {
+        if (head.headSignCol < 0 || row.blank || row.numbered) return false
+        return if (head.headSign == ' ') row.indent == head.headSignCol + 1
+        else row.indent == head.headSignCol && row.lead == head.headSign
+    }
+
+    /**
+     * True when [rows] (same indent, same leading '+' / '-') look like the cut rows of one diff line whose numbered
+     * row is gone: indented, and every row but the last long and within [WRAP_SLACK] cells of the longest (a list of
+     * "- item" rows does not end at one column).
+     */
+    fun headlessDiff(rows: List<RowInfo>, pcCols: Int): Boolean {
+        if (rows.size < 2 || pcCols <= 0) return false
+        val first = rows[0]
+        if (first.indent < 4 || (first.lead != '+' && first.lead != '-')) return false
+        val full = rows.maxOf { it.width }
+        return rows.dropLast(1).all { it.width >= full - WRAP_SLACK && it.width * 4 >= pcCols * 3 }
+    }
+
+    /** [info] of the first row of a headless diff run as if it were the numbered row (sign in its indent column). */
+    private fun asDiffHead(i: RowInfo): RowInfo = RowInfo(i.width, i.indent, i.textStart, i.firstWord, i.lastWord,
+        i.startsBlock, i.endsBlock, i.numbered, i.gutter, i.lastWordWide, i.lead, i.indent, i.lead)
+
+    /**
+     * Joins a diff / code line cut over [rows] (see [diffContinues]) back into one: continuation rows lose their
+     * indent and sign, the pieces are put together as they were cut (a space only where the cut ate one, i.e. a row
+     * ending short of the others), then wrapped at [cols] under the text column.
+     */
+    private fun layoutDiff(head: RowInfo, rows: List<ArrayList<Cell>>, cols: Int): Result {
+        val content = head.headSignCol + 1
+        fun width(r: List<Cell>): Int {
+            var end = r.size
+            while (end > 0 && r[end - 1].space && !r[end - 1].cursor) end--
+            return r.subList(0, end).sumOf { it.width }
+        }
+        val widths = rows.map(::width)
+        val full = widths.maxOrNull() ?: 0 // the cut width (a last row longer than the others shows it too)
+        val cells = ArrayList(rows[0])
+        for (r in 1 until rows.size) {
+            val part = rows[r].filter { it.pcCol >= content }
+            while (cells.isNotEmpty() && cells.last().space && !cells.last().cursor) cells.removeAt(cells.size - 1)
+            val short = full - widths[r - 1]
+            val first = part.firstOrNull()
+            // One cell short before a wide char: either that char did not fit or a space was cut, the widths cannot
+            // tell. After a narrow char (Latin, punctuation) it was a space; between wide chars it is mostly the middle
+            // of a Korean word (measured on real Claude Code diffs), so no space: splitting a word reads worse.
+            val ambiguous = short == 1 && first?.width == 2 && cells.lastOrNull()?.width == 2
+            if (short > 0 && first != null && !first.space && !ambiguous) cells.add(Cell(" ", 1, "", -1))
+            cells.addAll(part)
+        }
+        return wrap(cells, cols, minOf(content, cols / 3), content)
     }
 
     private fun isBox(text: String): Boolean = text.isNotEmpty() && text[0] in '─'..'▟'
@@ -293,8 +385,18 @@ object Reflow {
                     while (k > i && !(cells[k].space && !cells[k].cursor)) k--
                     var before = 0
                     for (x in i until k) before += cells[x].width
-                    // Never break inside the leading indent / marker / line number: the first line must carry text.
-                    if (k > i && before * 3 >= avail && (lines.isNotEmpty() || before > textCol)) {
+                    // Never break inside the leading indent / marker / line number (or a code line's own indentation
+                    // after it): the first line must carry text.
+                    var col = 0
+                    var text = false
+                    for (x in i until k) {
+                        if (col >= textCol && !cells[x].space) {
+                            text = true
+                            break
+                        }
+                        col += cells[x].width
+                    }
+                    if (k > i && before * 3 >= avail && (lines.isNotEmpty() || text)) {
                         end = k
                         next = k
                     }
