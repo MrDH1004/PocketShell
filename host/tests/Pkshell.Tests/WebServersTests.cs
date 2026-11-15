@@ -39,7 +39,7 @@ public class WebServersTests
         var silent = Task.Run(async () => { using var c = await other.AcceptTcpClientAsync(); await Task.Delay(1000); });
         try
         {
-            Assert.Equal([webPort], WebServers.HttpOnly([webPort, otherPort]));
+            Assert.Equal([webPort], WebServers.PagesOnly([webPort, otherPort]));
         }
         finally
         {
@@ -48,6 +48,29 @@ public class WebServersTests
             await Task.WhenAny(serve, Task.Delay(2000));
             await Task.WhenAny(silent, Task.Delay(2000));
         }
+    }
+
+    [Fact]
+    public void OnlyResponsesThatAreWebPages()
+    {
+        Assert.True(WebServers.IsPageResponse("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"));
+        Assert.True(WebServers.IsPageResponse("HTTP/1.1 302 Found\r\nLocation: /login\r\n\r\n"));   // no type
+        Assert.True(WebServers.IsPageResponse("HTTP/1.0 200 OK\r\n\r\n"));
+        Assert.False(WebServers.IsPageResponse("HTTP/1.1 404 Not Found\r\n\r\n"));                // node --inspect (9229)
+        Assert.False(WebServers.IsPageResponse("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain;charset=UTF-8\r\n\r\n")); // wrangler internals
+        Assert.False(WebServers.IsPageResponse("HTTP/1.1 500 Internal Server Error\r\n\r\n"));
+        Assert.False(WebServers.IsPageResponse("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"));
+        Assert.False(WebServers.IsPageResponse("SSH-2.0-OpenSSH"));
+    }
+
+    [Fact]
+    public void PortsNamedOnTheCommandLineWin()
+    {
+        // wrangler pages dev --port 8790: workerd's own entry socket (random port, also HTML) is left out.
+        string[] lines = ["node.exe wrangler-dist\\cli.js pages dev --port 8790 --ip 127.0.0.1", "workerd.exe serve --socket-addr=entry=127.0.0.1:0"];
+        Assert.Equal([8790], WebServers.Named([8790, 11144], lines));
+        Assert.Equal([5173, 5174], WebServers.Named([5173, 5174], ["node vite.js"])); // none named: all of them
+        Assert.Equal([3000], WebServers.Named([3000, 13000], ["next dev -p 3000"]));  // 3000 inside 13000 is not a match
     }
 
     [Fact]

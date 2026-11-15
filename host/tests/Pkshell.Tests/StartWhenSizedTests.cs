@@ -24,6 +24,9 @@ public class StartWhenSizedTests
             Assert.Contains("START_MARK", s.ScreenText());
             Assert.Equal((63, 48), s.CurrentSize); // the phone's width, not min(phone, PC tab)
 
+            // The PC tab answering the program's queries (Windows Terminal does at Claude's start) is not typing.
+            s.WriteInputFrom(pc.Client, "\u001b[?1;2c\u001b]11;rgb:0c0c/0c0c/0c0c\u001b\\\u001b[I"u8);
+            Assert.Equal((63, 48), s.CurrentSize);
             // Typing in the PC tab makes it the window the size follows; the phone takes it back by typing.
             s.WriteInputFrom(pc.Client, " "u8);
             Assert.Equal((48, 70), s.CurrentSize);

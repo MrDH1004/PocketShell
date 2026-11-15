@@ -79,7 +79,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 - cwd 추적: 출력 스트림에서 `OSC 9;9;<path>` 와 `OSC 7;file://host/<path>` 를 파싱해 meta.cwd 갱신(출력 바이트는 수정하지 않고 그대로 전달).
 - 출력: ConPTY 출력 바이트를 **가공 없이** 모든 연결 클라이언트에 브로드캐스트 + output.vt에 append(AC-2). output.vt가 8MB를 넘으면 앞부분을 잘라 4MB로 유지(잘라낼 때 `\n` 경계 이후부터).
 - 신규 클라이언트 attach 시: 먼저 output.vt 전체를 하나 이상의 바이너리 프레임으로 재생 → 이후 실시간 스트림(AC-3). 재생과 실시간 사이에 바이트 누락/중복이 없어야 함(세션 lock 하에 스냅샷+구독).
-- 크기 정책(AC-6, 0.2.79+ `SizePolicy.ComputePreferred`): PTY 크기 = 마지막으로 입력한 창의 크기. 아직 아무도 입력 안 했으면 폰(`client=android`)들의 `min`, 폰이 없으면 전체 `min(cols)`, `min(rows)`. 입력한 창이 나가면 다시 이 순서로. (전에는 항상 전체 min이라 폰 63열 + PC 탭 48열이면 폰 오른쪽이 비었음. 지금은 쓰는 창이 제 폭을 다 쓰고, 다른 창은 입력하면 그 창 크기로 바뀜.) 클라이언트 0명이면 마지막 크기 유지. 변경 시 `ResizePseudoConsole` 후 모든 클라이언트에 `{"type":"size","cols","rows"}` 통지.
+- 크기 정책(AC-6, 0.2.79+ `SizePolicy.ComputePreferred`): PTY 크기 = 마지막으로 입력한 창의 크기. 아직 아무도 입력 안 했으면 폰(`client=android`)들의 `min`, 폰이 없으면 전체 `min(cols)`, `min(rows)`. 입력한 창이 나가면 다시 이 순서로. (전에는 항상 전체 min이라 폰 63열 + PC 탭 48열이면 폰 오른쪽이 비었음. 지금은 쓰는 창이 제 폭을 다 쓰고, 다른 창은 입력하면 그 창 크기로 바뀜.) 0.2.92+: 터미널이 스스로 보내는 응답(DA·커서 위치·kitty 키보드 플래그·DECRPM·OSC 색·XTVERSION·포커스 in/out, `TerminalReports.IsOnlyReports`)은 입력으로 치지 않음 — Claude Code 시작 때 Windows Terminal이 질의에 답한 것만으로 PC 탭 폭(48열)이 되어 폰 화면이 깨졌음. 클라이언트 0명이면 마지막 크기 유지. 변경 시 `ResizePseudoConsole` 후 모든 클라이언트에 `{"type":"size","cols","rows"}` 통지.
 - 재개(AC-10): `POST /api/sessions/{historyId}/resume` → 새 host 세션 생성: 같은 shell, 같은 cwd(마지막 추적값), title 동일, `resumedFrom=historyId`. 새 세션 output.vt는 이전 output.vt 내용 + `\r\n\x1b[0m\x1b[2m── resumed <ISO> ──\x1b[0m\r\n` 으로 시작. 이전 history 항목은 목록에서 제거(새 세션이 대체).
 - 종료: 셸 프로세스 종료 시 state=exited, 연결된 클라이언트에 `{"type":"exit","code":N}` 후 WS 유지(클라이언트가 닫음).
 

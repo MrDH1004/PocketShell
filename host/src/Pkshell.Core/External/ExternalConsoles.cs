@@ -689,9 +689,20 @@ public sealed class ExternalBridge
 /// <summary>Best-effort current directory of another (64-bit) process via its PEB.</summary>
 public static class ProcessCwd
 {
-    // x64 offsets: PEB.ProcessParameters @0x20 (winternl.h layout);
-    // RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath (UNICODE_STRING) @0x38: Length(u16) @0x38, Buffer(ptr) @0x40.
+    // x64 offsets: PEB.ProcessParameters @0x20 (winternl.h layout); in RTL_USER_PROCESS_PARAMETERS the UNICODE_STRINGs
+    // CurrentDirectory.DosPath @0x38 and CommandLine @0x70: Length(u16) @+0, Buffer(ptr) @+8.
     public static string? TryGet(int pid)
+    {
+        var path = ReadParam(pid, 0x38, 4096);
+        if (path == null) return null;
+        if (path.Length > 3 && path.EndsWith('\\')) path = path.TrimEnd('\\');
+        return Directory.Exists(path) ? path : null;
+    }
+
+    /// <summary>Best-effort command line of another (64-bit) process.</summary>
+    public static string? TryGetCommandLine(int pid) => ReadParam(pid, 0x70, 65534);
+
+    private static string? ReadParam(int pid, int offset, int maxBytes)
     {
         if (!Environment.Is64BitProcess) return null;
         IntPtr h = Win32.OpenProcess(Win32.PROCESS_QUERY_INFORMATION | Win32.PROCESS_VM_READ, false, pid);
@@ -705,15 +716,13 @@ public static class ProcessCwd
             if (!Win32.ReadProcessMemory(h, pbi.PebBaseAddress + 0x20, ptr, 8, out _)) return null;
             var paramsAddr = new IntPtr(BitConverter.ToInt64(ptr, 0));
             var us = new byte[16];
-            if (!Win32.ReadProcessMemory(h, paramsAddr + 0x38, us, 16, out _)) return null;
+            if (!Win32.ReadProcessMemory(h, paramsAddr + offset, us, 16, out _)) return null;
             int len = BitConverter.ToUInt16(us, 0);
             var buf = new IntPtr(BitConverter.ToInt64(us, 8));
-            if (len == 0 || len > 4096 || buf == IntPtr.Zero) return null;
+            if (len == 0 || len > maxBytes || buf == IntPtr.Zero) return null;
             var str = new byte[len];
             if (!Win32.ReadProcessMemory(h, buf, str, len, out _)) return null;
-            var path = Encoding.Unicode.GetString(str);
-            if (path.Length > 3 && path.EndsWith('\\')) path = path.TrimEnd('\\');
-            return Directory.Exists(path) ? path : null;
+            return Encoding.Unicode.GetString(str);
         }
         finally { Win32.CloseHandle(h); }
     }

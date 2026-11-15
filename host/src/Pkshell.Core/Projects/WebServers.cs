@@ -13,6 +13,7 @@ public static class WebServers
     private static readonly object Gate = new();
     private static DateTime _at = DateTime.MinValue;
     private static List<(int Port, string Cwd)> _cached = [];
+    private static Dictionary<int, int> _pidOf = new();
 
     /// <summary>Listening ports whose process works in <paramref name="folder"/> (or below it), ascending.</summary>
     public static List<int> For(string folder, IReadOnlyList<(int Port, string Cwd)> listeners)
@@ -38,45 +39,71 @@ public static class WebServers
             var self = Environment.ProcessId;
             var cwdOf = new Dictionary<int, string?>();
             var list = new List<(int, string)>();
+            var pidOf = new Dictionary<int, int>();
             foreach (var (port, pid) in ListeningPorts())
             {
                 if (pid is 0 or 4 || pid == self || port == ownPort) continue; // idle / System / this host
                 if (!cwdOf.TryGetValue(pid, out var cwd)) cwdOf[pid] = cwd = ProcessCwd.TryGet(pid);
-                if (cwd != null) list.Add((port, cwd));
+                if (cwd == null) continue;
+                list.Add((port, cwd));
+                pidOf[port] = pid;
             }
             _cached = list;
+            _pidOf = pidOf;
             _at = DateTime.UtcNow;
             return list;
         }
     }
 
-    private static readonly Dictionary<int, (bool Http, DateTime At)> HttpCache = new();
+    private static readonly Dictionary<int, (bool Page, DateTime At)> PageCache = new();
 
     /// <summary>
-    /// <paramref name="ports"/> that answer HTTP on localhost (a "HEAD /" gets an "HTTP/" status line within 400 ms);
-    /// emulator consoles, debug adapters and databases listening in the same folder are left out. Cached 30 s per port.
+    /// The web pages among a folder's listening <paramref name="ports"/>, for the globe: a "GET /" answers 2xx/3xx with
+    /// an HTML (or no) content type within 400 ms, so debug adapters (9229), dev-tool internals (wrangler's 403s),
+    /// databases and emulator consoles are left out. When some of those ports are named in the command line of a
+    /// process in the folder ("--port 8790"), only those are kept: a dev server's random helper sockets go too.
     /// </summary>
-    public static List<int> HttpOnly(IEnumerable<int> ports)
+    public static List<int> Pages(IReadOnlyList<int> ports)
+    {
+        var pages = PagesOnly(ports);
+        if (pages.Count < 2) return pages;
+        Dictionary<int, int> pidOf;
+        lock (Gate) pidOf = _pidOf;
+        var lines = ports.Select(p => pidOf.TryGetValue(p, out var pid) ? pid : 0).Where(pid => pid != 0).Distinct()
+            .Select(ProcessCwd.TryGetCommandLine).OfType<string>().ToList();
+        return Named(pages, lines);
+    }
+
+    /// <summary>The <paramref name="pages"/> named in one of <paramref name="commandLines"/>, or all of them when none is.</summary>
+    public static List<int> Named(IReadOnlyList<int> pages, IReadOnlyList<string> commandLines)
+    {
+        var named = pages.Where(p => commandLines.Any(line =>
+            System.Text.RegularExpressions.Regex.IsMatch(line, $@"(?<![0-9]){p}(?![0-9])"))).ToList();
+        return named.Count > 0 ? named : pages.ToList();
+    }
+
+    /// <summary><paramref name="ports"/> serving a web page at "/" (see <see cref="Pages"/>); cached 30 s per port.</summary>
+    public static List<int> PagesOnly(IEnumerable<int> ports)
     {
         var result = new List<int>();
         foreach (var port in ports)
         {
-            lock (HttpCache)
+            lock (PageCache)
             {
-                if (HttpCache.TryGetValue(port, out var c) && DateTime.UtcNow - c.At < TimeSpan.FromSeconds(30))
+                if (PageCache.TryGetValue(port, out var c) && DateTime.UtcNow - c.At < TimeSpan.FromSeconds(30))
                 {
-                    if (c.Http) result.Add(port);
+                    if (c.Page) result.Add(port);
                     continue;
                 }
             }
-            var http = AnswersHttp(port);
-            lock (HttpCache) HttpCache[port] = (http, DateTime.UtcNow);
-            if (http) result.Add(port);
+            var page = ServesPage(port);
+            lock (PageCache) PageCache[port] = (page, DateTime.UtcNow);
+            if (page) result.Add(port);
         }
         return result;
     }
 
-    private static bool AnswersHttp(int port)
+    private static bool ServesPage(int port)
     {
         foreach (var addr in new[] { System.Net.IPAddress.Loopback, System.Net.IPAddress.IPv6Loopback })
         {
@@ -85,21 +112,34 @@ public static class WebServers
                 using var c = new System.Net.Sockets.TcpClient(addr.AddressFamily) { ReceiveTimeout = 400, SendTimeout = 400 };
                 if (!c.ConnectAsync(addr, port).Wait(400)) continue;
                 var s = c.GetStream();
-                var req = System.Text.Encoding.ASCII.GetBytes($"HEAD / HTTP/1.0\r\nHost: localhost:{port}\r\n\r\n");
+                var req = System.Text.Encoding.ASCII.GetBytes($"GET / HTTP/1.0\r\nHost: localhost:{port}\r\nAccept: text/html\r\n\r\n");
                 s.Write(req, 0, req.Length);
-                var buf = new byte[5];
+                // Status line and headers only (up to 8 KB); the body is not read.
+                var buf = new byte[8192];
                 int n = 0;
-                while (n < 5)
+                while (n < buf.Length)
                 {
-                    int r = s.Read(buf, n, 5 - n);
+                    int r = s.Read(buf, n, buf.Length - n);
                     if (r <= 0) break;
                     n += r;
+                    if (System.Text.Encoding.ASCII.GetString(buf, 0, n).Contains("\r\n\r\n", StringComparison.Ordinal)) break;
                 }
-                return n == 5 && System.Text.Encoding.ASCII.GetString(buf) == "HTTP/";
+                return IsPageResponse(System.Text.Encoding.ASCII.GetString(buf, 0, n));
             }
             catch (Exception ex) when (ex is System.Net.Sockets.SocketException or IOException or AggregateException) { }
         }
         return false;
+    }
+
+    /// <summary>An HTTP response head with a 2xx/3xx status and an HTML content type (or none, as some servers send).</summary>
+    public static bool IsPageResponse(string head)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(head, @"^HTTP/\d(?:\.\d)? (\d{3})");
+        if (!m.Success) return false;
+        var status = int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        if (status is < 200 or >= 400) return false;
+        var type = System.Text.RegularExpressions.Regex.Match(head, @"\r\ncontent-type:\s*([^;\r\n]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return !type.Success || type.Groups[1].Value.Trim().Equals("text/html", StringComparison.OrdinalIgnoreCase);
     }
 
     // iphlpapi.h: GetExtendedTcpTable(pTcpTable, pdwSize, bOrder, ulAf, TableClass, Reserved).

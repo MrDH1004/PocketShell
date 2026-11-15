@@ -803,7 +803,7 @@ public sealed class HostServer : IDisposable
             foreach (var s in list)
             {
                 if (s.State != "running" && s.Kind != "external") continue;
-                var ports = Pkshell.Core.Projects.WebServers.HttpOnly(Pkshell.Core.Projects.WebServers.For(s.Cwd, listeners));
+                var ports = Pkshell.Core.Projects.WebServers.Pages(Pkshell.Core.Projects.WebServers.For(s.Cwd, listeners));
                 s.WebPorts = ports.Count > 0 ? ports : null;
             }
             return Json(new { sessions = list });

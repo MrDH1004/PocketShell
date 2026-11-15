@@ -200,7 +200,8 @@ public sealed class HostSession : IDisposable
     {
         lock (Hub.SyncRoot)
         {
-            if (!ReferenceEquals(_active, client) && _clients.Contains(client))
+            // A terminal answering the program's queries (or reporting focus) is not someone typing in it.
+            if (!ReferenceEquals(_active, client) && _clients.Contains(client) && !TerminalReports.IsOnlyReports(data))
             {
                 _active = client;
                 if (_meta.State == "running") ApplySizePolicyLocked();
