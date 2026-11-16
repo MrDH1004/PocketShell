@@ -370,4 +370,25 @@
     <string name="term_select_copy">텍스트 선택·복사</string>
     <string name="term_select_title">텍스트 선택</string>
     <string name="term_select_all_copy">전체 복사</string>
+    <string name="board_no_pcs">연결한 PC 없음</string>
+    <string name="board_all_offline">PC에 연결 안 됨</string>
+    <string name="board_unknown">확인 중…</string>
+    <string name="board_idle">AI 작업 없음</string>
+    <string name="board_pcs">PC %1$d대</string>
+    <string name="board_open_app">앱에서 PC를 추가하세요</string>
+    <string name="board_refreshing">확인 중…</string>
+    <string name="board_refresh">새로 고침</string>
+    <string name="widget_description">PC의 Claude/GPT 입력 대기·작업 중·끝남 수</string>
+    <string name="tile_label">Claude/GPT</string>
+    <string name="share_title">어느 세션에 보낼까요?</string>
+    <string name="share_loading">세션 불러오는 중…</string>
+    <string name="share_none">열린 세션이 없습니다. PC에서 세션을 열거나 앱에서 새 세션을 만든 뒤 다시 공유하세요.</string>
+    <string name="share_no_pcs">연결한 PC가 없습니다. 앱에서 PC를 먼저 추가하세요.</string>
+    <string name="share_nothing">보낼 수 있는 글이나 이미지가 없습니다</string>
+    <string name="share_unreachable">연결 안 된 PC: %1$s</string>
+    <string name="share_text_sent">공유한 글을 입력했습니다 (Enter는 직접)</string>
+    <string name="share_text_cut">글이 길어 앞 %1$d자만 입력했습니다 (Enter는 직접)</string>
+    <string name="share_text_failed">공유한 글을 보내지 못했습니다</string>
+    <string name="share_image_unreadable">공유한 이미지를 읽을 수 없습니다</string>
+    <string name="share_label">PocketShell 세션에 보내기</string>
 </resources>

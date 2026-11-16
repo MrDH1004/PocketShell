@@ -39,6 +39,14 @@
         <item name="android:navigationBarColor">@color/ink_1</item>
     </style>
 
+    <!-- Share target: only its dialogs show, over the app that shared. -->
+    <style name="Theme.Pkshell.Translucent" parent="Theme.Pkshell">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+
     <style name="Widget.Pkshell.Toolbar" parent="Widget.Material3.Toolbar">
         <item name="android:background">@drawable/bg_appbar</item>
         <item name="titleTextAppearance">@style/TextAppearance.Pkshell.Title</item>

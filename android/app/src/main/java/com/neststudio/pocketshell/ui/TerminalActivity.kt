@@ -13,6 +13,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -198,6 +199,34 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         if (sessionKind == SessionInfo.KIND_HISTORY) resumeHistory() else connection?.sessionId = sessionId
+        if (savedInstanceState == null) deliverShared()
+    }
+
+    /**
+     * Opened from "share → PocketShell" ([ShareActivity]): the image is attached first (PC clipboard + Alt+V), then
+     * the text is typed, without Enter. Both go over HTTP so they need not wait for the terminal connection.
+     */
+    private fun deliverShared() {
+        val text = intent.getStringExtra(EXTRA_SHARE_TEXT)
+        val image = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) intent.getParcelableExtra(EXTRA_SHARE_IMAGE, Uri::class.java)
+        else @Suppress("DEPRECATION") (intent.getParcelableExtra(EXTRA_SHARE_IMAGE) as? Uri)
+        val typeText: suspend () -> Unit = typeText@{
+            val a = api ?: return@typeText
+            if (text.isNullOrEmpty() || sessionId.isEmpty()) return@typeText
+            val fitted = com.neststudio.pocketshell.core.ShareTargets.fit(text)
+            try {
+                a.sendInput(sessionId, fitted, false)
+                val msg = if (fitted.length < text.length) getString(R.string.share_text_cut, fitted.length) else getString(R.string.share_text_sent)
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            } catch (e: IOException) {
+                Log.w(TAG, "shared text not sent", e)
+                showPasteError("${getString(R.string.share_text_failed)}: ${e.message}")
+            }
+        }
+        when {
+            image != null -> pasteImage(image, viaApi = true, then = typeText)
+            text != null -> lifecycleScope.launch { typeText() }
+        }
     }
 
     override fun onResume() {
@@ -703,7 +732,7 @@ class TerminalActivity : AppCompatActivity() {
      * Sends the picked image to the PC clipboard, then Alt+V (ESC v) on this session: Claude Code attaches the
      * clipboard image as [Image #N], the same as pressing Alt+V at the PC.
      */
-    private fun pasteImage(uri: Uri) {
+    private fun pasteImage(uri: Uri, viaApi: Boolean = false, then: (suspend () -> Unit)? = null) {
         val a = api ?: return
         pastingImage = true
         Toast.makeText(this, "이미지를 PC로 보내는 중…", Toast.LENGTH_SHORT).show()
@@ -712,7 +741,11 @@ class TerminalActivity : AppCompatActivity() {
                 val (png, jpeg) = withContext(Dispatchers.IO) { encodeImage(uri) }
                 a.postClipboardImage(png, jpeg)
                 val c = connection
-                if (c == null) {
+                if (viaApi && sessionId.isNotEmpty()) {
+                    // Shared from another app: the terminal may still be connecting, so Alt+V goes over HTTP.
+                    a.sendInput(sessionId, "v", false)
+                    Toast.makeText(this@TerminalActivity, "이미지를 붙였습니다 (${png.size / 1024} KB)", Toast.LENGTH_SHORT).show()
+                } else if (c == null) {
                     Toast.makeText(this@TerminalActivity, "PC 클립보드에 넣었습니다 (세션 연결 없음: PC에서 Alt+V)", Toast.LENGTH_LONG).show()
                 } else {
                     c.sendInput(KeyMapper.encodeCodePoint('v'.code, ctrl = false, alt = true))
@@ -729,7 +762,10 @@ class TerminalActivity : AppCompatActivity() {
                 showPasteError("이미지 파일 접근 권한이 없습니다: ${e.message}")
             } finally {
                 pastingImage = false
+                // A shared image is a cache copy made by ShareActivity: done with it.
+                if (viaApi && uri.scheme == "file") uri.path?.let { java.io.File(it).delete() }
             }
+            then?.invoke()
         }
     }
 
@@ -1170,6 +1206,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val ENTER_DELAY_MS = 150L
         /** PC to select before opening (a notification may be for another PC than the open one). */
         const val EXTRA_PC_ID = "pcId"
+        /** Text shared from another app, typed into the session once (no Enter). */
+        const val EXTRA_SHARE_TEXT = "shareText"
+        /** Image shared from another app (content Uri, read grant passed on), attached once. */
+        const val EXTRA_SHARE_IMAGE = "shareImage"
         /** Below this the text is unreadable; a wider console is then cut off instead. */
         private const val EXTRA_ID = "id"
         private const val EXTRA_KIND = "kind"

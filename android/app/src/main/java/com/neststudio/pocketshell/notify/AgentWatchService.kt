@@ -122,6 +122,7 @@ class AgentWatchService : Service() {
                 // The alias may have changed since this poll started.
                 val current = app.store.get(p.id) ?: return
                 step.announce.forEach { announce(current, it) }
+                updateBoard(p, api)
             } catch (e: ApiException) {
                 when (e.code) {
                     401 -> {
@@ -135,16 +136,32 @@ class AgentWatchService : Service() {
                     }
                     else -> {
                         setLink(p.id, Link.OFFLINE)
+                        Board.put(this, p.id, null)
                         delay(backoff.nextDelayMillis())
                     }
                 }
             } catch (e: IOException) {
                 setLink(p.id, Link.OFFLINE) // PC off, other network: keep trying quietly
+                Board.put(this, p.id, null)
                 delay(backoff.nextDelayMillis())
             } catch (e: JSONException) {
                 Log.w(TAG, "${p.pcName}: unreadable events reply: ${e.message}")
                 delay(backoff.nextDelayMillis())
             }
+        }
+    }
+
+    /**
+     * Counts for the widget and tile after each poll round (an event, or at the latest every [WAIT_SECONDS]): the
+     * events carry only stops, `/api/info` has all three states.
+     */
+    private suspend fun updateBoard(p: Pairing, api: com.neststudio.pocketshell.net.ApiClient) {
+        try {
+            val info = org.json.JSONObject(api.info())
+            Board.put(this, p.id, com.neststudio.pocketshell.core.AgentSummary.fromJson(info.optJSONObject("agents")) ?: com.neststudio.pocketshell.core.AgentSummary(0, 0, 0))
+        } catch (e: IOException) {
+            // the next poll says whether the PC is gone
+        } catch (e: JSONException) {
         }
     }
 

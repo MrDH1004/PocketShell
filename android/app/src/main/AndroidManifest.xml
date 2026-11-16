@@ -90,5 +90,50 @@
         <receiver
             android:name=".notify.AgentReplyReceiver"
             android:exported="false" />
+
+        <!-- "Share → PocketShell" from other apps: text or an image goes to a session the user picks. -->
+        <activity
+            android:name=".ui.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/share_label"
+            android:noHistory="true"
+            android:theme="@style/Theme.Pkshell.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Home-screen widget: AI session counts of the paired PCs. -->
+        <receiver
+            android:name=".notify.AgentWidget"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_agents_info" />
+        </receiver>
+
+        <!-- Quick settings tile: the same counts, lit while an AI waits on a question. -->
+        <service
+            android:name=".notify.AgentTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notify"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -220,10 +220,9 @@ class PcListActivity : AppCompatActivity() {
                 app.store.save(current)
             }
             val updateState = info.optJSONObject("update")?.optString("state", "") ?: ""
-            PcRow(
-                current, PcState.ONLINE, info.optString("version", ""), updateState == "available" || updateState == "ready",
-                com.neststudio.pocketshell.core.AgentSummary.fromJson(info.optJSONObject("agents")),
-            )
+            val agents = com.neststudio.pocketshell.core.AgentSummary.fromJson(info.optJSONObject("agents"))
+            com.neststudio.pocketshell.notify.Board.put(this, p.id, agents ?: com.neststudio.pocketshell.core.AgentSummary(0, 0, 0))
+            PcRow(current, PcState.ONLINE, info.optString("version", ""), updateState == "available" || updateState == "ready", agents)
         } catch (e: ApiException) {
             PcRow(p, if (e.code == 401) PcState.UNAUTHORIZED else PcState.OFFLINE)
         } catch (e: IOException) {
