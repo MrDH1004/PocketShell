@@ -101,6 +101,20 @@ class ProtocolTest {
     }
 
     @Test
+    fun system32ConsolesAreNotListed() {
+        val text = """{"sessions":[
+            {"id":"ext-1","kind":"external","title":"관리자: Windows PowerShell","shell":"powershell","cwd":"C:\\WINDOWS\\system32","state":"running","pid":1},
+            {"id":"ext-2","kind":"external","title":"✳ Claude","shell":"cmd","cwd":"C:\\Windows\\System32\\","state":"running","pid":2,"agent":"claude"},
+            {"id":"ext-3","kind":"external","title":"drivers","shell":"cmd","cwd":"C:\\Windows\\System32\\drivers","state":"running","pid":3},
+            {"id":"rec-1","kind":"recent","title":"system32","shell":"powershell","cwd":"C:\\WINDOWS\\system32","state":"exited","lastActivity":"2026-11-16T02:56:33.000Z"},
+            {"id":"rec-2","kind":"recent","title":"etc","shell":"cmd","cwd":"C:\\GIT\\etc","state":"exited","lastActivity":"2026-11-16T01:00:00.000Z"}
+        ]}"""
+        val s = SessionSections.of(SessionInfo.listFromJson(text), 10)
+        assertEquals(listOf("ext-2", "ext-3"), s.external.map { it.id }) // an AI running there, and a folder below, still show
+        assertEquals(listOf("rec-2"), s.recent.map { it.id })
+    }
+
+    @Test
     fun resizeMessageAndUrl() {
         val o = JSONObject(ClientProtocol.resizeMessage(90, 33))
         assertEquals("resize", o.getString("type"))

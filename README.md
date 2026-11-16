@@ -103,7 +103,7 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 **세션 목록**
 - 카드에 Claude/GPT 상태가 표시됨: **작업 중 / 입력 대기 / 끝남** (5초마다 갱신). PC 목록 카드에는 PC별 합계(입력 대기 n · 작업 중 n · 끝남 n).
 - **실행 중**: 폰이나 `psh new`로 만든 PocketShell 세션.
-- **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴. 제목이 `C:\WINDOWS\System32\cmd.exe`인 빈 cmd 창은 안 나옴(최근에도).
+- **외부**: PC에서 직접 띄운 터미널(Windows Terminal, 탐색기, VS Code·Cursor·JetBrains 등)과 Claude/GPT(codex)가 돌고 있는 콘솔만 표시. 항목에는 `Claude`/`GPT` 표시와 폴더만 나옴. 제목이 `C:\WINDOWS\System32\cmd.exe`인 빈 cmd 창과, 폴더가 `C:\Windows\System32`인 터미널(관리자 터미널 등)은 안 나옴(최근에도). 그 폴더에서 Claude/GPT가 돌고 있으면 나옴.
 - **최근**: 끝난 세션 기록, 최근 활동 순. 누르면 같은 폴더·셸로 다시 시작하고, Claude/GPT가 돌던 세션이면 그 폴더의 마지막 대화를 이어감.
   - 한 폴더는 화면에 한 번만: 실행 중·외부에 열려 있는 폴더는 안 나오고, 같은 폴더 기록은 가장 최근 것만 남음. 다시 열었다 닫으면 그 칸이 맨 위로 올라옴(새 칸이 늘지 않음).
   - 개수: 세션 목록 메뉴 **최근 목록 개수**(기본 8, 끄기 가능).

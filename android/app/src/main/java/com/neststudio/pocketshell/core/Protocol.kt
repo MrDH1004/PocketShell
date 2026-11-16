@@ -117,7 +117,7 @@ data class SessionSections(
          * a 최근 entry moves it up instead of adding another.
          */
         fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections {
-            val sessions = all.filterNot(::isPlainCmd)
+            val sessions = all.filterNot { isPlainCmd(it) || isSystem32Console(it) }
             val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
             val open = (running + external).mapTo(HashSet(), ::folderKey)
@@ -133,6 +133,15 @@ data class SessionSections(
         private fun isPlainCmd(s: SessionInfo): Boolean =
             (s.isExternal || s.kind == SessionInfo.KIND_RECENT) &&
                 s.title.trim().endsWith("\\system32\\cmd.exe", ignoreCase = true)
+
+        /**
+         * A PC console sitting in C:\Windows\System32 (where an administrator terminal opens): no project there, so
+         * it is not listed under 외부 or 최근. A live console with Claude/GPT running in it still shows.
+         */
+        private fun isSystem32Console(s: SessionInfo): Boolean =
+            !s.isRunningHost && !(s.isExternal && s.agent != null) && SYSTEM32.matches(s.cwd.trim().trimEnd('\\', '/'))
+
+        private val SYSTEM32 = Regex("""^[A-Za-z]:\\windows\\system32$""", RegexOption.IGNORE_CASE)
 
         /** The folder, case and trailing separator ignored (as on Windows); no folder → the session's own id. */
         private fun folderKey(s: SessionInfo): String {
