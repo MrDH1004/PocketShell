@@ -67,11 +67,19 @@
                     android:textSize="14sp" />
 
                 <Button
-                    android:id="@+id/discoverButton"
+                    android:id="@+id/scanButton"
                     style="?attr/materialButtonOutlinedStyle"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:layout_marginTop="16dp"
+                    android:text="@string/qr_scan" />
+
+                <Button
+                    android:id="@+id/discoverButton"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="8dp"
                     android:text="@string/pin_discover" />
 
                 <TextView

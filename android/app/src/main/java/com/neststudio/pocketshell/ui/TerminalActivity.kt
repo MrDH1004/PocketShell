@@ -458,6 +458,8 @@ class TerminalActivity : AppCompatActivity() {
         if (sessionKind != SessionInfo.KIND_HISTORY && pcId.isNotEmpty() && sessionId.isNotEmpty()) {
             menu.menu.add(4, OPT_MUTE, 100, if (uiPrefs.isMuted(pcId, sessionId)) R.string.notify_unmute_session else R.string.notify_mute_session)
         }
+        // Someone else's PC: its project stays theirs.
+        if (guest == null && sessionKind != SessionInfo.KIND_HISTORY) menu.menu.add(2, OPT_GIT, 100, R.string.git_menu)
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         menu.menu.add(3, OPT_KEYBAR, 102, R.string.keybar_settings)
         if (readOnly) listOf(OPT_SNIPPETS, OPT_QUICK, OPT_KEYBAR).forEach { menu.menu.removeItem(it) } // nothing to type
@@ -478,6 +480,7 @@ class TerminalActivity : AppCompatActivity() {
                     Toast.makeText(this, if (muted) R.string.notify_muted_toast else R.string.notify_unmuted_toast, Toast.LENGTH_LONG).show()
                 }
                 OPT_KEYBAR -> showKeyBarSettings()
+                OPT_GIT -> openGit()
                 OPT_VIEW -> {
                     val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
                     ViewSettingsDialog.show(this, note) { applyViewSettings() }
@@ -489,7 +492,17 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /** Opens the file browser at the session's current folder (asked fresh: the shell may have cd'd). */
-    private fun openFiles() {
+    private fun openFiles() = withSessionFolder { cwd ->
+        startActivity(FileBrowserActivity.intent(this@TerminalActivity, cwd, titleView.text.toString()))
+    }
+
+    /** The session's project changes (git), for the folder the shell is in now. */
+    private fun openGit() = withSessionFolder { cwd ->
+        startActivity(GitChangesActivity.intent(this@TerminalActivity, cwd, titleView.text.toString()))
+    }
+
+    /** Runs [then] with the session's current folder, asked fresh (the shell may have cd'd). */
+    private fun withSessionFolder(then: (String) -> Unit) {
         val a = api ?: return
         val id = sessionId
         lifecycleScope.launch {
@@ -505,7 +518,7 @@ class TerminalActivity : AppCompatActivity() {
                 Toast.makeText(this@TerminalActivity, R.string.files_no_folder, Toast.LENGTH_LONG).show()
                 return@launch
             }
-            startActivity(FileBrowserActivity.intent(this@TerminalActivity, cwd, titleView.text.toString()))
+            then(cwd)
         }
     }
 
@@ -1225,6 +1238,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val OPT_MUTE = 6
         private const val OPT_QUICK = 7
         private const val OPT_KEYBAR = 8
+        private const val OPT_GIT = 9
         private const val SNIPPET_EDIT = 10_000
         private const val SNIPPET_NONE = 10_001
         private const val STATE_POLL_MS = 2000L

@@ -52,6 +52,23 @@ class PairingActivity : AppCompatActivity() {
     /** Set while a PIN claim is running so a second tap does not start another one. */
     private val busy = AtomicBoolean(false)
 
+    /**
+     * From a scanned QR code or a pocketshell://pair link: the PC's other addresses and its full certificate
+     * fingerprint, which then replaces the "compare the fingerprint" question. Cleared when the address is edited.
+     */
+    private var link: com.neststudio.pocketshell.core.PairLink? = null
+
+    private val scan = registerForActivityResult(com.journeyapps.barcodescanner.ScanContract()) { r ->
+        val text = r.contents ?: return@registerForActivityResult // cancelled
+        val l = com.neststudio.pocketshell.core.PairLink.parse(text)
+        if (l == null) {
+            status.text = getString(R.string.qr_not_pocketshell)
+            return@registerForActivityResult
+        }
+        useLink(l)
+        startPinPairing() // a scanned code carries everything: connect right away
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -75,6 +92,26 @@ class PairingActivity : AppCompatActivity() {
         pinInput = findViewById(R.id.pinInput)
         discoverButton.setOnClickListener { discover() }
         findViewById<Button>(R.id.pinPairButton).setOnClickListener { startPinPairing() }
+        findViewById<Button>(R.id.scanButton).setOnClickListener {
+            scan.launch(
+                com.journeyapps.barcodescanner.ScanOptions()
+                    .setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE)
+                    .setPrompt(getString(R.string.qr_scan_prompt))
+                    .setBeepEnabled(false)
+                    .setOrientationLocked(false),
+            )
+        }
+        // Opened from a pocketshell://pair link (a messenger): fill it in, the user starts it.
+        if (savedInstanceState == null) com.neststudio.pocketshell.core.PairLink.parse(intent?.dataString)?.let {
+            useLink(it)
+            status.text = getString(R.string.qr_link_ready, it.name.ifBlank { it.firstAddress })
+        }
+    }
+
+    private fun useLink(l: com.neststudio.pocketshell.core.PairLink) {
+        link = l
+        hostAddress.setText(l.firstAddress)
+        pinInput.setText(l.pin)
     }
 
     private fun defaultDeviceName(): String =
@@ -129,6 +166,8 @@ class PairingActivity : AppCompatActivity() {
             return
         }
         val disc = discovered[addrText]
+        // The link applies only while its address is still the one in the field.
+        val fromLink = link?.takeIf { it.firstAddress == addrText && it.pin == pin }
         if (!busy.compareAndSet(false, true)) return
         val name = deviceName.text?.toString()?.trim().orEmpty().ifBlank { defaultDeviceName() }
         status.text = getString(R.string.pin_connecting)
@@ -136,7 +175,7 @@ class PairingActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var paired = false
             try {
-                paired = pinPair(addr, disc, pin, name)
+                paired = pinPair(addr, disc, pin, name, fromLink)
             } catch (e: ApiException) {
                 status.text = when (e.code) {
                     401 -> getString(R.string.pin_wrong)
@@ -152,9 +191,9 @@ class PairingActivity : AppCompatActivity() {
     }
 
     /** Returns true when the pairing was stored and the session list opened. */
-    private suspend fun pinPair(addr: HostAddress, disc: DiscoveredHost?, pin: String, deviceName: String): Boolean {
+    private suspend fun pinPair(addr: HostAddress, disc: DiscoveredHost?, pin: String, deviceName: String, fromLink: com.neststudio.pocketshell.core.PairLink? = null): Boolean {
         // 1) TOFU: read the certificate the host presents (typed address first, then the other advertised ones).
-        val candidates = (listOf(addr.host) + disc?.hosts.orEmpty()).distinct()
+        val candidates = (listOf(addr.host) + disc?.hosts.orEmpty() + fromLink?.hosts.orEmpty()).distinct()
         var observed: String? = null
         var reached: String? = null
         var lastError: IOException? = null
@@ -176,8 +215,15 @@ class PairingActivity : AppCompatActivity() {
             return false
         }
 
-        // 3) The user compares with the PC screen.
-        if (!confirmFingerprint(short)) {
+        // 3) The user compares with the PC screen, unless a QR code / link carried the full fingerprint: then it is
+        //    checked here, and a different certificate stops the pairing.
+        val expected = fromLink?.fingerprint
+        if (expected != null) {
+            if (expected != observed) {
+                status.text = getString(R.string.qr_fp_mismatch)
+                return false
+            }
+        } else if (!confirmFingerprint(short)) {
             status.text = getString(R.string.pin_cancelled)
             return false
         }
@@ -201,6 +247,7 @@ class PairingActivity : AppCompatActivity() {
         val hosts = ArrayList<String>().apply {
             add(reached)
             addAll(disc?.hosts.orEmpty())
+            addAll(fromLink?.hosts.orEmpty())
         }
         try {
             val info = JSONObject(ApiClient(listOf(reached), addr.port, claim.token, http).info())

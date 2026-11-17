@@ -326,6 +326,16 @@ class SessionListActivity : AppCompatActivity() {
 
     private fun openSession(s: SessionInfo) {
         startActivity(TerminalActivity.intent(this, s))
+        // The app icon's long-press list: the folders opened last (not for a session shared by someone else).
+        val pc = (application as PkshellApp).pairing()
+        if (pc != null && pc.share == null) ShortcutActivity.noteOpened(this, pc.id, s)
+    }
+
+    private fun pinShortcut(s: SessionInfo) {
+        val pc = (application as PkshellApp).pairing() ?: return
+        if (!ShortcutActivity.pin(this, pc.id, s)) {
+            android.widget.Toast.makeText(this, R.string.shortcut_unsupported, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     /** POST /api/external/{pid}/adopt: a new host session in the console's folder (the running program stays put). */
@@ -565,12 +575,35 @@ class SessionListActivity : AppCompatActivity() {
     private fun showShareInvite(s: SessionInfo, invite: com.neststudio.pocketshell.core.ShareInvite) {
         val mode = getString(if (invite.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short)
         val name = invite.title.ifBlank { nameOf(s) }
-        val pcName = (application as PkshellApp).pairing()?.displayName.orEmpty()
+        val pairing = (application as PkshellApp).pairing()
+        val pcName = pairing?.displayName.orEmpty()
+        // QR code / link with everything the other phone needs, the full fingerprint included (this phone has it).
+        val link = com.neststudio.pocketshell.core.PairLink(invite.hosts, invite.port, invite.pin, pairing?.fingerprint, name).toUri()
+        val d = resources.displayMetrics.density
+        val qr = ImageView(this).apply {
+            val px = (240 * d).toInt()
+            setImageBitmap(QrCode.bitmap(link, px))
+            contentDescription = getString(R.string.qr_description)
+            layoutParams = LinearLayout.LayoutParams(px, px).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL; topMargin = (8 * d).toInt() }
+        }
+        val qrBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(qr)
+            addView(TextView(this@SessionListActivity).apply {
+                setText(R.string.qr_hint)
+                textSize = 13f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+                setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            })
+        }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.collab_pin_title, name))
             .setMessage(getString(R.string.collab_pin_message, invite.pinSpaced, invite.addresses, invite.fpShort, mode, invite.hours))
+            .setView(qrBox)
             .setPositiveButton(R.string.collab_send) { _, _ ->
-                val text = getString(R.string.collab_send_text, name, pcName, invite.pinSpaced, invite.addresses, invite.fpShort, PcListActivity.DOWNLOAD_URL)
+                val text = getString(R.string.collab_send_text, name, pcName, invite.pinSpaced, invite.addresses, invite.fpShort, PcListActivity.DOWNLOAD_URL) +
+                    "\n" + getString(R.string.qr_send_link, link)
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
                 startActivity(Intent.createChooser(send, getString(R.string.collab_send_chooser)))
             }
@@ -621,6 +654,8 @@ class SessionListActivity : AppCompatActivity() {
             val (icon, label) = when (action) {
                 SessionAction.SHARE -> R.drawable.ic_person_add to R.string.collab_share
                 SessionAction.UNSHARE -> R.drawable.ic_close to R.string.collab_unshare
+                SessionAction.GIT -> R.drawable.ic_git to R.string.git_menu
+                SessionAction.SHORTCUT -> R.drawable.ic_add_home to R.string.shortcut_add
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
                 SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
                 SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
@@ -633,6 +668,8 @@ class SessionListActivity : AppCompatActivity() {
                 when (action) {
                     SessionAction.SHARE -> showShareDialog(s)
                     SessionAction.UNSHARE -> confirmUnshare(s)
+                    SessionAction.GIT -> startActivity(GitChangesActivity.intent(this, s.cwd, nameOf(s)))
+                    SessionAction.SHORTCUT -> pinShortcut(s)
                     SessionAction.END -> confirmEnd(s)
                     SessionAction.DELETE -> confirmDelete(s)
                     SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)

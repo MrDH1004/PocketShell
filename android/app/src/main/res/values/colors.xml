@@ -24,6 +24,11 @@
     <color name="live">#5CC48D</color>
     <!-- Needs the user: an agent waiting on an answer. -->
     <color name="attention">#E3B55A</color>
+    <!-- Git diff: added / removed lines and their backgrounds -->
+    <color name="diff_add">#5CC48D</color>
+    <color name="diff_del">#E5767A</color>
+    <color name="diff_add_bg">#1A5CC48D</color>
+    <color name="diff_del_bg">#1AE5767A</color>
     <color name="ripple">#1FFFFFFF</color>
 
     <color name="keybar_bg">@color/ink_1</color>

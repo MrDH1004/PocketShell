@@ -88,18 +88,23 @@ data class SessionInfo(
 }
 
 /** What a long press on a session row offers. */
-enum class SessionAction { SHARE, UNSHARE, END, DELETE, DELETE_WITH_FOLDER }
+enum class SessionAction { SHARE, UNSHARE, GIT, SHORTCUT, END, DELETE, DELETE_WITH_FOLDER }
 
 object SessionActions {
     /**
      * A running session can be ended (its record stays under 최근) or deleted; a record can be deleted. A console
      * opened on the PC can only be ended. Deleting the folder too is offered only when the host allows it. A live
-     * session can be shared with someone, and sharing stopped while anyone has it.
+     * session can be shared with someone, and sharing stopped while anyone has it. A session with a folder offers
+     * that project's git changes and a home screen shortcut to it.
      */
     fun of(s: SessionInfo): List<SessionAction> = buildList {
         if (s.isExternal || s.isRunningHost) {
             add(SessionAction.SHARE)
             if (s.shares > 0) add(SessionAction.UNSHARE)
+        }
+        if (s.cwd.isNotBlank()) {
+            add(SessionAction.GIT)
+            add(SessionAction.SHORTCUT)
         }
         addAll(manage(s))
     }
@@ -157,8 +162,23 @@ data class SessionSections(
 
         /** The folder, case and trailing separator ignored (as on Windows); no folder → the session's own id. */
         private fun folderKey(s: SessionInfo): String {
-            val dir = s.cwd.trim().trimEnd('\\', '/').lowercase()
+            val dir = dirKey(s.cwd)
             return if (dir.isEmpty()) "id:" + s.id else dir
+        }
+
+        /** A PC folder compared the Windows way: case and trailing separator ignored. */
+        fun dirKey(cwd: String): String = cwd.trim().trimEnd('\\', '/').lowercase()
+
+        /**
+         * What a home screen shortcut to a project folder opens: a live session there (newest activity first), else
+         * the newest closed one (opening it resumes), else null.
+         */
+        fun forFolder(all: List<SessionInfo>, cwd: String): SessionInfo? {
+            val key = dirKey(cwd)
+            if (key.isEmpty()) return null
+            val here = all.filter { dirKey(it.cwd) == key }
+            return here.filter { it.isRunningHost || it.isExternal }.maxByOrNull { it.lastActivity }
+                ?: here.filter { it.isHistory }.maxByOrNull { it.lastActivity }
         }
     }
 }

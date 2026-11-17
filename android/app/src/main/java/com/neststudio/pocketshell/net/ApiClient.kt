@@ -249,6 +249,16 @@ class ApiClient(
         }
     }
 
+    /** Uncommitted changes of the git repository [path] is in (host ≥ 0.2.96). */
+    suspend fun gitStatus(path: String): com.neststudio.pocketshell.core.GitStatus =
+        com.neststudio.pocketshell.core.GitStatus.parse(request("GET", "/api/git?path=${q(path)}"))
+
+    /** One file's diff against HEAD; an untracked file comes back as all added lines. */
+    suspend fun gitDiff(root: String, file: String, untracked: Boolean): com.neststudio.pocketshell.core.GitDiff =
+        com.neststudio.pocketshell.core.GitDiff.parse(
+            request("GET", "/api/git/diff?path=${q(root)}&file=${q(file)}" + if (untracked) "&untracked=1" else ""),
+        )
+
     /** Stops sharing the session: its guests are cut off and open PINs stop working. */
     suspend fun unshare(id: String) {
         request("DELETE", "/api/sessions/$id/share")

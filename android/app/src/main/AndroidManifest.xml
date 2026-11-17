@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -38,8 +39,35 @@
 
         <activity
             android:name=".ui.PairingActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- pocketshell://pair?h=…&p=…&pin=…&fp=… (a shared session's link): the form is filled in, the user starts it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pocketshell" android:host="pair" />
+            </intent-filter>
+        </activity>
+
+        <!-- QR scanner (zxing-android-embedded): follow the phone's rotation instead of its fixed landscape. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="screenOrientation" />
+
+        <activity
+            android:name=".ui.GitChangesActivity"
+            android:exported="false" />
+
+        <!-- Home screen / app icon shortcuts to a project folder: opens the session there (see ShortcutActivity). -->
+        <activity
+            android:name=".ui.ShortcutActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Pkshell.Translucent" />
 
         <activity
             android:name=".ui.TerminalActivity"

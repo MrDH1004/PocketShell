@@ -424,4 +424,35 @@
     <string name="guest_pcs_ended">공유 끝남 · 길게 눌러 목록에서 삭제하세요</string>
     <string name="guest_view_only">보기 전용</string>
     <string name="guest_view_only_toast">보기만 공유받은 세션입니다. 입력할 수 없습니다.</string>
+    <!-- Git changes -->
+    <string name="git_menu">변경 사항 (Git)</string>
+    <string name="git_title">변경 사항</string>
+    <string name="git_branch">브랜치 %1$s</string>
+    <string name="git_ahead">푸시 안 한 커밋 %1$d</string>
+    <string name="git_behind">받을 커밋 %1$d</string>
+    <string name="git_summary">파일 %1$d개 · +%2$d −%3$d</string>
+    <string name="git_clean">커밋하지 않은 변경이 없습니다.</string>
+    <string name="git_truncated">파일이 많아 앞 %1$d개만 보여 줍니다.</string>
+    <string name="git_failed">변경 사항을 불러오지 못했습니다</string>
+    <string name="git_old_pc">PC 앱이 0.2.96 이상이어야 변경 사항을 볼 수 있습니다. PC를 업데이트하세요.</string>
+    <string name="git_binary">바이너리 파일이라 내용을 비교할 수 없습니다.</string>
+    <string name="git_diff_truncated">변경이 길어 앞부분만 보여 줍니다.</string>
+    <string name="git_no_diff">내용 변경이 없습니다 (권한·이름만 바뀜).</string>
+    <string name="git_renamed_from">%1$s에서 이름 바뀜</string>
+    <string name="git_staged">스테이징됨</string>
+    <!-- Home screen shortcuts -->
+    <string name="shortcut_add">홈 화면에 추가</string>
+    <string name="shortcut_unsupported">이 홈 화면 앱은 바로가기 추가를 지원하지 않습니다.</string>
+    <string name="shortcut_pc_gone">바로가기의 PC가 목록에 없습니다. PC를 다시 연결하세요.</string>
+    <string name="shortcut_unreachable">%1$s에 연결할 수 없습니다. PC가 켜져 있고 같은 Wi-Fi(또는 Tailscale)인지 확인하세요.</string>
+    <string name="shortcut_no_session">%1$s 폴더에 열린 세션이 없습니다. 세션 목록에서 새로 여세요.</string>
+    <!-- QR pairing -->
+    <string name="qr_scan">QR 코드 스캔</string>
+    <string name="qr_scan_prompt">공유받은 QR 코드를 화면 안에 맞추세요</string>
+    <string name="qr_not_pocketshell">PocketShell 연결용 QR 코드가 아닙니다.</string>
+    <string name="qr_fp_mismatch">QR 코드의 인증서 지문과 PC의 지문이 다릅니다. 다른 PC가 응답했을 수 있어 연결하지 않았습니다.</string>
+    <string name="qr_link_ready">%1$s 연결 정보를 채웠습니다. PIN으로 페어링을 누르세요.</string>
+    <string name="qr_description">공유 QR 코드</string>
+    <string name="qr_hint">상대방이 PocketShell 앱 → PC 추가 → QR 코드 스캔으로 찍으면 바로 연결됩니다.</string>
+    <string name="qr_send_link">바로 연결 링크: %1$s</string>
 </resources>

@@ -1126,6 +1126,25 @@ public sealed class HostServer : IDisposable
             catch (IOException ex) { return Error(400, ex.Message); }
         });
 
+        // Uncommitted changes of the project the folder is in (0.2.96+): read-only git status / diff.
+        app.MapGet("/api/git", (string? path) =>
+        {
+            var dir = ProjectFiles.Normalize(path);
+            if (dir == null) return Error(400, "절대 경로가 필요합니다");
+            try { return Json(GitChanges.Status(dir)); }
+            catch (GitException ex) { return Error(ex.Status, ex.Message); }
+        });
+
+        app.MapGet("/api/git/diff", (string? path, string? file, string? untracked) =>
+        {
+            var dir = ProjectFiles.Normalize(path);
+            if (dir == null || string.IsNullOrWhiteSpace(file)) return Error(400, "path(절대 경로)와 file이 필요합니다");
+            try { return Json(GitChanges.Diff(dir, file, untracked == "1")); }
+            catch (GitException ex) { return Error(ex.Status, ex.Message); }
+            catch (UnauthorizedAccessException) { return Error(403, "접근 권한이 없습니다: " + file); }
+            catch (IOException ex) { return Error(400, ex.Message); }
+        });
+
         app.MapGet("/api/files/content", (string? path) =>
         {
             var file = ProjectFiles.Normalize(path);
