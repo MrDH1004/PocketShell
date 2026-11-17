@@ -84,6 +84,10 @@ class TerminalActivity : AppCompatActivity() {
     private var viewRows = 0
     private var resumed = false
     private var pcId = ""
+    /** Someone else's PC shared this session with this phone (null = the phone's own PC). */
+    private var guest: com.neststudio.pocketshell.core.ShareGrant? = null
+    /** Shared for watching only: nothing is sent. */
+    private var readOnly = false
     private lateinit var quickBar: LinearLayout
     private var quickPrompt: com.neststudio.pocketshell.core.AgentPrompt? = null
     /** What the AI CLI asks right now (last poll), shown as buttons only while [UiPrefs.quickReplies] is on. */
@@ -144,6 +148,8 @@ class TerminalActivity : AppCompatActivity() {
         }
         api = apiClient
         pcId = pairing.id
+        guest = pairing.share
+        readOnly = pairing.share?.readOnly == true
         quickBar = findViewById(R.id.quickBar)
 
         sessionId = intent.getStringExtra(EXTRA_ID).orEmpty()
@@ -157,10 +163,13 @@ class TerminalActivity : AppCompatActivity() {
         zoom.onOverscrollY = { terminalView.scrollByFinger(it) } // zoomed: dragging past the edge scrolls history
         // Pinch magnifies the picture (gallery zoom); the grid and the PC width change only with the font size
         // (view settings), which re-fits live.
-        titleView.text = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId }
+        titleView.text = titled(intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { sessionId })
+        // Watching only: the keyboard never opens by itself (the window asks for it to be always visible otherwise).
+        if (readOnly) window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         session = RemoteTerminalSession(TRANSCRIPT_ROWS, sessionClient, object : RemoteTerminalSession.Transport {
             override fun sendInput(data: ByteArray) {
+                if (readOnly) return // watching only (the PC drops it too)
                 if (scroll > 0) { // typing returns to the live view
                     scroll = 0
                     terminalView.resetRemoteOffset()
@@ -197,9 +206,14 @@ class TerminalActivity : AppCompatActivity() {
         findViewById<View>(R.id.pasteImageButton).setOnClickListener {
             if (!pastingImage) pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
+        // A shared session on someone else's PC: their files stay theirs; watching only also means no input at all.
+        if (guest != null) findViewById<View>(R.id.filesButton).visibility = View.GONE
+        if (readOnly) {
+            listOf(R.id.keyBar, R.id.keyboardButton, R.id.voiceButton, R.id.pasteImageButton).forEach { findViewById<View>(it).visibility = View.GONE }
+        }
 
         if (sessionKind == SessionInfo.KIND_HISTORY) resumeHistory() else connection?.sessionId = sessionId
-        if (savedInstanceState == null) deliverShared()
+        if (savedInstanceState == null && !readOnly) deliverShared()
     }
 
     /**
@@ -236,7 +250,7 @@ class TerminalActivity : AppCompatActivity() {
         appUpdate.autoCheck()
         // AC-18: reconnect immediately when coming back (screen on / app switch).
         maybeConnect()
-        terminalView.requestFocus()
+        if (!readOnly) terminalView.requestFocus()
         // Looking at the session: its "stopped" notification is answered by being here.
         com.neststudio.pocketshell.notify.Foreground.enter(pcId, sessionId)
         getSystemService(android.app.NotificationManager::class.java)
@@ -276,7 +290,11 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
+    /** The session's name, marked when it is shared with this phone for watching only. */
+    private fun titled(name: CharSequence): String = if (readOnly) "$name · " + getString(R.string.guest_view_only) else name.toString()
+
     private fun showQuickReplies(prompt: com.neststudio.pocketshell.core.AgentPrompt?) {
+        if (readOnly) return
         if (prompt == quickPrompt) return
         quickPrompt = prompt
         quickBar.removeAllViews()
@@ -442,6 +460,7 @@ class TerminalActivity : AppCompatActivity() {
         }
         menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
         menu.menu.add(3, OPT_KEYBAR, 102, R.string.keybar_settings)
+        if (readOnly) listOf(OPT_SNIPPETS, OPT_QUICK, OPT_KEYBAR).forEach { menu.menu.removeItem(it) } // nothing to type
         androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
         androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
         menu.setOnMenuItemClickListener {
@@ -638,7 +657,7 @@ class TerminalActivity : AppCompatActivity() {
         override fun onControl(message: ServerMessage) {
             when (message) {
                 is ServerMessage.Hello -> message.session?.let { s ->
-                    titleView.text = s.displayTitle
+                    titleView.text = titled(s.displayTitle)
                 }
                 is ServerMessage.Size -> {
                     if (sessionKind == SessionInfo.KIND_EXTERNAL) {
@@ -671,8 +690,10 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         override fun onFatal(reason: String, authFailure: Boolean) {
-            setStatus(reason)
-            Toast.makeText(this@TerminalActivity, reason, Toast.LENGTH_LONG).show()
+            // A shared session: the token ending means the share ended (time up, stopped, session closed).
+            val text = if (authFailure && guest != null) getString(R.string.guest_ended) else reason
+            setStatus(text)
+            Toast.makeText(this@TerminalActivity, text, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -723,7 +744,7 @@ class TerminalActivity : AppCompatActivity() {
     private fun switchTo(s: SessionInfo) {
         sessionId = s.id
         sessionKind = s.kind
-        titleView.text = s.displayTitle
+        titleView.text = titled(s.displayTitle)
         val c = connection ?: return
         if (resumed && viewCols > 0) c.switchSession(s.id) else c.sessionId = s.id
     }
@@ -1143,6 +1164,10 @@ class TerminalActivity : AppCompatActivity() {
             if (rowsDown < 0) scroll < history.maxScroll(viewRows, layoutCols()) else scroll > 0
 
         override fun onSingleTapUp(e: MotionEvent?) {
+            if (readOnly) {
+                Toast.makeText(this@TerminalActivity, R.string.guest_view_only_toast, Toast.LENGTH_SHORT).show()
+                return
+            }
             terminalView.requestFocus()
             getSystemService(InputMethodManager::class.java)?.showSoftInput(terminalView, InputMethodManager.SHOW_IMPLICIT)
         }

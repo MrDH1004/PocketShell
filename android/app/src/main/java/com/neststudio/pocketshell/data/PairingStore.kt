@@ -1,6 +1,7 @@
 package com.neststudio.pocketshell.data
 
 import android.content.Context
+import com.neststudio.pocketshell.core.ShareGrant
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -15,12 +16,17 @@ data class Pairing(
     val token: String,
     /** Name the user gave this PC on the phone; blank = show [pcName]. */
     val alias: String = "",
+    /** Someone else's PC that shared one session with this phone (null = this phone's own PC). */
+    val share: ShareGrant? = null,
 ) {
     /** What the UI calls this PC. */
     val displayName: String get() = alias.ifBlank { pcName }
 
-    /** One entry per PC: the host's certificate fingerprint (re-pairing the same PC replaces its entry). */
-    val id: String get() = fingerprint
+    /**
+     * One entry per PC: the host's certificate fingerprint (re-pairing the same PC replaces its entry). A shared
+     * session is its own entry, so it never replaces the owner's pairing with the same PC.
+     */
+    val id: String get() = if (share == null) fingerprint else fingerprint + "#" + share.sessionId
 }
 
 /** JSON form of the paired PC list (pure, unit-tested). */
@@ -34,7 +40,8 @@ object PairingCodec {
                 .put("fp", p.fingerprint)
                 .put("deviceId", p.deviceId)
                 .put("token", p.token)
-                .put("alias", p.alias),
+                .put("alias", p.alias)
+                .apply { p.share?.let { put("share", it.toJson()) } },
         )
     }.toString()
 
@@ -50,7 +57,7 @@ object PairingCodec {
             val hosts = o.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it, "").trim() } }
                 .orEmpty().filter { it.isNotEmpty() }
             if (fp.isEmpty() || token.isEmpty() || hosts.isEmpty()) continue
-            out.add(Pairing(o.optString("name", "PC").ifBlank { "PC" }, hosts, o.optInt("port", 7380), fp, o.optString("deviceId", ""), token, o.optString("alias", "").trim()))
+            out.add(Pairing(o.optString("name", "PC").ifBlank { "PC" }, hosts, o.optInt("port", 7380), fp, o.optString("deviceId", ""), token, o.optString("alias", "").trim(), ShareGrant.fromJson(o.optJSONObject("share"))))
         }
         return out.distinctBy { it.id }
     }

@@ -218,9 +218,10 @@ class PairingActivity : AppCompatActivity() {
         }
 
         val app = application as PkshellApp
-        // Re-pairing a PC that is already on the list keeps the alias the user gave it.
-        val alias = app.store.get(observed)?.alias.orEmpty()
-        val pairing = Pairing(pcName, hosts.distinct(), addr.port, observed, claim.deviceId, claim.token, alias)
+        // Re-pairing a PC that is already on the list keeps the alias the user gave it. A share PIN pairs this phone
+        // with one session only (the session list then opens it).
+        val fresh = Pairing(pcName, hosts.distinct(), addr.port, observed, claim.deviceId, claim.token, share = claim.share)
+        val pairing = fresh.copy(alias = app.store.get(fresh.id)?.alias.orEmpty())
         app.store.save(pairing) // adds this PC, or replaces it when re-pairing
         app.select(pairing.id)
         // Opened from the PC list, which stays below: back from the sessions returns to it.

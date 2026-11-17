@@ -320,15 +320,15 @@ class PcListActivity : AppCompatActivity() {
         Toast.makeText(this, R.string.pcs_link_copied, Toast.LENGTH_SHORT).show()
     }
 
-    private companion object {
-        const val MENU_REFRESH = 1
-        const val MENU_INSTALL = 2
-        const val MENU_CHECK_UPDATE = 3
-        const val MENU_VIEW_SETTINGS = 4
-        const val MENU_NOTIFY = 5
-        const val MENU_QUIET = 6
-        const val PROBE_TIMEOUT_MS = 8000L
-        const val ALIAS_MAX = 30
+    companion object {
+        private const val MENU_REFRESH = 1
+        private const val MENU_INSTALL = 2
+        private const val MENU_CHECK_UPDATE = 3
+        private const val MENU_VIEW_SETTINGS = 4
+        private const val MENU_NOTIFY = 5
+        private const val MENU_QUIET = 6
+        private const val PROBE_TIMEOUT_MS = 8000L
+        private const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"
     }
 }
@@ -390,7 +390,7 @@ private class PcAdapter(
             PcState.CHECKING -> ctx.getString(R.string.pcs_checking)
             PcState.ONLINE -> ctx.getString(if (row.hostUpdate) R.string.pcs_online_update else R.string.pcs_online, row.version.ifBlank { "?" })
             PcState.OFFLINE -> ctx.getString(R.string.pcs_offline)
-            PcState.UNAUTHORIZED -> ctx.getString(R.string.pcs_unauthorized)
+            PcState.UNAUTHORIZED -> ctx.getString(if (row.pc.share != null) R.string.guest_pcs_ended else R.string.pcs_unauthorized)
         }
         // What needs the user first: sessions waiting on an answer, then working, then finished.
         val a = row.agents?.takeIf { row.state == PcState.ONLINE && !it.isEmpty }
@@ -406,7 +406,18 @@ private class PcAdapter(
         v.findViewById<TextView>(R.id.status).text = status
         // With an alias on top, the PC's own name leads the address line so the two stay tied together.
         val own = if (row.pc.alias.isNotBlank()) listOf(row.pc.pcName) else emptyList()
-        v.findViewById<TextView>(R.id.hosts).text = (own + row.pc.hosts).joinToString("  ·  ")
+        // A session someone shared with this phone: which one, what it allows, until when (instead of the addresses).
+        val share = row.pc.share
+        v.findViewById<TextView>(R.id.hosts).text = if (share != null) {
+            val until = share.expiresAtMillis?.let {
+                ctx.getString(R.string.guest_until, java.time.format.DateTimeFormatter.ofPattern("M/d HH:mm")
+                    .format(java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault())))
+            }.orEmpty()
+            ctx.getString(R.string.guest_pc_line, share.title.ifBlank { share.sessionId },
+                ctx.getString(if (share.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short), until)
+        } else {
+            (own + row.pc.hosts).joinToString("  ·  ")
+        }
         v.findViewById<View>(R.id.more).setOnClickListener { onLongClick(row.pc) }
         val dotColor = when (row.state) {
             PcState.ONLINE -> R.color.live

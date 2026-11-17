@@ -42,6 +42,9 @@ public sealed class SessionDto
     /// <summary>Web servers running in the session's folder right now (listening ports, 0.2.88+); null when none.</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public List<int>? WebPorts { get; set; }
+    /// <summary>People this session is shared with right now, open invitations included (owner's list only, 0.2.95+).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public int Shares { get; set; }
     /// <summary>What the agent wrote last (for the "done" event); not part of the session JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? AgentPreview { get; set; }

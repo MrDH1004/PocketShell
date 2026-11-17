@@ -28,6 +28,8 @@ data class SessionInfo(
     val folderDeletable: Boolean = false,
     /** Web servers running in the session's folder (listening ports, host ≥ 0.2.88). */
     val webPorts: List<Int> = emptyList(),
+    /** People the session is shared with, open PINs included (owner's list, host ≥ 0.2.95). */
+    val shares: Int = 0,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
 
@@ -74,6 +76,7 @@ data class SessionInfo(
             prompt = AgentPrompt.fromJson(o.optJSONObject("prompt")),
             folderDeletable = o.optBoolean("folderDeletable", false),
             webPorts = o.optJSONArray("webPorts")?.let { a -> (0 until a.length()).map { a.optInt(it) }.filter { it in 1..65535 } }.orEmpty(),
+            shares = o.optInt("shares", 0).coerceAtLeast(0),
         )
 
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */
@@ -85,14 +88,23 @@ data class SessionInfo(
 }
 
 /** What a long press on a session row offers. */
-enum class SessionAction { END, DELETE, DELETE_WITH_FOLDER }
+enum class SessionAction { SHARE, UNSHARE, END, DELETE, DELETE_WITH_FOLDER }
 
 object SessionActions {
     /**
      * A running session can be ended (its record stays under 최근) or deleted; a record can be deleted. A console
-     * opened on the PC can only be ended. Deleting the folder too is offered only when the host allows it.
+     * opened on the PC can only be ended. Deleting the folder too is offered only when the host allows it. A live
+     * session can be shared with someone, and sharing stopped while anyone has it.
      */
-    fun of(s: SessionInfo): List<SessionAction> = when {
+    fun of(s: SessionInfo): List<SessionAction> = buildList {
+        if (s.isExternal || s.isRunningHost) {
+            add(SessionAction.SHARE)
+            if (s.shares > 0) add(SessionAction.UNSHARE)
+        }
+        addAll(manage(s))
+    }
+
+    private fun manage(s: SessionInfo): List<SessionAction> = when {
         s.isExternal -> listOf(SessionAction.END)
         else -> buildList {
             if (s.isRunningHost) add(SessionAction.END)

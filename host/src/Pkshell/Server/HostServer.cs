@@ -32,6 +32,9 @@ internal sealed class WsConn
     public WebSocket Ws { get; }
     public string? DeviceId { get; }
 
+    /// <summary>A view-only guest: what it sends is dropped.</summary>
+    public bool ReadOnly { get; init; }
+
     public WsConn(WebSocket ws, string? deviceId) { Ws = ws; DeviceId = deviceId; }
 
     public async Task SendAsync(ReadOnlyMemory<byte> data, bool text, CancellationToken ct)
@@ -100,6 +103,7 @@ public sealed class HostServer : IDisposable
     private PairingManager _pairing = null!;
     private PinPairing _pins = null!;
     private ClaimRateLimiter _claimLimiter = null!;
+    private readonly ShareInvites _shareInvites = new();
     private WtTabLauncher _wt = null!;
     private UpdateService _update = null!;
     private DiscoveryResponder? _discovery;
@@ -157,6 +161,7 @@ public sealed class HostServer : IDisposable
         _recent = new RecentExternals(RecentExternals.FileIn(_home));
         _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
         _ = Task.Run(() => WatchAgentsAsync(_bgCts.Token));
+        _ = Task.Run(() => WatchGuestsAsync(_bgCts.Token));
         var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Pkshell.Core.Util.EnvVars.Get("HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
@@ -363,6 +368,43 @@ public sealed class HostServer : IDisposable
             done = states.Count(s => s == AgentStates.Done),
         };
     }
+
+    /// <summary>
+    /// Ends session shares that ran out (time up, or the session ended / its console closed) every 15 s and closes the
+    /// guests' connections. A console's id is its pid, so a share must not outlive the console (a new process could get
+    /// the same pid).
+    /// </summary>
+    private async Task WatchGuestsAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                try { await EndGuestsAsync(_auth.Devices.PruneGuests(sid => !SessionAlive(sid)), "share ended"); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    Log.Warn($"share check failed: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+    }
+
+    /// <summary>A running host session, or a PC console that is still open.</summary>
+    private bool SessionAlive(string id) =>
+        TryExtPid(id, out var pid) ? _externals.Get(pid) != null : _sessions.Get(id)?.IsRunning == true;
+
+    private async Task EndGuestsAsync(IReadOnlyCollection<string> deviceIds, string reason)
+    {
+        if (deviceIds.Count == 0) return;
+        var victims = _conns.Keys.Where(c => c.DeviceId != null && deviceIds.Contains(c.DeviceId)).ToList();
+        await Task.WhenAll(victims.Select(c => c.CloseAsync(4401, reason)));
+        Log.Info($"share: {reason} for {deviceIds.Count} guest(s) (closed {victims.Count} connection(s))");
+    }
+
+    /// <summary>How many people a session is shared with (guests that can connect + open invitations).</summary>
+    private int ShareCount(string sessionId) => _auth.Devices.Guests(sessionId).Count + _shareInvites.Open(sessionId).Count;
 
     /// <summary>Keeps the 최근 list current while no phone is polling: a light console snapshot every 20 s.</summary>
     private async Task WatchRecentAsync(CancellationToken ct)
@@ -747,6 +789,14 @@ public sealed class HostServer : IDisposable
             await ctx.Response.WriteAsJsonAsync(new { error = "unauthorized" });
             return;
         }
+        if (auth.IsGuest && !ShareAccess.Allows(ctx.Request.Method, path.Value ?? "", auth.SharedSession!, auth.ReadOnly))
+        {
+            ctx.Response.StatusCode = 403;
+            // Typing into the shared session while watching only, or anything outside it.
+            bool typing = auth.ReadOnly && ShareAccess.Allows(ctx.Request.Method, path.Value ?? "", auth.SharedSession!, readOnly: false);
+            await ctx.Response.WriteAsJsonAsync(new { error = typing ? "view-only share: watching, not typing" : "shared session only" });
+            return;
+        }
         ctx.Items["auth"] = auth;
         await next();
     }
@@ -758,7 +808,21 @@ public sealed class HostServer : IDisposable
 
     private void MapApi(WebApplication app)
     {
-        app.MapGet("/api/info", () => Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status, agents = AgentSummary() }));
+        app.MapGet("/api/info", (HttpContext ctx) =>
+        {
+            var auth = AuthOf(ctx);
+            if (!auth.IsGuest)
+                return Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status, agents = AgentSummary() });
+            // A guest sees the shared session only: no update state (it cannot apply one), agents of that session.
+            var sid = auth.SharedSession!;
+            var state = TryExtPid(sid, out var spid) ? _externals.Get(spid)?.AgentState : _sessions.Get(sid)?.Snapshot().AgentState;
+            return Json(new
+            {
+                name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(),
+                agents = new { working = state == AgentStates.Working ? 1 : 0, waiting = state == AgentStates.Waiting ? 1 : 0, done = state == AgentStates.Done ? 1 : 0 },
+                share = ShareJson(auth),
+            });
+        });
 
         // Long poll: events after `after` (a seq from an earlier reply), waiting up to `wait` seconds for the first one.
         // A different `epoch` than the caller remembers means the host restarted and seq started over.
@@ -768,6 +832,8 @@ public sealed class HostServer : IDisposable
             int wait = int.TryParse(ctx.Request.Query["wait"].ToString(), out var w) ? Math.Clamp(w, 0, 50) : 0;
             // First call (after < 0): only tell where the log is now, never replay old events.
             var events = after < 0 ? new List<AgentEventDto>() : await _events.WaitAfterAsync(after, TimeSpan.FromSeconds(wait), ctx.RequestAborted);
+            var auth = AuthOf(ctx);
+            if (auth.IsGuest) events = events.Where(e => e.SessionId == auth.SharedSession).ToList();
             return Json(new { epoch = _events.Epoch, seq = _events.LastSeq, events });
         });
 
@@ -783,8 +849,16 @@ public sealed class HostServer : IDisposable
             return Json(body, status);
         });
 
-        app.MapGet("/api/sessions", () =>
+        app.MapGet("/api/sessions", (HttpContext ctx) =>
         {
+            var auth = AuthOf(ctx);
+            if (auth.IsGuest)
+            {
+                // Only the shared session, without what belongs to the owner (folder deletion, web servers).
+                var sid = auth.SharedSession!;
+                var only = TryExtPid(sid, out var spid) ? _externals.Get(spid) : _sessions.Get(sid)?.Snapshot();
+                return Json(new { sessions = only != null && (only.State == "running" || only.Kind == "external") ? new[] { only } : Array.Empty<SessionDto>() });
+            }
             var list = _sessions.All.Select(s => s.Snapshot())
                 .OrderByDescending(s => s.State == "running").ThenByDescending(s => s.LastActivity, StringComparer.Ordinal)
                 .ToList();
@@ -806,6 +880,8 @@ public sealed class HostServer : IDisposable
                 var ports = Pkshell.Core.Projects.WebServers.Pages(Pkshell.Core.Projects.WebServers.For(s.Cwd, listeners));
                 s.WebPorts = ports.Count > 0 ? ports : null;
             }
+            foreach (var s in list)
+                if (s.State == "running" || s.Kind == "external") s.Shares = ShareCount(s.Id);
             return Json(new { sessions = list });
         });
 
@@ -1161,6 +1237,55 @@ public sealed class HostServer : IDisposable
             }
         });
 
+        // Session share (0.2.95+): a PIN for one person, who pairs with it and reaches this one session only.
+        app.MapPost("/api/sessions/{id}/share", async (HttpContext ctx, string id) =>
+        {
+            var req = await ReadBody<ShareRequest>(ctx) ?? new ShareRequest();
+            if (req.Hours is < 1 or > 168) return Error(400, "hours must be 1..168");
+            string? title;
+            if (TryExtPid(id, out var pid))
+            {
+                var ext = _externals.Get(pid);
+                if (ext == null) return Error(404, "session not found");
+                title = SessionName(ext);
+            }
+            else
+            {
+                var s = _sessions.Get(id);
+                if (s == null || !s.IsRunning) return Error(404, "session not found (only a running session can be shared)");
+                title = SessionName(s.Snapshot());
+            }
+            var invite = _shareInvites.Start(id, req.ReadOnly, TimeSpan.FromHours(req.Hours), title);
+            Log.Info($"share: PIN issued for {id} ({(req.ReadOnly ? "view" : "edit")}, {req.Hours} h) by {AuthOf(ctx).DeviceId ?? "local"}, expires {Ids.IsoUtc(invite.ExpiresAt)}");
+            return Json(new
+            {
+                pin = invite.Pin, expiresAt = Ids.IsoUtc(invite.ExpiresAt), fpShort = _fpShort, hosts = PublicHosts(), port = _port,
+                readOnly = req.ReadOnly, hours = req.Hours, title,
+            });
+        });
+
+        app.MapGet("/api/shares", (string? session) =>
+        {
+            var guests = _auth.Devices.Guests(session).Select(d => new
+            {
+                d.Id, d.Name, sessionId = d.SessionId, d.ReadOnly, d.ExpiresAt, d.CreatedAt, title = d.SessionTitle,
+                connected = _conns.Keys.Any(c => c.DeviceId == d.Id),
+            }).ToList();
+            var invites = _shareInvites.Open(session).Select(i => new { sessionId = i.SessionId, i.ReadOnly, expiresAt = Ids.IsoUtc(i.ExpiresAt), i.Title }).ToList();
+            return Json(new { guests, invites });
+        });
+
+        // Stop sharing a session: every guest of it is cut off and its open PINs stop working.
+        app.MapDelete("/api/sessions/{id}/share", async (HttpContext ctx, string id) =>
+        {
+            int cancelled = _shareInvites.Cancel(id);
+            var guests = _auth.Devices.Guests(id).Select(d => d.Id).ToList();
+            foreach (var g in guests) _auth.Devices.Revoke(g);
+            await EndGuestsAsync(guests, "share stopped");
+            Log.Info($"share: stopped for {id} by {AuthOf(ctx).DeviceId ?? "local"} ({guests.Count} guest(s), {cancelled} open PIN(s))");
+            return Json(new { guests = guests.Count, invites = cancelled });
+        });
+
         app.MapPost("/api/pair/start", async (HttpContext ctx) =>
         {
             if (!AuthOf(ctx).IsLocal) return Error(401, "local token required");
@@ -1189,6 +1314,17 @@ public sealed class HostServer : IDisposable
             }
             var body = await ReadBody<ClaimRequest>(ctx);
             bool byPin = !string.IsNullOrEmpty(body?.Pin);
+            // A session share PIN first (several may be open); it pairs a guest that reaches that session only.
+            var invite = byPin && _shareInvites.Open().Count > 0 ? _shareInvites.TryConsume(body!.Pin) : null;
+            if (invite != null)
+            {
+                if (!SessionAlive(invite.SessionId)) return Error(410, "the shared session has ended");
+                var until = DateTimeOffset.UtcNow + invite.Duration;
+                var (guest, guestToken) = _auth.Devices.AddGuest(body!.DeviceName ?? "guest", invite.SessionId, invite.ReadOnly, until, invite.Title);
+                Log.Info($"share: guest {guest.Id} ({guest.Name}) joined {invite.SessionId} ({(invite.ReadOnly ? "view" : "edit")}) from {ip} until {guest.ExpiresAt}");
+                var ga = new AuthResult(false, guest.Id, guest.SessionId, guest.ReadOnly, guest.ExpiresAt, guest.SessionTitle);
+                return Json(new { deviceId = guest.Id, token = guestToken, fp = _fp, share = ShareJson(ga) });
+            }
             bool ok = body != null && (byPin ? _pins.TryConsume(body.Pin) == PinClaimResult.Ok : _pairing.TryConsume(body.Code));
             if (!ok)
             {
@@ -1217,6 +1353,22 @@ public sealed class HostServer : IDisposable
             Log.Info($"device revoked: {id} (closed {victims.Count} connection(s))");
             return Results.NoContent();
         });
+    }
+
+    private sealed class ShareRequest
+    {
+        public bool ReadOnly { get; set; }
+        public int Hours { get; set; } = 4;
+    }
+
+    private static object ShareJson(AuthResult a) => new { sessionId = a.SharedSession, readOnly = a.ReadOnly, expiresAt = a.ExpiresAt, title = a.SessionTitle };
+
+    /// <summary>The name the phone shows for a session: its folder, else its title.</summary>
+    private static string SessionName(SessionDto s)
+    {
+        var dir = s.Cwd.Trim().TrimEnd('\\', '/');
+        var name = dir.Length > 0 ? dir[(Math.Max(dir.LastIndexOf('\\'), dir.LastIndexOf('/')) + 1)..] : "";
+        return name.Length > 0 ? name : (s.Title.Length > 0 ? s.Title : s.Id);
     }
 
     private sealed class ClaimRequest
@@ -1307,8 +1459,12 @@ public sealed class HostServer : IDisposable
             if (host == null) { ctx.Response.StatusCode = 404; return; }
         }
 
+        var auth = AuthOf(ctx);
+        // A guest never opens a tab on this PC; a view-only guest neither types nor sizes the session (no size = no vote).
+        if (auth.IsGuest) openPcTab = false;
+        if (auth.ReadOnly) cols = rows = 0;
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-        var conn = new WsConn(ws, AuthOf(ctx).DeviceId);
+        var conn = new WsConn(ws, auth.DeviceId) { ReadOnly = auth.ReadOnly };
         _conns[conn] = 0;
         // Revoke may have happened between AuthMiddleware and registration; the revoke endpoint only closes
         // connections already in _conns, so re-check now that this one is registered.
@@ -1443,8 +1599,8 @@ public sealed class HostServer : IDisposable
 
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
             await ReceiveLoop(conn,
-                data => s.WriteInputFrom(a.Client, data),
-                (nc, nr) => s.ResizeClient(a.Client, nc, nr),
+                data => { if (!conn.ReadOnly) s.WriteInputFrom(a.Client, data); },
+                (nc, nr) => { if (!conn.ReadOnly) s.ResizeClient(a.Client, nc, nr); },
                 cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
@@ -1469,7 +1625,7 @@ public sealed class HostServer : IDisposable
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);
-            await ReceiveLoop(conn, data => b.WriteInput(data), (_, _) => { /* size policy not applied to external consoles */ }, cts.Token);
+            await ReceiveLoop(conn, data => { if (!conn.ReadOnly) b.WriteInput(data); }, (_, _) => { /* size policy not applied to external consoles */ }, cts.Token);
             cts.Cancel();
             try { await sender; } catch (OperationCanceledException) { }
         }

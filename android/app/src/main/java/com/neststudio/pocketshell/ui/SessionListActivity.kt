@@ -61,6 +61,11 @@ class SessionListActivity : AppCompatActivity() {
     private var autoRefresh: kotlinx.coroutines.Job? = null
     private var loading = false
 
+    /** This PC shared one session with this phone: only that session, nothing of the owner's (no new sessions, files). */
+    private var guest: com.neststudio.pocketshell.core.ShareGrant? = null
+    /** The shared session opens by itself once, when the list first shows it. */
+    private var guestOpened = false
+
     /** PC 탐색기 → a folder picked to open: a session there (terminal or the chosen AI CLI). */
     private val pcBrowser = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
         val path = r.data?.getStringExtra(FileBrowserActivity.RESULT_PATH)
@@ -85,7 +90,12 @@ class SessionListActivity : AppCompatActivity() {
         findViewById<View>(R.id.root).applySystemInsets(includeIme = false)
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.subtitle = app.pairing()?.displayName
+        guest = app.pairing()?.share
+        guestOpened = savedInstanceState?.getBoolean(STATE_GUEST_OPENED) ?: false
+        toolbar.subtitle = guest?.let { g ->
+            getString(R.string.guest_subtitle, app.pairing()?.displayName.orEmpty(),
+                getString(if (g.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short), untilText(g))
+        } ?: app.pairing()?.displayName
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back)
         toolbar.setNavigationContentDescription(R.string.pcs_back)
         toolbar.setNavigationOnClickListener { finish() }
@@ -99,6 +109,7 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
         toolbar.menu.add(0, MENU_UNPAIR, 4, R.string.unpair)
         if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
+        if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT).forEach { toolbar.menu.removeItem(it) }
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_PC_BROWSER -> pcBrowser.launch(FileBrowserActivity.pcIntent(this, app.pairing()?.displayName.orEmpty()))
@@ -130,8 +141,12 @@ class SessionListActivity : AppCompatActivity() {
             list.setPaddingRelative(pad, list.paddingTop, pad, list.paddingBottom)
             adapter.compact = true
         }
+        adapter.guest = guest != null
         list.adapter = adapter
-        findViewById<FloatingActionButton>(R.id.fab).setOnClickListener { showNewChooser() }
+        findViewById<FloatingActionButton>(R.id.fab).apply {
+            setOnClickListener { showNewChooser() }
+            visibility = if (guest != null) View.GONE else View.VISIBLE
+        }
 
         hostUpdateBar = findViewById(R.id.hostUpdateBar)
         hostUpdateText = findViewById(R.id.hostUpdateText)
@@ -179,12 +194,21 @@ class SessionListActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val sections = SessionSections.of(api.sessions(), UiPrefs(this@SessionListActivity).recentLimit)
+                val all = api.sessions()
+                val sections = SessionSections.of(all, UiPrefs(this@SessionListActivity).recentLimit)
                 adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
-                showMessage(if (adapter.itemCount == 0) getString(R.string.sessions_empty) else null)
+                val empty = if (guest != null) R.string.guest_session_closed else R.string.sessions_empty
+                showMessage(if (adapter.itemCount == 0) getString(empty) else null)
+                // Shared session: open it right away the first time (the list only has it).
+                val shared = guest?.let { g -> all.firstOrNull { it.id == g.sessionId } }
+                if (shared != null && !guestOpened) {
+                    guestOpened = true
+                    openSession(shared)
+                }
                 refreshHostUpdate()
             } catch (e: ApiException) {
-                showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
+                // A guest whose share ran out (or was stopped) gets 401: say so instead of a pairing error.
+                showMessage(if (guest != null && e.code == 401) getString(R.string.guest_ended) else ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } catch (e: IOException) {
                 showMessage(ErrorText.of(this@SessionListActivity, R.string.err_load_sessions, e))
             } catch (e: org.json.JSONException) {
@@ -465,7 +489,111 @@ class SessionListActivity : AppCompatActivity() {
     private fun nameOf(s: SessionInfo) = s.displayTitle
 
     /** Long press: 세션 종료 / 삭제 / 폴더까지 삭제, whichever apply to this row. Each asks before it acts. */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_GUEST_OPENED, guestOpened)
+    }
+
+    /** "11/17 15:30까지" for a share's end ("" when the PC did not say). */
+    private fun untilText(g: com.neststudio.pocketshell.core.ShareGrant): String {
+        val ms = g.expiresAtMillis ?: return ""
+        val t = java.time.Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
+        return getString(R.string.guest_until, DateTimeFormatter.ofPattern("M/d HH:mm").format(t))
+    }
+
+    // ---------------------------------------------------------------- session share
+
+    /** Mode (type too / watch only) and how long, then a PIN for one person. */
+    private fun showShareDialog(s: SessionInfo) {
+        val d = resources.displayMetrics.density
+        val pad = (24 * d).toInt()
+        fun label(res: Int) = TextView(this).apply {
+            setText(res)
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            setPadding(0, (12 * d).toInt(), 0, (4 * d).toInt())
+        }
+        val modes = RadioGroup(this)
+        val edit = RadioButton(this).apply { id = View.generateViewId(); setText(R.string.collab_mode_edit) }
+        val view = RadioButton(this).apply { id = View.generateViewId(); setText(R.string.collab_mode_view) }
+        modes.addView(edit)
+        modes.addView(view)
+        modes.check(edit.id)
+        val hoursChoices = intArrayOf(1, 4, 24)
+        val durations = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+        val hourButtons = hoursChoices.map { h ->
+            RadioButton(this).apply { id = View.generateViewId(); text = getString(R.string.collab_hours, h) }.also { durations.addView(it) }
+        }
+        durations.check(hourButtons[1].id)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, (4 * d).toInt(), pad, 0)
+            addView(label(R.string.collab_mode_label))
+            addView(modes)
+            addView(label(R.string.collab_duration_label))
+            addView(durations)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.collab_dialog_title, nameOf(s)))
+            .setView(box)
+            .setPositiveButton(R.string.collab_create) { _, _ ->
+                val readOnly = modes.checkedRadioButtonId == view.id
+                val hours = hoursChoices[hourButtons.indexOfFirst { it.id == durations.checkedRadioButtonId }.coerceAtLeast(0)]
+                createShare(s, readOnly, hours)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun createShare(s: SessionInfo, readOnly: Boolean, hours: Int) {
+        val api = (application as PkshellApp).api() ?: return
+        lifecycleScope.launch {
+            try {
+                showShareInvite(s, api.share(s.id, readOnly, hours))
+                refresh(silent = true)
+            } catch (e: ApiException) {
+                // An older PC has no such route (404 without the PC's own reason, or 405).
+                val old = e.code == 405 || (e.code == 404 && !e.body.contains("session not found"))
+                showMessage(if (old) getString(R.string.collab_old_pc) else ErrorText.of(this@SessionListActivity, R.string.collab_failed, e))
+            } catch (e: IOException) {
+                showMessage(ErrorText.of(this@SessionListActivity, R.string.collab_failed, e))
+            }
+        }
+    }
+
+    /** The PIN, where to connect and the fingerprint; 보내기 hands the same as text to a messenger. */
+    private fun showShareInvite(s: SessionInfo, invite: com.neststudio.pocketshell.core.ShareInvite) {
+        val mode = getString(if (invite.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short)
+        val name = invite.title.ifBlank { nameOf(s) }
+        val pcName = (application as PkshellApp).pairing()?.displayName.orEmpty()
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.collab_pin_title, name))
+            .setMessage(getString(R.string.collab_pin_message, invite.pinSpaced, invite.addresses, invite.fpShort, mode, invite.hours))
+            .setPositiveButton(R.string.collab_send) { _, _ ->
+                val text = getString(R.string.collab_send_text, name, pcName, invite.pinSpaced, invite.addresses, invite.fpShort, PcListActivity.DOWNLOAD_URL)
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                startActivity(Intent.createChooser(send, getString(R.string.collab_send_chooser)))
+            }
+            .setNegativeButton(R.string.collab_close, null)
+            .show()
+    }
+
+    private fun confirmUnshare(s: SessionInfo) {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.collab_unshare_title, nameOf(s)))
+            .setMessage(R.string.collab_unshare_message)
+            .setPositiveButton(R.string.collab_unshare) { _, _ ->
+                runSessionAction(R.string.collab_unshare_failed) {
+                    it.unshare(s.id)
+                    android.widget.Toast.makeText(this, R.string.collab_unshared, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun showSessionActions(s: SessionInfo) {
+        if (guest != null) return // a shared session belongs to its owner
         val actions = SessionActions.of(s)
         val sheet = BottomSheetDialog(this)
         val d = resources.displayMetrics.density
@@ -491,6 +619,8 @@ class SessionListActivity : AppCompatActivity() {
         })
         for (action in actions) {
             val (icon, label) = when (action) {
+                SessionAction.SHARE -> R.drawable.ic_person_add to R.string.collab_share
+                SessionAction.UNSHARE -> R.drawable.ic_close to R.string.collab_unshare
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
                 SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
                 SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
@@ -501,6 +631,8 @@ class SessionListActivity : AppCompatActivity() {
             row.setOnClickListener {
                 sheet.dismiss()
                 when (action) {
+                    SessionAction.SHARE -> showShareDialog(s)
+                    SessionAction.UNSHARE -> confirmUnshare(s)
                     SessionAction.END -> confirmEnd(s)
                     SessionAction.DELETE -> confirmDelete(s)
                     SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)
@@ -596,6 +728,7 @@ class SessionListActivity : AppCompatActivity() {
     }
 
     private companion object {
+        const val STATE_GUEST_OPENED = "guestOpened"
         const val MENU_REFRESH = 1
         const val MENU_UNPAIR = 2
         const val MENU_CHECK_UPDATE = 3
@@ -625,6 +758,9 @@ private class SessionAdapter(
 
     /** Grid mode: 8dp side margins on cards (the list adds 8dp padding), section titles shifted to match. */
     var compact = false
+
+    /** A shared session on someone else's PC: no per-row owner actions (new terminal, web, long press). */
+    var guest = false
 
     fun submit(s: SessionSections, running: String, external: String, recent: String) {
         val out = ArrayList<Row>()
@@ -683,6 +819,7 @@ private class SessionAdapter(
                     }
                     if (!s.isExternal && s.shell.isNotBlank()) add(s.shell)
                     if (s.cwd.isNotBlank()) add(s.cwd)
+                    if (s.shares > 0) add(v.context.getString(R.string.collab_card_shared, s.shares))
                 }.joinToString(" · ")
                 v.findViewById<TextView>(R.id.detail).text = detail
                 val state = v.findViewById<TextView>(R.id.agentState)
@@ -704,11 +841,11 @@ private class SessionAdapter(
                 time.text = formatTime(s.lastActivity)
                 time.visibility = if (time.text.isNullOrBlank()) View.GONE else View.VISIBLE
                 val newHere = v.findViewById<View>(R.id.newHere)
-                newHere.visibility = if (s.isExternal) View.VISIBLE else View.GONE
+                newHere.visibility = if (s.isExternal && !guest) View.VISIBLE else View.GONE
                 newHere.setOnClickListener { onNewHere(s) }
                 // A web server runs in this project's folder (host ≥ 0.2.88): open it in the web view.
                 val webHere = v.findViewById<View>(R.id.webHere)
-                webHere.visibility = if (s.webPorts.isNotEmpty()) View.VISIBLE else View.GONE
+                webHere.visibility = if (s.webPorts.isNotEmpty() && !guest) View.VISIBLE else View.GONE
                 webHere.setOnClickListener { openProjectWeb(v.context, s) }
                 v.setOnClickListener { onClick(s) }
                 v.setOnLongClickListener { onLongClick(s); true }

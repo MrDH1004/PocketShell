@@ -12,6 +12,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 - **프로젝트 관리**: 폰에서 새 프로젝트(폴더 + claude/codex 실행), 세션 종료·삭제, 세션과 폴더 삭제(대화 기록까지 PC 휴지통으로)
 - **입력 도우미**: 빠른 응답 버튼, 자주 쓰는 문구, 음성 입력, 사진 첨부(Claude Code), 다른 앱에서 공유로 보내기, 프로젝트 파일 보기·업로드·다운로드
 - **한눈에 보기**: 홈 화면 위젯과 빠른 설정 타일에 Claude/GPT 입력 대기·작업 중·끝남 수
+- **세션 공유**: 세션 하나를 다른 사람과 같이 보거나 같이 입력(그 세션에만 접근, 시간 제한, 언제든 중지)
 - **여러 PC**: PIN 페어링, LAN·Tailscale 자동 선택, PC별 상태 한눈에
 - **자동 업데이트**: PC 앱·폰 앱 모두 GitHub Releases에서 확인, 진행 상황 표시
 
@@ -65,7 +66,7 @@ PowerShell로 하고, 단계마다 결과를 확인한 뒤 다음으로 넘어�
 **프로젝트 폴더…**: 폰에서 새 프로젝트를 만들 상위 폴더를 추가·삭제(여러 개 가능, `%APPDATA%\PocketShell\projects.json`). 이 PC에서 찾은 AI CLI(claude, codex)도 표시됨.
 서버가 예기치 않게 꺼지면 트레이가 다시 띄움(5분에 최대 3회).
 
-PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh update [--check] [--force [--kill-working]]`, `psh firewall-cleanup [--list]`
+PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh share <id> [--view] [--hours N]`, `psh shares`, `psh unshare <id>`, `psh update [--check] [--force [--kill-working]]`, `psh firewall-cleanup [--list]`
 - 업데이트는 실행 중인 세션을 끝내므로, 세션이 있으면 끝날 세션 목록을 보여 주고 다시 물음(`--force`). AI가 작업 중인 세션이 있으면 한 번 더 물음(`--kill-working`). 트레이와 폰도 같음.
 - `psh firewall-cleanup`: 예전 설치(이전 이름 mpta 포함)와 지워진 실행 파일이 남긴 Windows 방화벽 규칙을 지움. `--list`는 목록만. 지울 때 관리자 권한 확인 창이 뜸.
 
@@ -99,6 +100,15 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 - 브라우저·메모·갤러리 등에서 **공유 → PocketShell 세션에 보내기**. 연결한 모든 PC의 열린 세션 목록이 뜨고(입력 대기 중인 AI 세션이 맨 위), 고른 세션이 열림.
 - 글·링크: 그 세션에 입력하고 기다림(Enter는 직접). 제목과 링크를 함께 보내는 앱은 "제목 링크"로 한 줄. 4000자까지.
 - 이미지: 터미널의 사진 첨부와 같음(PC 클립보드 + Alt+V, Claude Code에서 `[Image #N]`). PC 클립보드 내용은 그 이미지로 바뀜.
+
+**세션 공유 (다른 사람과 같이 보기·입력)**
+- 세션을 길게 누름 → **세션 공유** → 상대방이 할 수 있는 것(**같이 입력** / **보기만**)과 공유 시간(1·4·24시간, 상대방이 연결한 뒤부터) → **PIN 만들기**.
+- PIN·PC 주소·지문이 나옴. **보내기**로 메신저에 그대로 보낼 수 있음. PIN은 10분 안에 한 사람만 씀(여러 명이면 PIN을 여러 번 만듦).
+- 상대방: PocketShell 앱 → **PC 추가** → 주소와 PIN 입력 → 지문 확인. 그 세션이 바로 열림. PC 목록에는 "공유받은 세션: 이름 · 보기만/같이 입력 · 끝나는 시각"으로 따로 표시됨.
+- 상대방은 그 세션 하나만 씀. 다른 세션·새 세션·PC 파일·웹 보기·업데이트는 안 됨(PC가 막음). 보기만이면 입력과 화면 크기 변경도 안 됨(키보드·키 바 숨김).
+- 상대방도 같은 Wi-Fi이거나 Tailscale로 이 PC에 닿아야 함.
+- 공유 중인 세션 카드에 **공유 중 n**. 길게 누름 → **공유 중지**: 연결한 사람은 바로 끊기고 안 쓴 PIN도 무효. 시간이 지나거나 세션이 끝나면(PC 콘솔이 닫히면) 자동으로 끝남.
+- PC에서: `psh share <id> [--view] [--hours N]`, `psh shares`, `psh unshare <id>`.
 
 **세션 목록**
 - 카드에 Claude/GPT 상태가 표시됨: **작업 중 / 입력 대기 / 끝남** (5초마다 갱신). PC 목록 카드에는 PC별 합계(입력 대기 n · 작업 중 n · 끝남 n).
@@ -177,5 +187,6 @@ powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releas
 ## 보안
 - 원격 셸이므로 같은 LAN 또는 Tailscale 안에서만 사용. 0.0.0.0 바인딩 없음.
 - 페어링: 일회용 PIN(5분, 5회 실패 시 무효) + 인증서 지문 확인 → 기기 토큰(서버에는 SHA-256만 저장), PC에서 `psh revoke`로 취소.
+- 세션 공유: 공유 PIN(10분, 1회, 5회 실패 시 열린 PIN 모두 무효)으로 받은 토큰은 그 세션 하나에만 쓰이고(허용 목록 밖은 403), 정한 시간·세션 종료·공유 중지 때 끊김.
 - 클라이언트는 서버 자체서명 인증서를 SHA-256 지문으로 핀닝.
 - 데이터: `%APPDATA%\PocketShell` (인증서, 토큰, 세션 기록, 로그).

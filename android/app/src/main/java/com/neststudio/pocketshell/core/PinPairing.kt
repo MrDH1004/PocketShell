@@ -122,8 +122,8 @@ data class DiscoveredHost(
     }
 }
 
-/** `POST /api/pair/claim` response for either code or pin: `{deviceId, token, fp}`. */
-data class ClaimResult(val deviceId: String, val token: String, val fingerprint: String?) {
+/** `POST /api/pair/claim` response for either code or pin: `{deviceId, token, fp, share?}`. */
+data class ClaimResult(val deviceId: String, val token: String, val fingerprint: String?, val share: ShareGrant? = null) {
     companion object {
         fun parse(text: String): ClaimResult {
             val o = try {
@@ -135,7 +135,7 @@ data class ClaimResult(val deviceId: String, val token: String, val fingerprint:
             val token = o.optString("token", "")
             require(id.isNotEmpty() && token.isNotEmpty()) { "서버 응답에 deviceId/token이 없습니다" }
             val fp = if (o.isNull("fp")) null else o.optString("fp", "").ifBlank { null }
-            return ClaimResult(id, token, fp?.let { FingerprintPinning.normalize(it) })
+            return ClaimResult(id, token, fp?.let { FingerprintPinning.normalize(it) }, ShareGrant.fromJson(o.optJSONObject("share")))
         }
     }
 }

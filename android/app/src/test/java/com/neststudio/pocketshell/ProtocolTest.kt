@@ -129,22 +129,27 @@ class ProtocolTest {
 
     @Test
     fun longPressOffersWhatFitsTheSession() {
-        fun session(kind: String, state: String, folder: Boolean) = SessionInfo.fromJson(
-            JSONObject(sessionJson).put("kind", kind).put("state", state).put("folderDeletable", folder),
+        fun session(kind: String, state: String, folder: Boolean, shares: Int = 0) = SessionInfo.fromJson(
+            JSONObject(sessionJson).put("kind", kind).put("state", state).put("folderDeletable", folder).put("shares", shares),
         )
+        val share = com.neststudio.pocketshell.core.SessionAction.SHARE
+        val unshare = com.neststudio.pocketshell.core.SessionAction.UNSHARE
         val end = com.neststudio.pocketshell.core.SessionAction.END
         val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
         val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
         val of = com.neststudio.pocketshell.core.SessionActions::of
-        // Running: end (the record stays) or delete; the folder only when the PC allows it.
-        assertEquals(listOf(end, delete), of(session("host", "running", false)))
-        assertEquals(listOf(end, delete, folder), of(session("host", "running", true)))
-        // A record cannot be ended any more.
+        // Running: share, end (the record stays) or delete; the folder only when the PC allows it.
+        assertEquals(listOf(share, end, delete), of(session("host", "running", false)))
+        assertEquals(listOf(share, end, delete, folder), of(session("host", "running", true)))
+        // Shared with someone: sharing can be stopped.
+        assertEquals(listOf(share, unshare, end, delete), of(session("host", "running", false, shares = 2)))
+        // A record cannot be ended or shared any more.
         assertEquals(listOf(delete, folder), of(session("history", "exited", true)))
         assertEquals(listOf(delete), of(session("recent", "exited", false)))
-        // A console opened on the PC: only ended, never deleted (and never its folder).
-        assertEquals(listOf(end), of(session("external", "running", true)))
-        // An older PC does not send the field.
+        // A console opened on the PC: shared or ended, never deleted (and never its folder).
+        assertEquals(listOf(share, end), of(session("external", "running", true)))
+        // An older PC does not send the fields.
         assertFalse(SessionInfo.fromJson(JSONObject(sessionJson)).folderDeletable)
+        assertEquals(0, SessionInfo.fromJson(JSONObject(sessionJson)).shares)
     }
 }

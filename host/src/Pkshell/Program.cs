@@ -21,6 +21,10 @@ public static class Program
           psh pair                       (one-time PIN for phone pairing; --pin is accepted as a no-op)
           psh devices
           psh revoke <deviceId>
+          psh share <id> [--view] [--hours N]
+                                         (PIN for one person to reach this session only; --view = watch, no typing; N=1..168, default 4)
+          psh shares                     (who each session is shared with)
+          psh unshare <id>               (stop sharing a session: its guests are cut off)
           psh update [--check] [--force [--kill-working]]
                                          (--force ends running host sessions; --kill-working also those where an AI is mid-turn)
           psh firewall-cleanup [--list]  (remove Windows Firewall rules of earlier copies; asks for administrator rights)
@@ -69,6 +73,15 @@ public static class Program
                 case "pair": return await PairPinCmd(api); // --pin kept as a no-op for compatibility
                 case "update": return await UpdateCmd(api, opts);
                 case "devices": return await DevicesCmd(api);
+                case "share":
+                    if (opts.Positional.Count != 1) throw new CliException("usage: psh share <id> [--view] [--hours N]");
+                    return await ShareCmd(api, opts.Positional[0], opts.View, opts.Hours ?? 4);
+                case "shares": return await SharesCmd(api);
+                case "unshare":
+                    if (opts.Positional.Count != 1) throw new CliException("usage: psh unshare <id>");
+                    var un = await api.SendAsync(HttpMethod.Delete, $"api/sessions/{Uri.EscapeDataString(opts.Positional[0])}/share");
+                    Console.WriteLine($"stopped sharing {opts.Positional[0]} ({un.GetProperty("guests").GetInt32()} guest(s), {un.GetProperty("invites").GetInt32()} open PIN(s))");
+                    return 0;
                 case "revoke":
                     if (opts.Positional.Count != 1) throw new CliException("usage: psh revoke <deviceId>");
                     await api.SendAsync(HttpMethod.Delete, $"api/devices/{Uri.EscapeDataString(opts.Positional[0])}");
@@ -100,7 +113,8 @@ public static class Program
         public string? Home;
         public string? Shell, Cwd, Title;
         public bool NoAttach;
-        public bool Check, Force, KillWorking;
+        public bool Check, Force, KillWorking, View;
+        public int? Hours;
         public int? DiscoveryPort;
         public List<string> Binds = new();
         public List<string> Positional = new();
@@ -125,6 +139,8 @@ public static class Program
                     case "--check": o.Check = true; break;
                     case "--force": o.Force = true; break;
                     case "--kill-working": o.KillWorking = true; break;
+                    case "--view": o.View = true; break;
+                    case "--hours": o.Hours = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     case "--discovery-port": o.DiscoveryPort = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                     default:
                         if (args[i].StartsWith("--", StringComparison.Ordinal)) throw new FormatException($"unknown option {args[i]}");
@@ -291,6 +307,33 @@ public static class Program
         }
         Console.Error.WriteLine("psh: timed out waiting for the updated host; check `psh update --check` and logs/host.log");
         return 1;
+    }
+
+    private static async Task<int> ShareCmd(ApiClient api, string id, bool view, int hours)
+    {
+        var r = await api.SendAsync(HttpMethod.Post, $"api/sessions/{Uri.EscapeDataString(id)}/share", new { readOnly = view, hours });
+        var hosts = string.Join(", ", r.GetProperty("hosts").EnumerateArray().Select(h => h.GetString()));
+        Console.WriteLine($"Share \"{Str(r, "title")}\" ({(view ? "view only" : "can type")}, {hours} h after joining)");
+        Console.WriteLine();
+        Console.WriteLine($"  PIN          {Str(r, "pin")}   (one person, valid 10 minutes)");
+        Console.WriteLine($"  PC address   {hosts}  port {r.GetProperty("port").GetInt32()}");
+        Console.WriteLine($"  fingerprint  {Str(r, "fpShort")}");
+        Console.WriteLine();
+        Console.WriteLine("The other person: PocketShell app > add a PC > address + PIN, then check the fingerprint.");
+        Console.WriteLine($"Stop it with: psh unshare {id}");
+        return 0;
+    }
+
+    private static async Task<int> SharesCmd(ApiClient api)
+    {
+        var r = await api.SendAsync(HttpMethod.Get, "api/shares");
+        var rows = new List<string[]> { new[] { "SESSION", "NAME", "WHO", "MODE", "UNTIL", "CONNECTED" } };
+        foreach (var g in r.GetProperty("guests").EnumerateArray())
+            rows.Add(new[] { Str(g, "sessionId"), Str(g, "title"), Str(g, "name"), g.GetProperty("readOnly").GetBoolean() ? "view" : "edit", Str(g, "expiresAt"), g.GetProperty("connected").GetBoolean() ? "yes" : "no" });
+        foreach (var i in r.GetProperty("invites").EnumerateArray())
+            rows.Add(new[] { Str(i, "sessionId"), Str(i, "title"), "(PIN not used yet)", i.GetProperty("readOnly").GetBoolean() ? "view" : "edit", Str(i, "expiresAt"), "-" });
+        PrintTable(rows);
+        return 0;
     }
 
     private static async Task<int> DevicesCmd(ApiClient api)
