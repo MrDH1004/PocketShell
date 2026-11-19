@@ -468,8 +468,6 @@
     <string name="git_renamed_from">%1$s에서 이름 바뀜</string>
     <string name="git_staged">스테이징됨</string>
     <!-- Home screen shortcuts -->
-    <string name="shortcut_add">홈 화면에 추가</string>
-    <string name="shortcut_unsupported">이 홈 화면 앱은 바로가기 추가를 지원하지 않습니다.</string>
     <string name="shortcut_pc_gone">바로가기의 PC가 목록에 없습니다. PC를 다시 연결하세요.</string>
     <string name="shortcut_unreachable">%1$s에 연결할 수 없습니다. PC가 켜져 있고 같은 Wi-Fi(또는 Tailscale)인지 확인하세요.</string>
     <string name="shortcut_no_session">%1$s 폴더에 열린 세션이 없습니다. 세션 목록에서 새로 여세요.</string>

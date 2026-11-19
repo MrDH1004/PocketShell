@@ -332,13 +332,6 @@ class SessionListActivity : AppCompatActivity() {
         if (pc != null && pc.share == null) ShortcutActivity.noteOpened(this, pc.id, s)
     }
 
-    private fun pinShortcut(s: SessionInfo) {
-        val pc = (application as PkshellApp).pairing() ?: return
-        if (!ShortcutActivity.pin(this, pc.id, s)) {
-            android.widget.Toast.makeText(this, R.string.shortcut_unsupported, android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
-
     /** POST /api/external/{pid}/adopt: a new host session in the console's folder (the running program stays put). */
     private fun newTerminalHere(s: SessionInfo) {
         val api = (application as PkshellApp).api() ?: return
@@ -659,7 +652,6 @@ class SessionListActivity : AppCompatActivity() {
                 SessionAction.SHARE -> R.drawable.ic_person_add to R.string.collab_share
                 SessionAction.UNSHARE -> R.drawable.ic_close to R.string.collab_unshare
                 SessionAction.GIT -> R.drawable.ic_git to R.string.git_menu
-                SessionAction.SHORTCUT -> R.drawable.ic_add_home to R.string.shortcut_add
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
                 SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
                 SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
@@ -673,7 +665,6 @@ class SessionListActivity : AppCompatActivity() {
                     SessionAction.SHARE -> showShareDialog(s)
                     SessionAction.UNSHARE -> confirmUnshare(s)
                     SessionAction.GIT -> startActivity(GitChangesActivity.intent(this, s.cwd, nameOf(s)))
-                    SessionAction.SHORTCUT -> pinShortcut(s)
                     SessionAction.END -> confirmEnd(s)
                     SessionAction.DELETE -> confirmDelete(s)
                     SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)

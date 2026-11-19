@@ -93,12 +93,6 @@ class ShortcutActivity : AppCompatActivity() {
                 .build()
         }
 
-        /** Asks the launcher to put a shortcut to [s]'s folder on the home screen. False when it cannot. */
-        fun pin(context: Context, pcId: String, s: SessionInfo): Boolean {
-            if (s.cwd.isBlank() || !ShortcutManagerCompat.isRequestPinShortcutSupported(context)) return false
-            return ShortcutManagerCompat.requestPinShortcut(context, info(context, pcId, s), null)
-        }
-
         /** Opening a session puts its folder first among the app icon's long-press entries (up to [MAX_RECENT]). */
         fun noteOpened(context: Context, pcId: String, s: SessionInfo) {
             if (s.cwd.isBlank()) return

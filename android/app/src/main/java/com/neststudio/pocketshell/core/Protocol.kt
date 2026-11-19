@@ -88,14 +88,14 @@ data class SessionInfo(
 }
 
 /** What a long press on a session row offers. */
-enum class SessionAction { SHARE, UNSHARE, GIT, SHORTCUT, END, DELETE, DELETE_WITH_FOLDER }
+enum class SessionAction { SHARE, UNSHARE, GIT, END, DELETE, DELETE_WITH_FOLDER }
 
 object SessionActions {
     /**
      * A running session can be ended (its record stays under 최근) or deleted; a record can be deleted. A console
      * opened on the PC can only be ended. Deleting the folder too is offered only when the host allows it. A live
      * session can be shared with someone, and sharing stopped while anyone has it. A session with a folder offers
-     * that project's git changes and a home screen shortcut to it.
+     * that project's git changes.
      */
     fun of(s: SessionInfo): List<SessionAction> = buildList {
         // 세션 종료 comes first: it is what a long press on a live session is most often for.
@@ -104,10 +104,7 @@ object SessionActions {
             add(SessionAction.SHARE)
             if (s.shares > 0) add(SessionAction.UNSHARE)
         }
-        if (s.cwd.isNotBlank()) {
-            add(SessionAction.GIT)
-            add(SessionAction.SHORTCUT)
-        }
+        if (s.cwd.isNotBlank()) add(SessionAction.GIT)
         addAll(manage(s))
     }
 
