@@ -243,16 +243,6 @@ class ApiClient(
         request("DELETE", "/api/sessions/$id" + if (withFolder) "?folder=1" else "")
     }
 
-    /** A PIN for one person to reach this session only (host ≥ 0.2.95); [readOnly]: watch, no typing. */
-    suspend fun share(id: String, readOnly: Boolean, hours: Int): com.neststudio.pocketshell.core.ShareInvite {
-        val text = request("POST", "/api/sessions/$id/share", JSONObject().put("readOnly", readOnly).put("hours", hours))
-        return try {
-            com.neststudio.pocketshell.core.ShareInvite.parse(text)
-        } catch (e: IllegalArgumentException) {
-            throw IOException(e.message, e)
-        }
-    }
-
     /** Uncommitted changes of the git repository [path] is in (host ≥ 0.2.96). */
     suspend fun gitStatus(path: String): com.neststudio.pocketshell.core.GitStatus =
         com.neststudio.pocketshell.core.GitStatus.parse(request("GET", "/api/git?path=${q(path)}"))
@@ -262,11 +252,6 @@ class ApiClient(
         com.neststudio.pocketshell.core.GitDiff.parse(
             request("GET", "/api/git/diff?path=${q(root)}&file=${q(file)}" + if (untracked) "&untracked=1" else ""),
         )
-
-    /** Stops sharing the session: its guests are cut off and open PINs stop working. */
-    suspend fun unshare(id: String) {
-        request("DELETE", "/api/sessions/$id/share")
-    }
 
     /** Ends a live session; a host session stays under 최근, a PC console's programs are terminated. */
     suspend fun end(id: String) {

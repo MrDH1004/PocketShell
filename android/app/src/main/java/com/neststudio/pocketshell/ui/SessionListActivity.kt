@@ -576,120 +576,6 @@ class SessionListActivity : AppCompatActivity() {
         return getString(R.string.guest_until, DateTimeFormatter.ofPattern("M/d HH:mm").format(t))
     }
 
-    // ---------------------------------------------------------------- session share
-
-    /** Mode (type too / watch only) and how long, then a PIN for one person. */
-    private fun showShareDialog(s: SessionInfo) {
-        val d = resources.displayMetrics.density
-        val pad = (24 * d).toInt()
-        fun label(res: Int) = TextView(this).apply {
-            setText(res)
-            textSize = 13f
-            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-            setPadding(0, (12 * d).toInt(), 0, (4 * d).toInt())
-        }
-        val modes = RadioGroup(this)
-        val edit = RadioButton(this).apply { id = View.generateViewId(); setText(R.string.collab_mode_edit) }
-        val view = RadioButton(this).apply { id = View.generateViewId(); setText(R.string.collab_mode_view) }
-        modes.addView(edit)
-        modes.addView(view)
-        modes.check(edit.id)
-        val hoursChoices = intArrayOf(1, 4, 24)
-        val durations = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
-        val hourButtons = hoursChoices.map { h ->
-            RadioButton(this).apply { id = View.generateViewId(); text = getString(R.string.collab_hours, h) }.also { durations.addView(it) }
-        }
-        durations.check(hourButtons[1].id)
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, (4 * d).toInt(), pad, 0)
-            addView(label(R.string.collab_mode_label))
-            addView(modes)
-            addView(label(R.string.collab_duration_label))
-            addView(durations)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.collab_dialog_title, nameOf(s)))
-            .setView(box)
-            .setPositiveButton(R.string.collab_create) { _, _ ->
-                val readOnly = modes.checkedRadioButtonId == view.id
-                val hours = hoursChoices[hourButtons.indexOfFirst { it.id == durations.checkedRadioButtonId }.coerceAtLeast(0)]
-                createShare(s, readOnly, hours)
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun createShare(s: SessionInfo, readOnly: Boolean, hours: Int) {
-        val api = (application as PkshellApp).api() ?: return
-        lifecycleScope.launch {
-            try {
-                showShareInvite(s, api.share(s.id, readOnly, hours))
-                refresh(silent = true)
-            } catch (e: ApiException) {
-                // An older PC has no such route (404 without the PC's own reason, or 405).
-                val old = e.code == 405 || (e.code == 404 && !e.body.contains("session not found"))
-                showMessage(if (old) getString(R.string.collab_old_pc) else ErrorText.of(this@SessionListActivity, R.string.collab_failed, e))
-            } catch (e: IOException) {
-                showMessage(ErrorText.of(this@SessionListActivity, R.string.collab_failed, e))
-            }
-        }
-    }
-
-    /** The PIN, where to connect and the fingerprint; 보내기 hands the same as text to a messenger. */
-    private fun showShareInvite(s: SessionInfo, invite: com.neststudio.pocketshell.core.ShareInvite) {
-        val mode = getString(if (invite.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short)
-        val name = invite.title.ifBlank { nameOf(s) }
-        val pairing = (application as PkshellApp).pairing()
-        val pcName = pairing?.displayName.orEmpty()
-        // QR code / link with everything the other phone needs, the full fingerprint included (this phone has it).
-        val link = com.neststudio.pocketshell.core.PairLink(invite.hosts, invite.port, invite.pin, pairing?.fingerprint, name).toUri()
-        val d = resources.displayMetrics.density
-        val qr = ImageView(this).apply {
-            val px = (240 * d).toInt()
-            setImageBitmap(QrCode.bitmap(link, px))
-            contentDescription = getString(R.string.qr_description)
-            layoutParams = LinearLayout.LayoutParams(px, px).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL; topMargin = (8 * d).toInt() }
-        }
-        val qrBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(qr)
-            addView(TextView(this@SessionListActivity).apply {
-                setText(R.string.qr_hint)
-                textSize = 13f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
-                setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
-            })
-        }
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.collab_pin_title, name))
-            .setMessage(getString(R.string.collab_pin_message, invite.pinSpaced, invite.addresses, invite.fpShort, mode, invite.hours))
-            .setView(qrBox)
-            .setPositiveButton(R.string.collab_send) { _, _ ->
-                val text = getString(R.string.collab_send_text, name, pcName, invite.pinSpaced, invite.addresses, invite.fpShort, PcListActivity.DOWNLOAD_URL) +
-                    "\n" + getString(R.string.qr_send_link, link)
-                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-                startActivity(Intent.createChooser(send, getString(R.string.collab_send_chooser)))
-            }
-            .setNegativeButton(R.string.collab_close, null)
-            .show()
-    }
-
-    private fun confirmUnshare(s: SessionInfo) {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.collab_unshare_title, nameOf(s)))
-            .setMessage(R.string.collab_unshare_message)
-            .setPositiveButton(R.string.collab_unshare) { _, _ ->
-                runSessionAction(R.string.collab_unshare_failed) {
-                    it.unshare(s.id)
-                    android.widget.Toast.makeText(this, R.string.collab_unshared, android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
     private fun showSessionActions(s: SessionInfo) {
         if (guest != null) return // a shared session belongs to its owner
         val actions = SessionActions.of(s)
@@ -717,8 +603,6 @@ class SessionListActivity : AppCompatActivity() {
         })
         for (action in actions) {
             val (icon, label) = when (action) {
-                SessionAction.SHARE -> R.drawable.ic_person_add to R.string.collab_share
-                SessionAction.UNSHARE -> R.drawable.ic_close to R.string.collab_unshare
                 SessionAction.GIT -> R.drawable.ic_git to R.string.git_menu
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
                 SessionAction.NEW_TERMINAL -> R.drawable.ic_new_terminal_here to R.string.new_terminal_here
@@ -731,8 +615,6 @@ class SessionListActivity : AppCompatActivity() {
             row.setOnClickListener {
                 sheet.dismiss()
                 when (action) {
-                    SessionAction.SHARE -> showShareDialog(s)
-                    SessionAction.UNSHARE -> confirmUnshare(s)
                     SessionAction.GIT -> startActivity(GitChangesActivity.intent(this, s.cwd, nameOf(s)))
                     SessionAction.END -> confirmEnd(s)
                     SessionAction.NEW_TERMINAL -> newTerminalHere(s)
@@ -941,7 +823,6 @@ private class SessionAdapter(
                     }
                     if (!s.isExternal && s.shell.isNotBlank()) add(s.shell)
                     if (s.cwd.isNotBlank()) add(s.cwd)
-                    if (s.shares > 0) add(v.context.getString(R.string.collab_card_shared, s.shares))
                 }.joinToString(" · ")
                 v.findViewById<TextView>(R.id.detail).text = detail
                 val state = v.findViewById<TextView>(R.id.agentState)

@@ -134,27 +134,24 @@ class ProtocolTest {
         fun session(kind: String, state: String, folder: Boolean, shares: Int = 0) = SessionInfo.fromJson(
             JSONObject(sessionJson).put("kind", kind).put("state", state).put("folderDeletable", folder).put("shares", shares),
         )
-        val share = com.neststudio.pocketshell.core.SessionAction.SHARE
-        val unshare = com.neststudio.pocketshell.core.SessionAction.UNSHARE
         val git = com.neststudio.pocketshell.core.SessionAction.GIT
         val end = com.neststudio.pocketshell.core.SessionAction.END
         val term = com.neststudio.pocketshell.core.SessionAction.NEW_TERMINAL
         val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
         val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
         val of = com.neststudio.pocketshell.core.SessionActions::of
-        // Running: end first (the record stays), then share, the folder's git changes, or delete; the folder only
-        // when the PC allows it.
-        assertEquals(listOf(end, share, git, delete), of(session("host", "running", false)))
-        assertEquals(listOf(end, share, git, delete, folder), of(session("host", "running", true)))
-        // Shared with someone: sharing can be stopped.
-        assertEquals(listOf(end, share, unshare, git, delete), of(session("host", "running", false, shares = 2)))
-        // A record cannot be ended or shared any more.
+        // Running: end first (the record stays), then the folder's git changes, or delete; the folder only when
+        // the PC allows it. Sharing is not offered (removed in 0.2.108), also when an older app shared it.
+        assertEquals(listOf(end, git, delete), of(session("host", "running", false)))
+        assertEquals(listOf(end, git, delete, folder), of(session("host", "running", true)))
+        assertEquals(listOf(end, git, delete), of(session("host", "running", false, shares = 2)))
+        // A record cannot be ended any more.
         assertEquals(listOf(git, delete, folder), of(session("history", "exited", true)))
         assertEquals(listOf(git, delete), of(session("recent", "exited", false)))
-        // A console opened on the PC: ended, a new terminal in its folder, shared; never deleted (and never its folder).
-        assertEquals(listOf(end, term, share, git), of(session("external", "running", true)))
+        // A console opened on the PC: ended, a new terminal in its folder; never deleted (and never its folder).
+        assertEquals(listOf(end, term, git), of(session("external", "running", true)))
         // No folder: nothing to look at.
-        assertEquals(listOf(end, term, share), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
+        assertEquals(listOf(end, term), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
         // An older PC does not send the fields.
         assertFalse(SessionInfo.fromJson(JSONObject(sessionJson)).folderDeletable)
         assertEquals(0, SessionInfo.fromJson(JSONObject(sessionJson)).shares)

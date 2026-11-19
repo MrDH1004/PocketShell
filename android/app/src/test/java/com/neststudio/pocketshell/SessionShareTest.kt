@@ -2,7 +2,6 @@ package com.neststudio.pocketshell
 
 import com.neststudio.pocketshell.core.ClaimResult
 import com.neststudio.pocketshell.core.ShareGrant
-import com.neststudio.pocketshell.core.ShareInvite
 import com.neststudio.pocketshell.data.Pairing
 import com.neststudio.pocketshell.data.PairingCodec
 import org.junit.Assert.assertEquals
@@ -42,15 +41,5 @@ class SessionShareTest {
         val back = PairingCodec.decode(PairingCodec.encode(list))
         assertEquals(list, back)
         assertNull(back[0].share)
-    }
-
-    @Test
-    fun inviteParsesAndFormats() {
-        val i = ShareInvite.parse("""{"pin":"123456","expiresAt":"x","fpShort":"AAAA-BBBB-CCCC-DDDD","hosts":["192.168.0.10","fd7a::1"],"port":7380,"readOnly":false,"hours":4,"title":"flowdesk"}""")
-        assertEquals("123 456", i.pinSpaced)
-        assertEquals("192.168.0.10, [fd7a::1]", i.addresses)
-        assertEquals("192.168.0.10:47999", i.copy(hosts = listOf("192.168.0.10"), port = 47999).addresses)
-        assertEquals(4, i.hours)
-        assertEquals("flowdesk", i.title)
     }
 }

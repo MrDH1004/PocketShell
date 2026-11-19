@@ -421,30 +421,8 @@
     <string name="share_image_unreadable">공유한 이미지를 읽을 수 없습니다</string>
     <string name="share_label">PocketShell 세션에 보내기</string>
     <!-- Session share (someone else joins one session) -->
-    <string name="collab_share">세션 공유</string>
-    <string name="collab_unshare">공유 중지</string>
-    <string name="collab_dialog_title">%1$s 공유</string>
-    <string name="collab_mode_label">상대방이 할 수 있는 것</string>
-    <string name="collab_mode_edit">같이 입력 (화면도 보고 입력도 함)</string>
-    <string name="collab_mode_view">보기만 (화면만 봄)</string>
-    <string name="collab_duration_label">공유 시간 (상대방이 연결한 뒤부터)</string>
-    <string name="collab_hours">%1$d시간</string>
-    <string name="collab_create">PIN 만들기</string>
-    <string name="collab_pin_title">%1$s 공유 PIN</string>
-    <string name="collab_pin_message">PIN: %1$s\n10분 안에 한 사람만 쓸 수 있습니다.\n\nPC 주소: %2$s\n지문: %3$s\n권한: %4$s · %5$d시간\n\n상대방은 PocketShell 앱 → PC 추가 → 주소와 PIN 입력 → 지문 확인 순서로 연결합니다. 같은 Wi-Fi이거나 Tailscale로 이 PC에 닿아야 합니다.</string>
-    <string name="collab_send">보내기</string>
-    <string name="collab_close">닫기</string>
-    <string name="collab_send_chooser">공유 PIN 보내기</string>
-    <string name="collab_send_text">PocketShell 세션 공유: %1$s (%2$s)\nPIN: %3$s (10분 안에)\nPC 주소: %4$s\n지문: %5$s\n\nPocketShell 앱 → PC 추가 → 주소와 PIN 입력 → 지문 확인\n앱 받기: %6$s</string>
     <string name="collab_mode_edit_short">같이 입력</string>
     <string name="collab_mode_view_short">보기만</string>
-    <string name="collab_unshare_title">%1$s 공유를 중지할까요?</string>
-    <string name="collab_unshare_message">연결한 사람은 바로 끊기고, 아직 쓰지 않은 PIN도 못 쓰게 됩니다.</string>
-    <string name="collab_unshared">공유를 중지했습니다</string>
-    <string name="collab_failed">공유하지 못했습니다</string>
-    <string name="collab_unshare_failed">공유를 중지하지 못했습니다</string>
-    <string name="collab_old_pc">PC 앱이 0.2.95 이상이어야 세션을 공유할 수 있습니다. PC를 업데이트하세요.</string>
-    <string name="collab_card_shared">공유 중 %1$d</string>
     <string name="guest_subtitle">%1$s · 공유받은 세션 · %2$s · %3$s</string>
     <string name="guest_until">%1$s까지</string>
     <string name="guest_ended">공유가 끝났습니다. 시간이 지났거나, 공유를 중지했거나, 세션이 닫혔습니다.</string>
@@ -479,7 +457,4 @@
     <string name="qr_not_pocketshell">PocketShell 연결용 QR 코드가 아닙니다.</string>
     <string name="qr_fp_mismatch">QR 코드의 인증서 지문과 PC의 지문이 다릅니다. 다른 PC가 응답했을 수 있어 연결하지 않았습니다.</string>
     <string name="qr_link_ready">%1$s 연결 정보를 채웠습니다. PIN으로 페어링을 누르세요.</string>
-    <string name="qr_description">공유 QR 코드</string>
-    <string name="qr_hint">상대방이 PocketShell 앱 → PC 추가 → QR 코드 스캔으로 찍으면 바로 연결됩니다.</string>
-    <string name="qr_send_link">바로 연결 링크: %1$s</string>
 </resources>

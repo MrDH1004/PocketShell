@@ -1,6 +1,5 @@
 package com.neststudio.pocketshell.core
 
-import org.json.JSONException
 import org.json.JSONObject
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -44,50 +43,6 @@ data class ShareGrant(
             if (s.isBlank()) null else Instant.parse(s).toEpochMilli()
         } catch (e: DateTimeParseException) {
             null
-        }
-    }
-}
-
-/** `POST /api/sessions/{id}/share` reply: the PIN the other person pairs with, and how to reach this PC. */
-data class ShareInvite(
-    val pin: String,
-    val hosts: List<String>,
-    val port: Int,
-    val fpShort: String,
-    val readOnly: Boolean,
-    val hours: Int,
-    val title: String,
-) {
-    /** "123 456" (easier to read out). */
-    val pinSpaced: String get() = if (pin.length == 6) pin.substring(0, 3) + " " + pin.substring(3) else pin
-
-    /** "192.168.0.10, 100.64.0.2" (port only when it is not the default). */
-    val addresses: String
-        get() = hosts.joinToString(", ") { h ->
-            val host = if (h.contains(':')) "[$h]" else h
-            if (port == PinPairing.DEFAULT_PORT) host else "$host:$port"
-        }
-
-    companion object {
-        fun parse(text: String): ShareInvite {
-            val o = try {
-                JSONObject(text)
-            } catch (e: JSONException) {
-                throw IllegalArgumentException("서버 응답 형식 오류", e)
-            }
-            val pin = o.optString("pin", "")
-            require(PinPairing.isValidPin(pin)) { "서버 응답에 PIN이 없습니다" }
-            val hosts = o.optJSONArray("hosts")?.let { a -> (0 until a.length()).map { a.optString(it, "").trim() } }
-                .orEmpty().filter { it.isNotEmpty() }
-            return ShareInvite(
-                pin = pin,
-                hosts = hosts,
-                port = o.optInt("port", PinPairing.DEFAULT_PORT),
-                fpShort = o.optString("fpShort", ""),
-                readOnly = o.optBoolean("readOnly", false),
-                hours = o.optInt("hours", 0),
-                title = if (o.isNull("title")) "" else o.optString("title", ""),
-            )
         }
     }
 }
