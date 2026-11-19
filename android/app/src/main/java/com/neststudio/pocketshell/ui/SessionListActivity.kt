@@ -230,18 +230,18 @@ class SessionListActivity : AppCompatActivity() {
             adapter.tightTop = visible
         }
         if (l == null) return
-        fun meter(id: Int, p: Double?, desc: String) {
+        fun meter(id: Int, p: Double?, desc: String, extra: String? = null) {
             val v = pcLoad.findViewById<View>(id)
             val value = v.findViewById<TextView>(R.id.loadValue)
-            value.text = PcLoad.percentText(p)
+            value.text = PcLoad.percentText(p) + (extra?.let { " ($it)" } ?: "")
             val high = (p ?: 0.0) >= LOAD_HIGH
             value.setTextColor(androidx.core.content.ContextCompat.getColor(this, if (high) R.color.attention else R.color.text_primary))
             v.contentDescription = desc
         }
         meter(R.id.loadCpu, l.cpu, "CPU " + PcLoad.percentText(l.cpu))
         meter(R.id.loadGpu, l.gpu, "GPU " + PcLoad.percentText(l.gpu))
-        meter(R.id.loadRam, l.memPercent,
-            getString(R.string.pc_load_ram_desc, PcLoad.percentText(l.memPercent), PcLoad.gbText(l.memUsed, l.memTotal)))
+        val gb = PcLoad.gbText(l.memUsed, l.memTotal).takeIf { l.memTotal > 0 }
+        meter(R.id.loadRam, l.memPercent, getString(R.string.pc_load_ram_desc, PcLoad.percentText(l.memPercent), gb ?: "–"), gb)
     }
 
     /** [silent]: the periodic refresh. No spinner, no host update check, and a failure leaves the list as it is. */
