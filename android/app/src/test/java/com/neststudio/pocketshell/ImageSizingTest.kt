@@ -23,4 +23,11 @@ class ImageSizingTest {
         assertEquals(2, ImageSizing.sampleSize(6000, 4000))  // 3000 ≥ 2560, 1500 < 2560
         assertEquals(4, ImageSizing.sampleSize(12000, 9000)) // 3000 ≥ 2560
     }
+
+    @Test
+    fun countsClaudeImageMarks() {
+        assertEquals(0, ImageSizing.countMarks("> hello"))
+        assertEquals(1, ImageSizing.countMarks("> [Image #1] "))
+        assertEquals(3, ImageSizing.countMarks("> [Image #1] [Image #2]\n  [Image #3]"))
+    }
 }

@@ -22,4 +22,14 @@ object ImageSizing {
         val scale = maxSide.toDouble() / longest
         return (width * scale).roundToInt().coerceAtLeast(1) to (height * scale).roundToInt().coerceAtLeast(1)
     }
+
+    /** Count of "[Image #" marks in [text]: Claude Code shows one per attached image. */
+    fun countMarks(text: String): Int {
+        var n = 0
+        var i = text.indexOf(MARK)
+        while (i >= 0) { n++; i = text.indexOf(MARK, i + MARK.length) }
+        return n
+    }
+
+    private const val MARK = "[Image #"
 }

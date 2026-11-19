@@ -119,8 +119,8 @@ class TerminalActivity : AppCompatActivity() {
     private val main = Handler(Looper.getMainLooper())
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var pastingImage = false
-    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) pasteImage(uri)
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
+        if (uris.isNotEmpty()) pasteImages(uris)
     }
     private var currentNetwork: Network? = null
     /** System speech recognizer (no RECORD_AUDIO needed here): the result is typed into the terminal, no Enter. */
@@ -766,6 +766,52 @@ class TerminalActivity : AppCompatActivity() {
      * Sends the picked image to the PC clipboard, then Alt+V (ESC v) on this session: Claude Code attaches the
      * clipboard image as [Image #N], the same as pressing Alt+V at the PC.
      */
+    /**
+     * Several picked images, one after another: the PC clipboard holds one image, so the next is set only after
+     * Claude Code has taken the previous one (a new [Image #N] on screen, or [NEXT_IMAGE_WAIT_MS] at most).
+     */
+    private fun pasteImages(uris: List<Uri>) {
+        if (uris.size == 1 || connection == null) return pasteImage(uris[0]) // no session for Alt+V: the first only
+        val a = api ?: return
+        pastingImage = true
+        lifecycleScope.launch {
+            var sent = 0
+            try {
+                for ((i, uri) in uris.withIndex()) {
+                    Toast.makeText(this@TerminalActivity, getString(R.string.images_sending, i + 1, uris.size), Toast.LENGTH_SHORT).show()
+                    val (png, jpeg) = withContext(Dispatchers.IO) { encodeImage(uri) }
+                    a.postClipboardImage(png, jpeg)
+                    val before = imageMarks()
+                    val c = connection ?: break
+                    c.sendInput(KeyMapper.encodeCodePoint('v'.code, ctrl = false, alt = true))
+                    sent++
+                    if (i < uris.size - 1) {
+                        val end = System.currentTimeMillis() + NEXT_IMAGE_WAIT_MS
+                        delay(MIN_IMAGE_GAP_MS)
+                        while (imageMarks() <= before && System.currentTimeMillis() < end) delay(150)
+                        delay(MIN_IMAGE_GAP_MS)
+                    }
+                }
+                Toast.makeText(this@TerminalActivity, getString(R.string.images_pasted, sent), Toast.LENGTH_SHORT).show()
+            } catch (e: IOException) {
+                Log.w(TAG, "image paste failed", e)
+                showPasteError(getString(R.string.images_partial, sent, uris.size) + NL + "${e.javaClass.simpleName}: ${e.message}")
+            } catch (e: OutOfMemoryError) {
+                Log.w(TAG, "image paste failed", e)
+                showPasteError(getString(R.string.images_partial, sent, uris.size) + NL + "이미지가 너무 큽니다 (메모리 부족)")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "image paste failed", e)
+                showPasteError(getString(R.string.images_partial, sent, uris.size) + NL + "이미지 파일 접근 권한이 없습니다: ${e.message}")
+            } finally {
+                pastingImage = false
+            }
+        }
+    }
+
+    /** How many "[Image #" marks the screen and history show (Claude Code adds one per attached image). */
+    private fun imageMarks(): Int =
+        com.neststudio.pocketshell.core.ImageSizing.countMarks(terminalView.mEmulator?.screen?.transcriptText.orEmpty())
+
     private fun pasteImage(uri: Uri, viaApi: Boolean = false, then: (suspend () -> Unit)? = null) {
         val a = api ?: return
         pastingImage = true
@@ -1269,6 +1315,10 @@ class TerminalActivity : AppCompatActivity() {
         private const val TAG = "pkshell"
         private const val TRANSCRIPT_ROWS = 5000
         private const val MAX_PNG_BYTES = 2 * 1024 * 1024
+        private const val MAX_PICK = 10
+        private const val MIN_IMAGE_GAP_MS = 400L
+        private const val NEXT_IMAGE_WAIT_MS = 5000L
+        private const val NL = "\n"
         private const val OPT_VIEW = 2
         private const val OPT_SELECT = 3
         private const val OPT_SEARCH = 4
