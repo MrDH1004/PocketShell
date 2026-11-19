@@ -97,9 +97,45 @@ internal sealed class TrayApp : ApplicationContext
     private async Task StartupAsync(bool openPin)
     {
         await StartAsync(userAction: false);
+        AskProjectFolderOnce(); // the server is already up meanwhile; it uses Documents until this is answered
         if (!openPin || !_server.IsRunning) return;
         await Task.Delay(1000); // the serve mutex appears just before the listeners open
         ShowPin();
+    }
+
+    /// <summary>
+    /// First launch without projects.json: asks once where the phone's new projects go. "문서 폴더 사용", closing
+    /// the question or cancelling the folder picker all save the Documents folder, so it is not asked again.
+    /// </summary>
+    private void AskProjectFolderOnce()
+    {
+        if (Pkshell.Core.Projects.ProjectStore.IsConfigured(_home)) return;
+        var docs = Pkshell.Core.Projects.ProjectStore.DefaultRoot;
+        var pick = new TaskDialogButton("폴더 선택…");
+        var useDocs = new TaskDialogButton("문서 폴더 사용");
+        var page = new TaskDialogPage
+        {
+            Caption = Brand.Name,
+            Heading = "PC 작업 폴더를 정하세요",
+            Text = "휴대폰에서 새 프로젝트를 만들면 이 폴더 안에 프로젝트 폴더를 만들고 그 폴더에서 세션을 시작합니다.\n\n" +
+                   $"정하지 않으면 문서 폴더를 씁니다:\n{docs}\n\n나중에 트레이 아이콘 메뉴 > 프로젝트 폴더에서 바꿀 수 있습니다.",
+            Icon = TaskDialogIcon.Information,
+            Buttons = { pick, useDocs },
+            DefaultButton = pick,
+            AllowCancel = true,
+        };
+        string root = docs;
+        if (TaskDialog.ShowDialog(page) == pick)
+        {
+            using var dlg = new FolderBrowserDialog { Description = "프로젝트를 만들 폴더", UseDescriptionForTitle = true, ShowNewFolderButton = true, InitialDirectory = docs };
+            if (dlg.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.SelectedPath)) root = dlg.SelectedPath;
+        }
+        try
+        {
+            Pkshell.Core.Projects.ProjectStore.Save(_home, new Pkshell.Core.Projects.ProjectSettings { Roots = { root } });
+            TrayLog.Write(_home, "project folder (first run): " + root);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { TrayLog.Write(_home, "cannot save the project folder: " + ex.Message); }
     }
 
     private static Icon LoadIcon(string name)

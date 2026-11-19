@@ -12,6 +12,10 @@ public sealed record ProjectAgent(string Id, string Name, string Command);
 public sealed class ProjectSettings
 {
     public List<string> Roots { get; set; } = new();
+
+    /// <summary>No folder was set: <see cref="Roots"/> holds <see cref="ProjectStore.DefaultRoot"/> (not saved).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsDefault { get; set; }
 }
 
 public sealed class CreateProjectRequest
@@ -29,7 +33,16 @@ public static class ProjectStore
 {
     public static string File(string home) => Path.Combine(home, "projects.json");
 
-    public static ProjectSettings Load(string home)
+    /// <summary>The user's Documents folder: where new projects go while no folder is set.</summary>
+    public static string DefaultRoot => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+    /// <summary>projects.json exists: the folder question was answered (or folders were set) at least once.</summary>
+    public static bool IsConfigured(string home) => System.IO.File.Exists(File(home));
+
+    /// <summary>The saved folders; with none, <see cref="DefaultRoot"/> (marked <see cref="ProjectSettings.IsDefault"/>).</summary>
+    public static ProjectSettings Load(string home) => WithDefault(LoadSaved(home));
+
+    private static ProjectSettings LoadSaved(string home)
     {
         var path = File(home);
         if (!System.IO.File.Exists(path)) return new ProjectSettings();
@@ -45,6 +58,14 @@ public static class ProjectStore
             Log.Error($"projects.json invalid, ignoring it: {ex.Message}");
             return new ProjectSettings();
         }
+    }
+
+    internal static ProjectSettings WithDefault(ProjectSettings s, string? fallback = null)
+    {
+        if (s.Roots.Count > 0) return s;
+        var root = fallback ?? DefaultRoot;
+        if (!string.IsNullOrWhiteSpace(root)) { s.Roots.Add(root); s.IsDefault = true; }
+        return s;
     }
 
     public static void Save(string home, ProjectSettings s)

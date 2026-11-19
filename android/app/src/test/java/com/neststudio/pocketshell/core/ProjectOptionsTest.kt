@@ -19,6 +19,8 @@ class ProjectOptionsTest {
         val o = ProjectOptions.parse("{}")
         assertEquals(emptyList<String>(), o.roots)
         assertEquals(emptyList<ProjectAgent>(), o.agents)
+        assertEquals(false, o.isDefault)
+        assertEquals(true, ProjectOptions.parse("""{"roots":["C:\\Users\\a\\Documents"],"isDefault":true}""").isDefault)
     }
 
     @Test

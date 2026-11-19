@@ -7,7 +7,8 @@ import org.json.JSONObject
 data class ProjectAgent(val id: String, val name: String)
 
 /** `GET /api/projects`: folders set in the PC tray app and AI CLIs installed on the PC. */
-data class ProjectOptions(val roots: List<String>, val agents: List<ProjectAgent>) {
+/** [isDefault]: no folder was set on the PC, so [roots] is its Documents folder. */
+data class ProjectOptions(val roots: List<String>, val agents: List<ProjectAgent>, val isDefault: Boolean = false) {
     companion object {
         fun parse(json: String): ProjectOptions {
             val o = JSONObject(json)
@@ -20,6 +21,7 @@ data class ProjectOptions(val roots: List<String>, val agents: List<ProjectAgent
                     val id = a.optString("id")
                     if (id.isBlank()) null else ProjectAgent(id, a.optString("name").ifBlank { id })
                 },
+                isDefault = o.optBoolean("isDefault", false),
             )
         }
 

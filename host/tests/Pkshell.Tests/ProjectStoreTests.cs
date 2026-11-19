@@ -44,8 +44,21 @@ public class ProjectStoreTests
         try
         {
             ProjectStore.Save(home, new ProjectSettings { Roots = { @"E:\AIWork\RNDAIProjects", @"e:\aiwork\rndaiprojects", " " } });
-            Assert.Equal(ExpectedDedupedRoots, ProjectStore.Load(home).Roots);
-            Assert.Empty(ProjectStore.Load(Path.Combine(home, "missing")).Roots);
+            var saved = ProjectStore.Load(home);
+            Assert.Equal(ExpectedDedupedRoots, saved.Roots);
+            Assert.False(saved.IsDefault);
+            Assert.True(ProjectStore.IsConfigured(home));
+
+            // Never set: the Documents folder, marked as the default and not saved.
+            var missing = Path.Combine(home, "missing");
+            var d = ProjectStore.Load(missing);
+            Assert.True(d.IsDefault);
+            Assert.Equal(new[] { ProjectStore.DefaultRoot }, d.Roots);
+            Assert.False(ProjectStore.IsConfigured(missing));
+
+            // Every folder removed in the tray: back to Documents.
+            ProjectStore.Save(home, new ProjectSettings());
+            Assert.True(ProjectStore.Load(home).IsDefault);
         }
         finally
         {

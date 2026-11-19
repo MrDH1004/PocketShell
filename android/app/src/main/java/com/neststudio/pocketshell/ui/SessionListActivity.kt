@@ -15,6 +15,7 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.widget.doAfterTextChanged
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
@@ -407,7 +408,8 @@ class SessionListActivity : AppCompatActivity() {
         fun selectedRoot(): String = options.roots[rootSpinner.selectedItemPosition.coerceIn(0, options.roots.size - 1)]
         fun updatePreview() {
             val name = nameInput.text?.toString()?.trim().orEmpty()
-            preview.text = getString(R.string.project_path_preview, selectedRoot().trimEnd('\\') + "\\" + name.ifEmpty { "…" })
+            val path = getString(R.string.project_path_preview, selectedRoot().trimEnd('\\') + "\\" + name.ifEmpty { "…" })
+            preview.text = if (options.isDefault) path + "\n" + getString(R.string.project_default_root) else path
         }
         nameInput.doAfterTextChanged { updatePreview() }
         rootSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -431,7 +433,9 @@ class SessionListActivity : AppCompatActivity() {
         val api = (application as PkshellApp).api() ?: return
         lifecycleScope.launch {
             try {
-                openSession(api.createProject(root, name, agent, UiPrefs(this@SessionListActivity).lastGrid))
+                val s = api.createProject(root, name, agent, UiPrefs(this@SessionListActivity).lastGrid)
+                Toast.makeText(this@SessionListActivity, getString(R.string.project_started_in, root.trimEnd('\\') + "\\" + name), Toast.LENGTH_LONG).show()
+                openSession(s)
             } catch (e: ApiException) {
                 // The host explains why (folder exists, bad name …); show it as is when it says something.
                 showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_project, e))

@@ -967,6 +967,7 @@ public sealed class HostServer : IDisposable
             return Json(new
             {
                 roots = settings.Roots,
+                isDefault = settings.IsDefault, // no folder set in the tray: Documents
                 agents = ProjectStore.DetectAgents().Select(a => new { id = a.Id, name = a.Name }),
             });
         });

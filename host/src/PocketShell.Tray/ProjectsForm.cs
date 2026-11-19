@@ -14,6 +14,7 @@ internal sealed class ProjectsForm : Form
     private readonly ListBox _list;
     private readonly Button _remove;
     private readonly Button _open;
+    private readonly Label _note;
 
     public ProjectsForm(string home)
     {
@@ -52,9 +53,9 @@ internal sealed class ProjectsForm : Form
             AutoSize = false,
             Location = new Point(12, 282),
             Size = new Size(430, 40),
-            Text = "목록에서 지운 폴더의 파일은 삭제되지 않습니다.",
             ForeColor = SystemColors.GrayText,
         };
+        _note = note;
 
         Controls.AddRange(new Control[] { help, _list, add, _remove, _open, note, close });
         AcceptButton = close;
@@ -65,7 +66,11 @@ internal sealed class ProjectsForm : Form
     private void Reload()
     {
         _list.Items.Clear();
-        foreach (var r in ProjectStore.Load(_home).Roots) _list.Items.Add(r);
+        var s = ProjectStore.Load(_home);
+        foreach (var r in s.Roots) _list.Items.Add(r);
+        _note.Text = s.IsDefault
+            ? "폴더를 정하지 않아 문서 폴더를 씁니다. '추가…'로 다른 폴더를 정하세요."
+            : "목록에서 지운 폴더의 파일은 삭제되지 않습니다. 모두 지우면 문서 폴더를 씁니다.";
         if (_list.Items.Count > 0) _list.SelectedIndex = 0;
         UpdateButtons();
     }
@@ -81,6 +86,7 @@ internal sealed class ProjectsForm : Form
         using var dlg = new FolderBrowserDialog { Description = "프로젝트를 만들 폴더", UseDescriptionForTitle = true, ShowNewFolderButton = true };
         if (dlg.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dlg.SelectedPath)) return;
         var s = ProjectStore.Load(_home);
+        if (s.IsDefault) s.Roots.Clear(); // the chosen folder replaces the Documents default
         if (ProjectStore.FindRoot(s, dlg.SelectedPath) == null) s.Roots.Add(dlg.SelectedPath);
         if (!Save(s)) return;
         Reload();
