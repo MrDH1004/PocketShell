@@ -39,6 +39,7 @@
     <string name="voice_not_connected">세션에 연결된 뒤 다시 시도하세요.</string>
     <string name="recent_limit_menu">최근 목록 개수</string>
     <string name="recent_limit_off">표시 안 함</string>
+    <string name="recent_limit_all">전체</string>
     <string name="recent_limit_n">%1$d개</string>
     <string name="view_settings">보기 설정 (글꼴·스크롤)</string>
     <string name="view_font_size">글꼴 크기: %1$dsp</string>

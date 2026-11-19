@@ -126,20 +126,20 @@ data class SessionSections(
     val recent: List<SessionInfo>,
 ) {
     companion object {
-        const val DEFAULT_RECENT_LIMIT = 8
+        /** 최근 shows every past session the PC remembers. */
+        const val RECENT_ALL = Int.MAX_VALUE
+        const val DEFAULT_RECENT_LIMIT = RECENT_ALL
 
         /**
-         * [recentLimit]: newest N entries under 최근 (0 hides the section). A folder shows once on the whole screen:
-         * 최근 leaves out folders open under 실행 중 / 외부 and keeps only the newest entry per folder, so reopening
-         * a 최근 entry moves it up instead of adding another.
+         * [recentLimit]: newest N entries under 최근 ([RECENT_ALL] = all, 0 hides the section). Every past session is
+         * listed, newest first, also when its folder is open above or another entry has the same folder.
          */
         fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections {
             val sessions = all.filterNot { isPlainCmd(it) || isSystem32Console(it) }
             val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
-            val open = (running + external).mapTo(HashSet(), ::folderKey)
-            val recent = sessions.filter { it.isHistory && folderKey(it) !in open }.sortedByDescending { it.lastActivity }
-                .distinctBy(::folderKey).take(recentLimit.coerceAtLeast(0))
+            val recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }
+                .take(recentLimit.coerceAtLeast(0))
             return SessionSections(running, external, recent)
         }
 
@@ -159,12 +159,6 @@ data class SessionSections(
             !s.isRunningHost && !(s.isExternal && s.agent != null) && SYSTEM32.matches(s.cwd.trim().trimEnd('\\', '/'))
 
         private val SYSTEM32 = Regex("""^[A-Za-z]:\\windows\\system32$""", RegexOption.IGNORE_CASE)
-
-        /** The folder, case and trailing separator ignored (as on Windows); no folder → the session's own id. */
-        private fun folderKey(s: SessionInfo): String {
-            val dir = dirKey(s.cwd)
-            return if (dir.isEmpty()) "id:" + s.id else dir
-        }
 
         /** A PC folder compared the Windows way: case and trailing separator ignored. */
         fun dirKey(cwd: String): String = cwd.trim().trimEnd('\\', '/').lowercase()

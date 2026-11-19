@@ -81,3 +81,19 @@ class FeaturesTest {
         assertEquals(DiffLineKind.META, DiffLines.kind("\\ No newline at end of file"))
     }
 }
+
+class SessionTimeTest {
+    private val zone = java.time.ZoneId.of("Asia/Seoul")
+    private val now = java.time.Instant.parse("2026-11-17T12:00:00Z") // 21:00 KST
+
+    private fun at(iso: String) = com.neststudio.pocketshell.core.SessionTime.short(java.time.Instant.parse(iso), now, zone)
+
+    @org.junit.Test
+    fun shortTimes() {
+        org.junit.Assert.assertEquals("21:25", at("2026-11-17T12:25:00Z"))
+        org.junit.Assert.assertEquals("00:10", at("2026-11-16T15:10:00Z")) // just after midnight KST = today
+        org.junit.Assert.assertEquals("어제 22:56", at("2026-11-16T13:56:00Z"))
+        org.junit.Assert.assertEquals("11/15 10:25", at("2026-11-15T01:25:00Z"))
+        org.junit.Assert.assertEquals("2025/3/2", at("2025-03-02T01:00:00Z"))
+    }
+}

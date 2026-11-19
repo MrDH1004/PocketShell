@@ -9,11 +9,11 @@ namespace Pkshell.Core.External;
 /// <summary>
 /// External consoles seen while the host runs, remembered after they close (recent-externals.json) so the phone's
 /// 최근 list can reopen the folder and continue the AI CLI. Entries are per console window (pid + start time) while
-/// alive; once closed only the newest per folder is kept (see <see cref="Trim"/>).
+/// alive, and every closed one is kept (newest <see cref="MaxEntries"/>).
 /// </summary>
 public sealed class RecentExternals
 {
-    public const int MaxEntries = 50;
+    public const int MaxEntries = 200;
     public const string IdPrefix = "rec-";
     public const string Kind = "recent";
 
@@ -164,29 +164,17 @@ public sealed class RecentExternals
     }
 
     /// <summary>
-    /// One record per folder: a closed console's record goes when its folder is open in another console or a newer
-    /// closed record has the same folder (reopening a 최근 entry moves it up instead of adding one). Then the newest
-    /// <see cref="MaxEntries"/> are kept.
+    /// Every closed console is kept (0.2.97+; before, only the newest per folder), up to the newest
+    /// <see cref="MaxEntries"/>.
     /// </summary>
     private bool Trim()
     {
-        bool changed = false;
-        var seen = _entries.Values.Where(e => _alive.Contains(e.Id)).Select(e => FolderKey(e.Cwd)).ToHashSet(StringComparer.Ordinal);
-        foreach (var e in _entries.Values.Where(e => !_alive.Contains(e.Id))
-                     .OrderByDescending(e => e.LastSeen, StringComparer.Ordinal).ToList())
-        {
-            if (seen.Add(FolderKey(e.Cwd))) continue;
-            _entries.Remove(e.Id);
-            changed = true;
-        }
-        if (_entries.Count <= MaxEntries) return changed;
-        foreach (var e in _entries.Values.Where(e => !_alive.Contains(e.Id))
-                     .OrderByDescending(e => e.LastSeen, StringComparer.Ordinal).Skip(MaxEntries).ToList())
+        var closed = _entries.Values.Where(e => !_alive.Contains(e.Id)).ToList();
+        if (closed.Count <= MaxEntries) return false;
+        foreach (var e in closed.OrderByDescending(e => e.LastSeen, StringComparer.Ordinal).Skip(MaxEntries).ToList())
             _entries.Remove(e.Id);
         return true;
     }
-
-    private static string FolderKey(string cwd) => Path.TrimEndingDirectorySeparator(cwd.Trim()).ToUpperInvariant();
 
     private void Load()
     {

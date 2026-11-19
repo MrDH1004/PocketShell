@@ -67,7 +67,7 @@ class ProtocolTest {
     }
 
     @Test
-    fun recentShowsOnlyTheNewestPerFolder() {
+    fun recentShowsEveryPastSession() {
         val text = """{"sessions":[
             {"id":"rec-old","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"E:\\vailvpn","state":"exited","lastActivity":"2026-11-14T01:00:00.000Z","agent":"claude"},
             {"id":"rec-new","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"e:\\VailVpn\\","state":"exited","lastActivity":"2026-11-14T03:08:00.000Z","agent":"claude"},
@@ -80,8 +80,9 @@ class ProtocolTest {
             {"id":"dddddddddddd","kind":"host","title":"h","shell":"pwsh","cwd":"d:\\WORK","state":"running","lastActivity":"2026-11-14T05:10:00.000Z"}
         ]}"""
         val s = SessionSections.of(SessionInfo.listFromJson(text), 10)
-        // one per folder (newest), folders open above are left out, entries without a folder kept
-        assertEquals(listOf("rec-new", "aaaaaaaaaaaa", "cccccccccccc"), s.recent.map { it.id })
+        // all of them, newest first: same folder twice, folders open above too
+        assertEquals(listOf("rec-open", "hist-open", "rec-new", "rec-old", "rec-gpt", "aaaaaaaaaaaa", "cccccccccccc"), s.recent.map { it.id })
+        assertEquals(7, SessionSections.of(SessionInfo.listFromJson(text)).recent.size) // default: no limit
         assertEquals(listOf("dddddddddddd"), s.running.map { it.id })
         assertEquals(listOf("ext-42"), s.external.map { it.id })
     }

@@ -740,7 +740,13 @@ class SessionListActivity : AppCompatActivity() {
     private fun showRecentLimitDialog() {
         val prefs = UiPrefs(this)
         val choices = UiPrefs.RECENT_LIMIT_CHOICES
-        val labels = choices.map { if (it == 0) getString(R.string.recent_limit_off) else getString(R.string.recent_limit_n, it) }.toTypedArray()
+        val labels = choices.map {
+            when (it) {
+                0 -> getString(R.string.recent_limit_off)
+                SessionSections.RECENT_ALL -> getString(R.string.recent_limit_all)
+                else -> getString(R.string.recent_limit_n, it)
+            }
+        }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(R.string.recent_limit_menu)
             .setSingleChoiceItems(labels, choices.indexOf(prefs.recentLimit)) { dialog, which ->
@@ -908,14 +914,10 @@ private class SessionAdapter(
     private fun formatTime(iso: String): String {
         if (iso.isBlank()) return ""
         return try {
-            "최근 활동 " + TIME_FORMAT.format(OffsetDateTime.parse(iso).atZoneSameInstant(ZoneId.systemDefault()))
+            com.neststudio.pocketshell.core.SessionTime.short(OffsetDateTime.parse(iso).toInstant(), java.time.Instant.now(), ZoneId.systemDefault())
         } catch (e: DateTimeParseException) {
             iso
         }
-    }
-
-    private companion object {
-        val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }
 }
 

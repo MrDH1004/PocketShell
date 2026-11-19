@@ -6,7 +6,7 @@ namespace Pkshell.Core.Sessions;
 
 public sealed class SessionManager : IDisposable
 {
-    public const int MaxHistory = 50;
+    public const int MaxHistory = 200;
     public const int DefaultCols = 120;
     public const int DefaultRows = 30;
 

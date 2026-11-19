@@ -9,7 +9,10 @@ import com.neststudio.pocketshell.core.Snippets
 class UiPrefs(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** Entries shown under 최근 in the session list; 0 hides the section. */
+    /**
+     * Entries shown under 최근 in the session list; 0 hides the section, [SessionSections.RECENT_ALL] shows all.
+     * A new key since 0.2.97: 최근 then started showing everything, whatever count was chosen before.
+     */
     var recentLimit: Int
         get() = prefs.getInt(K_RECENT_LIMIT, SessionSections.DEFAULT_RECENT_LIMIT).coerceAtLeast(0)
         set(value) = prefs.edit().putInt(K_RECENT_LIMIT, value.coerceAtLeast(0)).apply()
@@ -132,7 +135,7 @@ class UiPrefs(context: Context) {
         private const val K_AGENT_NOTIFY = "agent_notify"
         private const val K_NOTIFY_ASKED = "notify_permission_asked"
         private const val K_FILE_SORT = "file_sort"
-        private const val K_RECENT_LIMIT = "recent_limit"
+        private const val K_RECENT_LIMIT = "recent_limit_v2"
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
         private const val K_SCROLL = "scroll_percent"
@@ -143,7 +146,7 @@ class UiPrefs(context: Context) {
         private const val K_LAST_ROWS = "last_rows"
 
         /** Choices offered in the menu. */
-        val RECENT_LIMIT_CHOICES = intArrayOf(0, 3, 5, 8, 10, 15, 20, 30)
+        val RECENT_LIMIT_CHOICES = intArrayOf(SessionSections.RECENT_ALL, 0, 5, 10, 20, 30, 50)
 
         const val DEFAULT_SCROLL_PERCENT = 100
         const val MIN_SCROLL_PERCENT = 50
