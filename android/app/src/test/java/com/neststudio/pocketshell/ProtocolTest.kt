@@ -141,19 +141,19 @@ class ProtocolTest {
         val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
         val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
         val of = com.neststudio.pocketshell.core.SessionActions::of
-        // Running: share, the folder's git changes and a shortcut, end (the record stays) or delete; the folder only
+        // Running: end first (the record stays), then share, the folder's git changes and a shortcut, or delete; the folder only
         // when the PC allows it.
-        assertEquals(listOf(share, git, shortcut, end, delete), of(session("host", "running", false)))
-        assertEquals(listOf(share, git, shortcut, end, delete, folder), of(session("host", "running", true)))
+        assertEquals(listOf(end, share, git, shortcut, delete), of(session("host", "running", false)))
+        assertEquals(listOf(end, share, git, shortcut, delete, folder), of(session("host", "running", true)))
         // Shared with someone: sharing can be stopped.
-        assertEquals(listOf(share, unshare, git, shortcut, end, delete), of(session("host", "running", false, shares = 2)))
+        assertEquals(listOf(end, share, unshare, git, shortcut, delete), of(session("host", "running", false, shares = 2)))
         // A record cannot be ended or shared any more.
         assertEquals(listOf(git, shortcut, delete, folder), of(session("history", "exited", true)))
         assertEquals(listOf(git, shortcut, delete), of(session("recent", "exited", false)))
         // A console opened on the PC: shared or ended, never deleted (and never its folder).
-        assertEquals(listOf(share, git, shortcut, end), of(session("external", "running", true)))
+        assertEquals(listOf(end, share, git, shortcut), of(session("external", "running", true)))
         // No folder: nothing to look at or to point a shortcut to.
-        assertEquals(listOf(share, end), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
+        assertEquals(listOf(end, share), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
         // An older PC does not send the fields.
         assertFalse(SessionInfo.fromJson(JSONObject(sessionJson)).folderDeletable)
         assertEquals(0, SessionInfo.fromJson(JSONObject(sessionJson)).shares)

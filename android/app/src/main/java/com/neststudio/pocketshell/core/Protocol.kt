@@ -98,7 +98,9 @@ object SessionActions {
      * that project's git changes and a home screen shortcut to it.
      */
     fun of(s: SessionInfo): List<SessionAction> = buildList {
+        // 세션 종료 comes first: it is what a long press on a live session is most often for.
         if (s.isExternal || s.isRunningHost) {
+            add(SessionAction.END)
             add(SessionAction.SHARE)
             if (s.shares > 0) add(SessionAction.UNSHARE)
         }
@@ -110,9 +112,8 @@ object SessionActions {
     }
 
     private fun manage(s: SessionInfo): List<SessionAction> = when {
-        s.isExternal -> listOf(SessionAction.END)
+        s.isExternal -> emptyList()
         else -> buildList {
-            if (s.isRunningHost) add(SessionAction.END)
             add(SessionAction.DELETE)
             if (s.folderDeletable && s.cwd.isNotBlank()) add(SessionAction.DELETE_WITH_FOLDER)
         }
