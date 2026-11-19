@@ -69,7 +69,7 @@ PowerShell로 하고, 단계마다 결과를 확인한 뒤 다음으로 넘어�
 서버가 예기치 않게 꺼지면 트레이가 다시 띄움(5분에 최대 3회).
 
 PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh share <id> [--view] [--hours N]`, `psh shares`, `psh unshare <id>`, `psh update [--check] [--force [--kill-working]]`, `psh firewall-cleanup [--list]`
-- 업데이트는 실행 중인 세션을 끝내므로, 세션이 있으면 끝날 세션 목록을 보여 주고 다시 물음(`--force`). AI가 작업 중인 세션이 있으면 한 번 더 물음(`--kill-working`). 트레이와 폰도 같음.
+- 업데이트해도 실행 중인 세션은 안 끊김(0.2.98부터): 셸을 세션마다 따로 띄운 `psh pty-hold` 프로세스가 쥐고 있고, 새 버전 서버가 뜨면 다시 붙음. 폰은 몇 초 끊겼다 자동으로 다시 연결. 0.2.97 이하 서버가 만든 세션만 예전처럼 끝날 세션 목록을 보여 주고 다시 물음(`--force`, AI 작업 중이면 `--kill-working`).
 - `psh firewall-cleanup`: 예전 설치(이전 이름 mpta 포함)와 지워진 실행 파일이 남긴 Windows 방화벽 규칙을 지움. `--list`는 목록만. 지울 때 관리자 권한 확인 창이 뜸.
 
 ## 폰 앱 사용법

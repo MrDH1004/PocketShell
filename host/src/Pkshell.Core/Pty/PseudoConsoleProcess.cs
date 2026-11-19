@@ -10,7 +10,7 @@ namespace Pkshell.Core.Pty;
 /// A child process attached to a Windows pseudo console (ConPTY).
 /// Output bytes are delivered raw via <see cref="Output"/>; <see cref="Exited"/> fires after all output is drained.
 /// </summary>
-public sealed class PseudoConsoleProcess : IDisposable
+public sealed class PseudoConsoleProcess : IPty
 {
     private IntPtr _hPC;
     private IntPtr _hProcess;
@@ -21,6 +21,7 @@ public sealed class PseudoConsoleProcess : IDisposable
     private int _exitedRaised;
 
     public int Pid { get; }
+    public bool SurvivesHost => false;
     private readonly Action<byte[]> _onOutput;
     private readonly Action<int> _onExit;
 

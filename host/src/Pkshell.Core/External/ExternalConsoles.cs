@@ -136,6 +136,8 @@ public sealed class ExternalConsoles : IDisposable
             byPid.TryGetValue(p.ParentPid, out var parent);
             if (parent != null && ShellExes.Contains(parent.Exe)) continue;
             if (IsDescendantOf(p, selfPid, byPid)) continue;
+            // A host session's shell held by `psh pty-hold` (after an update its holder is not under this process).
+            if (parent != null && string.Equals(parent.Exe, Brand.CliExe, StringComparison.OrdinalIgnoreCase)) continue;
             var agent = FindAgent(p.Pid, children);
             bool launchedByPerson = parent != null && TerminalLaunchers.Contains(parent.Exe);
             if (includeAll || launchedByPerson || agent != null) result.Add(new Candidate(p, agent));

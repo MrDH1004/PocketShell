@@ -55,11 +55,11 @@ internal sealed class UpdateForm : Form
 
         _title = new Label { Text = $"새 버전 v{target}", Font = new Font("Segoe UI Semibold", 14f), AutoSize = true, Location = new Point(24, 20) };
         var later = mode == UpdateModes.Auto
-            ? "'나중에'를 누르면 세션이 모두 끝났을 때 자동으로 설치됩니다."
+            ? "'나중에'를 눌러도 잠시 뒤 자동으로 설치됩니다."
             : "나중에 하려면 트레이 메뉴의 '업데이트 설치'를 누르세요.";
         _body = new Label
         {
-            Text = $"지금 설치할까요? (현재 v{current})\n\n설치하는 동안 서버가 몇 초 멈추고, 휴대폰은 자동으로 다시 연결됩니다.\n{later}",
+            Text = $"지금 설치할까요? (현재 v{current})\n\n설치하는 동안 서버가 몇 초 멈추고, 휴대폰은 자동으로 다시 연결됩니다. 실행 중인 세션은 끊기지 않습니다.\n{later}",
             ForeColor = Muted, Location = new Point(24, 58), Size = new Size(412, 124),
         };
         _stage = new Label { ForeColor = Muted, Location = new Point(24, 160), Size = new Size(412, 20), Visible = false };

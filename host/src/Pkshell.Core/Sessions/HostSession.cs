@@ -12,7 +12,7 @@ public sealed class HostSession : IDisposable
     private readonly List<ClientDto> _clients = new();
     private readonly OscCwdParser _cwdParser = new();
     private readonly ScrollbackFile _scrollback;
-    private PseudoConsoleProcess? _pty;
+    private IPty? _pty;
     private int? _exitCode;
     private volatile bool _dirty;
     private readonly ActivityTracker _activity = new();   // guarded by Hub.SyncRoot
@@ -27,6 +27,8 @@ public sealed class HostSession : IDisposable
 
     public bool IsRunning { get { lock (Hub.SyncRoot) return _meta.State == "running"; } }
     public int? ShellPid => _pty?.Pid;
+    /// <summary>The shell runs in a holder process and keeps running through a host update (see <see cref="Detach"/>).</summary>
+    public bool SurvivesHost => _pty?.SurvivesHost == true && IsRunning;
 
     private HostSession(string dir, SessionDto meta)
     {
@@ -39,8 +41,11 @@ public sealed class HostSession : IDisposable
 
     public static string MetaPath(string dir) => Path.Combine(dir, "meta.json");
 
-    /// <summary>Loads a persisted session from disk as history (any non-exited state is converted to exited).</summary>
-    public static HostSession? LoadHistory(string dir)
+    /// <summary>
+    /// Loads a persisted session from disk. A session a previous host left running whose holder still answers is
+    /// reattached (running); anything else becomes history (any non-exited state is converted to exited).
+    /// </summary>
+    public static HostSession? LoadHistory(string dir, IPtyLauncher? launcher = null)
     {
         var metaPath = MetaPath(dir);
         if (!File.Exists(metaPath)) return null;
@@ -48,6 +53,8 @@ public sealed class HostSession : IDisposable
         try { meta = JsonSerializer.Deserialize<SessionDto>(File.ReadAllText(metaPath, Encoding.UTF8), Json.Options); }
         catch (JsonException ex) { Log.Warn($"skip session {dir}: bad meta.json ({ex.Message})"); return null; }
         if (meta == null || string.IsNullOrEmpty(meta.Id)) return null;
+        if (meta.State == "running" && launcher != null && Reattach(dir, meta, launcher) is { } live) return live;
+        HolderPtyLauncher.TryDelete(PtySpec.PathIn(dir));
         meta.State = "exited";
         meta.Kind = "history";
         meta.Clients = new();
@@ -57,8 +64,31 @@ public sealed class HostSession : IDisposable
         return s;
     }
 
+    private static HostSession? Reattach(string dir, SessionDto meta, IPtyLauncher launcher)
+    {
+        meta.Kind = "host";
+        meta.Clients = new();
+        meta.Pid = null;
+        var s = new HostSession(dir, meta);
+        // What the screen showed before the handoff: the end of the output, so the AI state reads right at once.
+        var tail = s._scrollback.ReadAll();
+        s._screen = new VtScreen(meta.Cols, meta.Rows);
+        if (tail.Length > 0) s._screen.Feed(tail.AsSpan(Math.Max(0, tail.Length - 65536)).ToArray());
+        s._screenPrint = s._screen.Fingerprint();
+        var pty = launcher.Reattach(dir, s.OnOutput, s.OnExit);
+        if (pty == null)
+        {
+            s.Dispose();
+            return null;
+        }
+        s._pty = pty;
+        Log.Info($"session {meta.Id} reattached: shell pid {pty.Pid} kept running through the host restart");
+        return s;
+    }
+
     /// <summary>Creates and starts a new ConPTY session.</summary>
-    public static HostSession Start(string sessionsRoot, ShellLaunch launch, string title, int cols, int rows, string? resumedFrom, byte[]? initialOutput)
+    public static HostSession Start(string sessionsRoot, ShellLaunch launch, string title, int cols, int rows, string? resumedFrom, byte[]? initialOutput,
+        IPtyLauncher? launcher = null)
     {
         var id = Ids.NewHexId(12);
         var dir = Path.Combine(sessionsRoot, id);
@@ -75,7 +105,7 @@ public sealed class HostSession : IDisposable
         s.SaveMeta();
         try
         {
-            s._pty = PseudoConsoleProcess.Start(launch.CommandLine, launch.WorkingDirectory, launch.Env, cols, rows, s.OnOutput, s.OnExit);
+            s._pty = (launcher ?? InProcessPtyLauncher.Instance).Start(dir, launch.CommandLine, launch.WorkingDirectory, launch.Env, cols, rows, s.OnOutput, s.OnExit);
         }
         catch
         {
@@ -124,6 +154,7 @@ public sealed class HostSession : IDisposable
             Hub.PublishText(ControlMessages.Exit(code));
         }
         SaveMeta();
+        HolderPtyLauncher.TryDelete(PtySpec.PathIn(Dir));
         Log.Info($"session {Id} exited with code {code}");
         _pty?.Dispose();
         try { Exited?.Invoke(this); }
@@ -344,6 +375,24 @@ public sealed class HostSession : IDisposable
         try { AtomicFile.WriteAllText(MetaPath(Dir), json); }
         catch (IOException ex) { Log.Error($"session {Id}: failed to write meta.json: {ex.Message}"); }
         catch (UnauthorizedAccessException ex) { Log.Error($"session {Id}: failed to write meta.json: {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Update handoff: lets go of the holder (the shell keeps running), saves meta.json as still running and closes the
+    /// session's files, so the next host reattaches it. Attached windows are disconnected and reconnect to that host.
+    /// </summary>
+    public void Detach()
+    {
+        lock (Hub.SyncRoot)
+        {
+            _clients.Clear();
+            _startTimer?.Dispose();
+            _startTimer = null;
+        }
+        if (_pty is RemotePty remote) remote.Detach();
+        SaveMeta();
+        Hub.CompleteAll();
+        lock (Hub.SyncRoot) _scrollback.Dispose();
     }
 
     public void Dispose()

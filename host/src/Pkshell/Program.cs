@@ -26,10 +26,12 @@ public static class Program
           psh shares                     (who each session is shared with)
           psh unshare <id>               (stop sharing a session: its guests are cut off)
           psh update [--check] [--force [--kill-working]]
-                                         (--force ends running host sessions; --kill-working also those where an AI is mid-turn)
+                                         (sessions keep running through an update; --force ends sessions started by a host
+                                          older than 0.2.98, --kill-working also those where an AI is mid-turn)
           psh firewall-cleanup [--list]  (remove Windows Firewall rules of earlier copies; asks for administrator rights)
           psh console-info <pid>...      (internal helper)
           psh console-reader <pid>       (internal helper)
+          psh pty-hold <pty.json>        (internal helper: keeps a session's shell running across host updates)
 
         client verbs accept: --port N (default: $PKSHELL_PORT or config.json port) and --home DIR (default: $PKSHELL_HOME or %APPDATA%\PocketShell)
         """;
@@ -52,6 +54,9 @@ public static class Program
                 case "console-reader":
                     if (rest.Count != 1 || !int.TryParse(rest[0], out var rpid)) { Console.Error.WriteLine("usage: psh console-reader <pid>"); return 2; }
                     return ConsoleHelpers.RunConsoleReader(rpid);
+                case "pty-hold":
+                    if (rest.Count != 1) { Console.Error.WriteLine("usage: psh pty-hold <pty.json>"); return 2; }
+                    return Pkshell.Core.Pty.PtyHolder.Main(rest[0]);
                 case "serve":
                     return await Serve(rest);
                 case "firewall-cleanup":

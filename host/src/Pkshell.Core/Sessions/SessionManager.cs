@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using Pkshell.Core.Pty;
 using Pkshell.Core.Util;
 
 namespace Pkshell.Core.Sessions;
@@ -14,9 +15,12 @@ public sealed class SessionManager : IDisposable
     private readonly string _root;
     private readonly Timer _flushTimer;
     private readonly object _historyGate = new();
+    private readonly IPtyLauncher _launcher;
 
-    public SessionManager(string home)
+    /// <param name="launcher">How shells are started; default in this process (they end with it).</param>
+    public SessionManager(string home, IPtyLauncher? launcher = null)
     {
+        _launcher = launcher ?? InProcessPtyLauncher.Instance;
         _root = PkshellPaths.SessionsDir(home);
         Directory.CreateDirectory(_root);
         LoadHistory();
@@ -27,16 +31,22 @@ public sealed class SessionManager : IDisposable
     {
         foreach (var dir in Directory.EnumerateDirectories(_root))
         {
-            var s = HostSession.LoadHistory(dir);
-            if (s != null) _sessions[s.Id] = s;
+            var s = HostSession.LoadHistory(dir, _launcher);
+            if (s == null) continue;
+            if (s.IsRunning) s.Exited += OnSessionExited;
+            _sessions[s.Id] = s;
         }
         EnforceHistoryCap();
-        Log.Info($"loaded {_sessions.Count} history session(s) from {_root}");
+        int live = _sessions.Values.Count(s => s.IsRunning);
+        Log.Info($"loaded {_sessions.Count - live} history session(s) and reattached {live} running from {_root}");
     }
 
     public IEnumerable<HostSession> All => _sessions.Values;
 
     public HostSession? Get(string id) => _sessions.TryGetValue(id, out var s) ? s : null;
+
+    /// <summary>Running sessions an update would end: those whose shell runs in this process (not in a holder).</summary>
+    public int BlockingUpdate => _sessions.Values.Count(s => s.IsRunning && !s.SurvivesHost);
 
     public IReadOnlyCollection<int> RunningShellPids =>
         _sessions.Values.Where(s => s.IsRunning).Select(s => s.ShellPid).OfType<int>().ToList();
@@ -49,7 +59,7 @@ public sealed class SessionManager : IDisposable
         int cols = req.Cols is > 0 ? SizePolicy.Clamp(req.Cols.Value) : DefaultCols;
         int rows = req.Rows is > 0 ? SizePolicy.Clamp(req.Rows.Value) : DefaultRows;
         var title = string.IsNullOrWhiteSpace(req.Title) ? launch.Shell : req.Title!;
-        var s = HostSession.Start(_root, launch, title, cols, rows, resumedFrom, initialOutput);
+        var s = HostSession.Start(_root, launch, title, cols, rows, resumedFrom, initialOutput, _launcher);
         s.Exited += OnSessionExited;
         _sessions[s.Id] = s;
         return s;
@@ -170,6 +180,28 @@ public sealed class SessionManager : IDisposable
     }
 
     private bool _disposed;
+
+    /// <summary>
+    /// Update handoff: sessions held by a holder process are let go and keep running (the next host reattaches them);
+    /// shells running in this process are terminated as in <see cref="Dispose"/>. Closes every session's files.
+    /// </summary>
+    public void Detach()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _flushTimer.Dispose();
+        var running = _sessions.Values.Where(s => s.IsRunning).ToList();
+        NoteAgents(running);
+        var held = running.Where(s => s.SurvivesHost).ToList();
+        var local = running.Except(held).ToList();
+        foreach (var s in held) s.Detach();
+        foreach (var s in local) s.Kill();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (local.Any(s => s.IsRunning) && DateTime.UtcNow < deadline) Thread.Sleep(50);
+        FlushAll();
+        foreach (var s in _sessions.Values.Except(held)) s.Dispose();
+        if (held.Count > 0) Log.Info($"update: {held.Count} session(s) keep running in their holder for the next host");
+    }
 
     /// <summary>Terminates running shells (they become history) and closes every session's files (output.vt), so another
     /// process — e.g. the new host after a self-update handoff — can open the sessions directory.</summary>

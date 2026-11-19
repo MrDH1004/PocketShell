@@ -150,6 +150,21 @@ public static class Log
         }
     }
 
+    /// <summary>Logs to <paramref name="path"/> only (helper processes such as <c>psh pty-hold</c>).</summary>
+    public static void InitFileAt(string path)
+    {
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).Length > 256 * 1024) File.Delete(path);
+            lock (Gate)
+            {
+                _file = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete), new UTF8Encoding(false)) { AutoFlush = true };
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     public static void Info(string msg) => Write("INFO", msg);
     public static void Warn(string msg) => Write("WARN", msg);
     public static void Error(string msg) => Write("ERROR", msg);

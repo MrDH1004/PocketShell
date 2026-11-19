@@ -15,7 +15,7 @@ public sealed class UpdateStatus
     public string State { get; set; } = UpdateStates.None;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Error { get; set; }
-    /// <summary><see cref="UpdateModes"/>: auto installs by itself once no session is running.</summary>
+    /// <summary><see cref="UpdateModes"/>: auto installs by itself once no session it would end is running (held sessions keep running).</summary>
     public string Mode { get; set; } = UpdateModes.Auto;
     /// <summary>While State is downloading: <see cref="UpdateSteps"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

@@ -139,7 +139,10 @@ public sealed class HostServer : IDisposable
 
     private List<string> PublicHosts() => _binds.Where(ip => !IPAddress.IsLoopback(ip)).Select(ip => ip.ToString()).ToList();
 
-    private int RunningSessions() => _sessions.All.Count(s => s.IsRunning);
+    /// <summary>Running sessions an update would end (shells held by a holder process keep running through it).</summary>
+    private int RunningSessions() => _sessions.BlockingUpdate;
+
+    private SessionManager NewSessionManager() => new(_home, new Pkshell.Core.Pty.HolderPtyLauncher(_exe));
 
     public async Task<int> RunAsync()
     {
@@ -154,9 +157,9 @@ public sealed class HostServer : IDisposable
         _pairing = new PairingManager();
         _pins = new PinPairing();
         _claimLimiter = new ClaimRateLimiter();
-        _sessions = new SessionManager(_home);
         _exe = Environment.ProcessPath ?? throw new InvalidOperationException("cannot determine psh.exe path");
         _installDir = Path.GetDirectoryName(_exe)!;
+        _sessions = NewSessionManager();
         _externals = new ExternalConsoles(_exe, Path.Combine(_home, "external-scrollback")) { TabNames = TerminalTabs.Read };
         _recent = new RecentExternals(RecentExternals.FileIn(_home));
         _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
@@ -253,7 +256,7 @@ public sealed class HostServer : IDisposable
         finally
         {
             stopWait.Unregister(null);
-            Log.Info("shutting down: terminating running sessions");
+            Log.Info("shutting down");
             Dispose();
         }
         return exitCode;
@@ -597,14 +600,14 @@ public sealed class HostServer : IDisposable
 
     /// <summary>Validates and starts an apply in the background. Returns the HTTP status + body for POST /api/update/apply.</summary>
     /// <remarks>
-    /// Applying ends the running host sessions, so it is refused (409, with the sessions it would end) unless
+    /// Applying ends the host sessions whose shell runs in this process (not in a holder), so it is refused (409, with the sessions it would end) unless
     /// <paramref name="force"/> is set; and when an AI CLI is in the middle of a turn in one of them, unless
     /// <paramref name="killWorking"/> is set too: a second, separate yes.
     /// </remarks>
     private (int Status, object Body) TryBeginApply(bool force, bool killWorking)
     {
         if (!_update.HasNewer) return (400, new { error = "no update available", update = _update.Status });
-        var running = _sessions.All.Where(s => s.IsRunning).Select(s => s.Snapshot()).ToList();
+        var running = _sessions.All.Where(s => s.IsRunning && !s.SurvivesHost).Select(s => s.Snapshot()).ToList();
         int working = running.Count(s => s.AgentState == AgentStates.Working);
         object Refused(string error) => new
         {
@@ -676,8 +679,9 @@ public sealed class HostServer : IDisposable
                 return false;
             }
             // Release session files (output.vt is held open) so the new process can load the sessions directory.
-            // With force, running shells are terminated here.
-            _sessions.Dispose();
+            // Shells in holder processes keep running and the new process reattaches them; with force, shells running
+            // in this process are terminated here.
+            _sessions.Detach();
             released = true;
             if (running > 0) Log.Info($"update: force -> terminated {running} session(s)");
 
@@ -731,7 +735,7 @@ public sealed class HostServer : IDisposable
         }
         finally
         {
-            if (!success && released) _sessions = new SessionManager(_home); // keep serving: reload sessions (history) from disk
+            if (!success && released) _sessions = NewSessionManager(); // keep serving: reload sessions from disk (held shells reattach)
             Interlocked.Exchange(ref _applyBusy, 0);
         }
     }
