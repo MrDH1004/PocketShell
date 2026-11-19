@@ -1159,6 +1159,39 @@ class TerminalActivity : AppCompatActivity() {
         override fun logStackTrace(tag: String?, e: Exception?) { Log.e(tag ?: TAG, "error", e) }
     }
 
+    /** The web address under a touch, read from the whole (wrapped) line it is on. */
+    private fun linkAt(e: MotionEvent): String? {
+        val emu = terminalView.mEmulator ?: return null
+        val screen = emu.screen
+        val (col, row) = terminalView.getColumnAndRow(e, true).let { it[0] to it[1] }
+        val top = -screen.activeTranscriptRows
+        if (row < top || row >= emu.mRows || col < 0) return null
+        var first = row
+        while (first > top && screen.getLineWrap(first - 1)) first--
+        var last = row
+        while (last < emu.mRows - 1 && screen.getLineWrap(last)) last++
+        val text = screen.getSelectedText(0, first, emu.mColumns - 1, last, true, false) ?: return null
+        val column = (row - first) * emu.mColumns + col
+        return com.neststudio.pocketshell.core.TerminalLinks.at(text, column) { com.termux.terminal.WcWidth.width(it) }
+    }
+
+    private fun showLinkActions(url: String) {
+        val items = arrayOf(getString(R.string.term_link_open_local), getString(R.string.term_link_copy))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(url)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> startActivity(WebActivity.intent(this, url))
+                    1 -> {
+                        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("url", url))
+                        Toast.makeText(this, R.string.term_link_copied, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private val viewClient = object : TerminalViewClient {
         // Pinch is handled by ZoomPanLayout (picture zoom + drag); the font size is set in 보기 설정.
         override fun onScale(scale: Float): Float = 1.0f
@@ -1200,7 +1233,12 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         override fun onKeyUp(keyCode: Int, e: KeyEvent?) = false
-        override fun onLongPress(event: MotionEvent?) = false
+        /** On a web address: open it in the web view through the PC, or copy it. Elsewhere: text selection. */
+        override fun onLongPress(event: MotionEvent?): Boolean {
+            val url = event?.let { linkAt(it) } ?: return false
+            showLinkActions(url)
+            return true
+        }
 
         // CTRL/ALT toggles are applied in onCodePoint through KeyMapper, so Termux's own handling stays off.
         override fun readControlKey() = false

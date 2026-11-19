@@ -28,6 +28,7 @@ import com.neststudio.pocketshell.core.FileClipboard
 import com.neststudio.pocketshell.core.FileKinds
 import com.neststudio.pocketshell.core.FileOpResult
 import com.neststudio.pocketshell.core.FilePreview
+import com.neststudio.pocketshell.core.FolderHistory
 import com.neststudio.pocketshell.core.FileSort
 import com.neststudio.pocketshell.core.PcPath
 import com.neststudio.pocketshell.core.ProjectAgent
@@ -56,8 +57,9 @@ import java.time.Instant
 
 /**
  * Project file browser: the session folder on the PC and its subfolders (not above it). Breadcrumbs jump to any
- * parent, search filters the folder by name, sort is remembered. Tap a folder to open it, a file to preview it;
- * long-press for the action sheet (view, download, copy path/name). Toolbar: upload a phone file here.
+ * parent, back / forward go through visited folders, search filters the folder by name, sort is remembered. Tap a
+ * folder to open it, a file to preview it; long-press for the command sheet (open, new session here, view, download,
+ * rename, copy, cut, delete, select, copy path/name). Toolbar: upload a phone file here.
  *
  * PC mode ([pcIntent]): starts at "내 PC" (well-known folders and drives, path "") and may go anywhere; a folder can
  * be opened as a new session there (terminal or an AI CLI), handed back to the caller as the result.
@@ -89,6 +91,10 @@ class FileBrowserActivity : AppCompatActivity() {
     private var baseTitle: CharSequence? = null
     private lateinit var pasteBar: View
     private lateinit var pasteText: TextView
+    private val history = FolderHistory()
+    private lateinit var navBack: View
+    private lateinit var navForward: View
+    private lateinit var navUp: View
 
     private val atTop get() = pcMode && current.isEmpty()
     private val selecting get() = selected.isNotEmpty()
@@ -126,6 +132,7 @@ class FileBrowserActivity : AppCompatActivity() {
         }
         api = apiClient
         current = savedInstanceState?.getString(STATE_PATH)?.takeIf { pcMode || PcPath.inside(it, root) } ?: root
+        history.restore(savedInstanceState?.getStringArrayList(STATE_BACK), savedInstanceState?.getStringArrayList(STATE_FORWARD))
 
         toolbar = findViewById(R.id.toolbar)
         toolbar.subtitle = intent.getStringExtra(EXTRA_TITLE)
@@ -201,6 +208,12 @@ class FileBrowserActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.pasteHere).setOnClickListener { paste() }
 
+        navBack = findViewById(R.id.navBack)
+        navForward = findViewById(R.id.navForward)
+        navUp = findViewById(R.id.navUp)
+        navBack.setOnClickListener { history.back(current)?.let { go(it) } }
+        navForward.setOnClickListener { history.forward(current)?.let { go(it) } }
+        navUp.setOnClickListener { parentOf(current)?.let { open(it) } }
         crumbsView = findViewById(R.id.crumbs)
         crumbScroll = findViewById(R.id.crumbScroll)
         summaryView = findViewById(R.id.summary)
@@ -231,19 +244,25 @@ class FileBrowserActivity : AppCompatActivity() {
             val e = adapter.getItem(pos) ?: return@setOnItemClickListener
             when {
                 selecting -> toggle(e)
-                e.dir && pcMode -> chooseLaunch(pathOf(e), enter = true)
                 e.dir -> open(pathOf(e))
                 else -> preview(e)
             }
         }
         list.setOnItemLongClickListener { _, _, pos, _ ->
             val e = adapter.getItem(pos) ?: return@setOnItemLongClickListener true
-            if (atTop) fileActions(e) else toggle(e) // "내 PC" places are not files to copy or delete
+            if (selecting) toggle(e) else fileActions(e)
             true
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = if (selecting) clearSelection() else goUpOrFinish()
+            override fun handleOnBackPressed() {
+                val previous = if (selecting) null else history.back(current)
+                when {
+                    selecting -> clearSelection()
+                    previous != null -> go(previous)
+                    else -> goUpOrFinish()
+                }
+            }
         })
         load()
     }
@@ -256,6 +275,9 @@ class FileBrowserActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         if (::current.isInitialized) outState.putString(STATE_PATH, current)
+        val (b, f) = history.save()
+        outState.putStringArrayList(STATE_BACK, b)
+        outState.putStringArrayList(STATE_FORWARD, f)
     }
 
     /** Full PC path of a shown entry (at "내 PC" the place's own path). */
@@ -337,16 +359,23 @@ class FileBrowserActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Folder above [path] this browser may show, or null at its top. */
+    private fun parentOf(path: String): String? =
+        if (pcMode) path.takeIf { it.isNotEmpty() }?.let { PcPath.parentOrTop(it) } else PcPath.parentWithin(path, root)
+
     private fun goUpOrFinish() {
-        if (pcMode) {
-            if (current.isEmpty()) finish() else open(PcPath.parentOrTop(current))
-            return
-        }
-        val parent = PcPath.parentWithin(current, root)
+        val parent = parentOf(current)
         if (parent != null) open(parent) else finish()
     }
 
+    /** Opens [path] as a new step: back returns here. */
     private fun open(path: String) {
+        history.visit(current, path)
+        go(path)
+    }
+
+    /** Shows [path] without touching the history (back / forward). */
+    private fun go(path: String) {
         current = path
         selected.clear()
         // A name filter is for one folder: going elsewhere with it would hide the new folder's items.
@@ -355,8 +384,16 @@ class FileBrowserActivity : AppCompatActivity() {
         load()
     }
 
+    private fun updateNav() {
+        fun View.on(enabled: Boolean) { isEnabled = enabled; alpha = if (enabled) 1f else 0.35f }
+        navBack.on(history.canBack)
+        navForward.on(history.canForward)
+        navUp.on(parentOf(current) != null)
+    }
+
     private fun load() {
         renderCrumbs()
+        updateNav()
         updateMode()
         swipe.isRefreshing = true
         lifecycleScope.launch {
@@ -431,10 +468,23 @@ class FileBrowserActivity : AppCompatActivity() {
             action(R.drawable.ic_visibility, R.string.files_view) { preview(e) }
             action(R.drawable.ic_download, R.string.files_download) { startDownload(e) }
         }
+        if (!atTop) { // "내 PC" places are not files to rename, copy or delete
+            if (e.dir) action(R.drawable.ic_download, R.string.files_download) { selectOnly(e); downloadSelected() }
+            action(R.drawable.ic_edit, R.string.files_rename) { rename(e) }
+            action(R.drawable.ic_copy, R.string.files_copy) { selectOnly(e); toClipboard(cut = false) }
+            action(R.drawable.ic_cut, R.string.files_cut) { selectOnly(e); toClipboard(cut = true) }
+            action(R.drawable.ic_delete, R.string.files_delete) { selectOnly(e); confirmDelete() }
+            action(R.drawable.ic_check, R.string.files_select) { toggle(e) }
+        }
         action(R.drawable.ic_copy, R.string.files_copy_path) { copy(path) }
         action(R.drawable.ic_copy, R.string.files_copy_name) { copy(e.name) }
         sheet.setContentView(box)
         sheet.show()
+    }
+
+    private fun selectOnly(e: FileEntry) {
+        selected.clear()
+        selected.add(e.name)
     }
 
     private fun toggle(e: FileEntry) {
@@ -596,11 +646,8 @@ class FileBrowserActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle(R.string.files_op_failed).setMessage(text).setPositiveButton(R.string.confirm, null).show()
     }
 
-    /**
-     * PC mode: 터미널 or an AI CLI found on the PC, then back to the session list, which opens it. With [enter]
-     * (tapping a folder) "들어가기" comes first and just opens the folder.
-     */
-    private fun chooseLaunch(path: String, enter: Boolean = false) {
+    /** PC mode: 터미널 or an AI CLI found on the PC, then back to the session list, which opens it. */
+    private fun chooseLaunch(path: String) {
         if (path.isEmpty()) return
         lifecycleScope.launch {
             val found = agents ?: try {
@@ -613,16 +660,10 @@ class FileBrowserActivity : AppCompatActivity() {
                 emptyList()
             }.also { agents = it }
             if (isFinishing) return@launch
-            val first = if (enter) listOf(getString(R.string.pc_enter)) else emptyList()
-            val labels = (first + getString(R.string.pc_open_terminal) + found.map { it.name }).toTypedArray()
+            val labels = (listOf(getString(R.string.pc_open_terminal)) + found.map { it.name }).toTypedArray()
             AlertDialog.Builder(this@FileBrowserActivity)
-                .setTitle(if (enter) PcPath.name(path) else getString(R.string.pc_open_title, PcPath.name(path)))
-                .setItems(labels) { _, picked ->
-                    val which = picked - first.size
-                    if (which < 0) {
-                        open(path)
-                        return@setItems
-                    }
+                .setTitle(getString(R.string.pc_open_title, PcPath.name(path)))
+                .setItems(labels) { _, which ->
                     setResult(RESULT_OK, Intent().putExtra(RESULT_PATH, path).putExtra(RESULT_AGENT, found.getOrNull(which - 1)?.id))
                     finish()
                 }
@@ -756,6 +797,8 @@ class FileBrowserActivity : AppCompatActivity() {
         private const val EXTRA_ROOT = "root"
         private const val EXTRA_TITLE = "title"
         private const val STATE_PATH = "path"
+        private const val STATE_BACK = "back"
+        private const val STATE_FORWARD = "forward"
         private const val MENU_UPLOAD = 1
         private const val MENU_REFRESH = 2
         private const val MENU_SEARCH = 3

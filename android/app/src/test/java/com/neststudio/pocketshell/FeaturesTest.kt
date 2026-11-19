@@ -97,3 +97,53 @@ class SessionTimeTest {
         org.junit.Assert.assertEquals("2025/3/2", at("2025-03-02T01:00:00Z"))
     }
 }
+
+class FolderHistoryTest {
+    @org.junit.Test
+    fun backForwardLikeExplorer() {
+        val h = com.neststudio.pocketshell.core.FolderHistory()
+        org.junit.Assert.assertFalse(h.canBack)
+        h.visit("C:/p", "C:/p/a")
+        h.visit("C:/p/a", "C:/p/a/b")
+        org.junit.Assert.assertEquals("C:/p/a", h.back("C:/p/a/b"))
+        org.junit.Assert.assertEquals("C:/p", h.back("C:/p/a"))
+        org.junit.Assert.assertNull(h.back("C:/p"))
+        org.junit.Assert.assertEquals("C:/p/a", h.forward("C:/p"))
+        // going somewhere new drops forward
+        h.visit("C:/p/a", "C:/p/c")
+        org.junit.Assert.assertFalse(h.canForward)
+        org.junit.Assert.assertEquals("C:/p/a", h.back("C:/p/c"))
+        h.visit("x", "x") // same folder: no step
+        val (b, f) = h.save()
+        val r = com.neststudio.pocketshell.core.FolderHistory().apply { restore(b, f) }
+        org.junit.Assert.assertEquals("C:/p", r.back("C:/p/a"))
+        org.junit.Assert.assertEquals("C:/p/a", r.forward("C:/p"))
+    }
+}
+
+class TerminalLinksTest {
+    private val L = com.neststudio.pocketshell.core.TerminalLinks
+
+    @org.junit.Test
+    fun devServerAddresses() {
+        val vite = "  ➜  Local:   http://localhost:5173/"
+        org.junit.Assert.assertEquals("http://localhost:5173/", L.at(vite, vite.indexOf("local") + 3))
+        org.junit.Assert.assertEquals("http://localhost:5173/", L.at(vite, 0)) // the only one on the line
+        org.junit.Assert.assertEquals("http://localhost:3000", L.at("ready on 0.0.0.0:3000.", 12))
+        org.junit.Assert.assertEquals("http://127.0.0.1:8000/docs", L.at("Uvicorn running on 127.0.0.1:8000/docs (Press CTRL+C)", 25))
+        org.junit.Assert.assertEquals("https://example.com/a_(b)", L.at("see https://example.com/a_(b), ok", 10))
+        org.junit.Assert.assertNull(L.at("no address here 12:30", 5))
+        org.junit.Assert.assertNull(L.at("version 1.2.3.4", 9))
+    }
+
+    @org.junit.Test
+    fun picksTheOneUnderTheTouchCountingWideCharacters() {
+        val line = "서버 http://a.test:1 와 http://b.test:2"
+        val wide = { cp: Int -> if (cp >= 0xAC00) 2 else 1 }
+        // "서버 " is 5 columns wide: column 6 is inside the first address
+        org.junit.Assert.assertEquals("http://a.test:1", L.at(line, 6, wide))
+        val second = 5 + "http://a.test:1".length + 1 + 2 + 1 + 3
+        org.junit.Assert.assertEquals("http://b.test:2", L.at(line, second, wide))
+        org.junit.Assert.assertNull(L.at(line, 3, wide)) // two addresses, touch on neither
+    }
+}

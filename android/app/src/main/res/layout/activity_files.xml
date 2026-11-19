@@ -12,11 +12,46 @@
         android:layout_height="?attr/actionBarSize"
         app:title="@string/files_title" />
 
-    <!-- Breadcrumbs: project root › folder › folder (each tappable), filled in FileBrowserActivity -->
-    <HorizontalScrollView
-        android:id="@+id/crumbScroll"
+    <!-- Back / forward (visited folders) / up, then breadcrumbs: project root › folder › folder (each tappable) -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp">
+
+    <ImageButton
+        android:id="@+id/navBack"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/files_nav_back"
+        android:src="@drawable/ic_arrow_back"
+        app:tint="@color/text_secondary" />
+
+    <ImageButton
+        android:id="@+id/navForward"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/files_nav_forward"
+        android:src="@drawable/ic_arrow_forward"
+        app:tint="@color/text_secondary" />
+
+    <ImageButton
+        android:id="@+id/navUp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/files_nav_up"
+        android:src="@drawable/ic_arrow_upward"
+        app:tint="@color/text_secondary" />
+
+    <HorizontalScrollView
+        android:id="@+id/crumbScroll"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:scrollbars="none">
 
         <LinearLayout
@@ -25,9 +60,10 @@
             android:layout_height="40dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="12dp"
+            android:paddingStart="4dp"
             android:paddingEnd="12dp" />
     </HorizontalScrollView>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/summary"
