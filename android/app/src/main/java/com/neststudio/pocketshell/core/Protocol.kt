@@ -88,7 +88,7 @@ data class SessionInfo(
 }
 
 /** What a long press on a session row offers. */
-enum class SessionAction { SHARE, UNSHARE, GIT, END, DELETE, DELETE_WITH_FOLDER }
+enum class SessionAction { SHARE, UNSHARE, GIT, END, NEW_TERMINAL, DELETE, DELETE_WITH_FOLDER }
 
 object SessionActions {
     /**
@@ -101,6 +101,7 @@ object SessionActions {
         // 세션 종료 comes first: it is what a long press on a live session is most often for.
         if (s.isExternal || s.isRunningHost) {
             add(SessionAction.END)
+            if (s.isExternal) add(SessionAction.NEW_TERMINAL) // a new PocketShell terminal in that console's folder
             add(SessionAction.SHARE)
             if (s.shares > 0) add(SessionAction.UNSHARE)
         }
@@ -129,15 +130,15 @@ data class SessionSections(
         const val DEFAULT_RECENT_LIMIT = RECENT_ALL
 
         /**
-         * [recentLimit]: newest N entries under 최근 ([RECENT_ALL] = all, 0 hides the section). Every past session is
-         * listed, newest first, also when its folder is open above or another entry has the same folder.
+         * [recentLimit]: newest N entries under 최근 ([RECENT_ALL] = all, 0 hides the section). Every folder worked in
+         * is listed once (its newest record), newest first, also when that folder is open above.
          */
         fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections {
             val sessions = all.filterNot { isPlainCmd(it) || isSystem32Console(it) }
             val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
             val recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }
-                .take(recentLimit.coerceAtLeast(0))
+                .distinctBy(::folderKey).take(recentLimit.coerceAtLeast(0))
             return SessionSections(running, external, recent)
         }
 
@@ -157,6 +158,12 @@ data class SessionSections(
             !s.isRunningHost && !(s.isExternal && s.agent != null) && SYSTEM32.matches(s.cwd.trim().trimEnd('\\', '/'))
 
         private val SYSTEM32 = Regex("""^[A-Za-z]:\\windows\\system32$""", RegexOption.IGNORE_CASE)
+
+        /** The folder, case and trailing separator ignored (as on Windows); no folder → the session's own id. */
+        private fun folderKey(s: SessionInfo): String {
+            val dir = dirKey(s.cwd)
+            return if (dir.isEmpty()) "id:" + s.id else dir
+        }
 
         /** A PC folder compared the Windows way: case and trailing separator ignored. */
         fun dirKey(cwd: String): String = cwd.trim().trimEnd('\\', '/').lowercase()

@@ -34,7 +34,7 @@
     <string name="keyboard">키보드</string>
     <string name="fit_screen">원래 크기로 맞춤</string>
     <string name="paste_image">이미지 붙여넣기 (PC 클립보드 + Alt+V)</string>
-    <string name="new_terminal_here">이 폴더에서 새 터미널 열기</string>
+    <string name="new_terminal_here">터미널 띄우기</string>
     <string name="voice_input">음성으로 입력</string>
     <string name="voice_prompt">말하면 터미널에 입력됩니다 (Enter는 직접)</string>
     <string name="voice_unavailable">이 기기에서 음성 인식을 사용할 수 없습니다. Google 앱(음성 입력)을 설치하거나 켜세요.</string>

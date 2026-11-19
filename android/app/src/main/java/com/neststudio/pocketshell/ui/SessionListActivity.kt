@@ -57,7 +57,7 @@ class SessionListActivity : AppCompatActivity() {
     private lateinit var hostUpdateText: TextView
     private lateinit var hostUpdateApply: Button
     private var hostUpdateStatus: HostUpdateStatus? = null
-    private val adapter = SessionAdapter(::openSession, ::showSessionActions, ::newTerminalHere)
+    private val adapter = SessionAdapter(::openSession, ::showSessionActions)
     private val appUpdate = AppUpdateController(this)
     private var autoRefresh: kotlinx.coroutines.Job? = null
     private var loading = false
@@ -653,6 +653,7 @@ class SessionListActivity : AppCompatActivity() {
                 SessionAction.UNSHARE -> R.drawable.ic_close to R.string.collab_unshare
                 SessionAction.GIT -> R.drawable.ic_git to R.string.git_menu
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
+                SessionAction.NEW_TERMINAL -> R.drawable.ic_new_terminal_here to R.string.new_terminal_here
                 SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
                 SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
             }
@@ -666,6 +667,7 @@ class SessionListActivity : AppCompatActivity() {
                     SessionAction.UNSHARE -> confirmUnshare(s)
                     SessionAction.GIT -> startActivity(GitChangesActivity.intent(this, s.cwd, nameOf(s)))
                     SessionAction.END -> confirmEnd(s)
+                    SessionAction.NEW_TERMINAL -> newTerminalHere(s)
                     SessionAction.DELETE -> confirmDelete(s)
                     SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)
                 }
@@ -788,8 +790,6 @@ private sealed class Row {
 private class SessionAdapter(
     private val onClick: (SessionInfo) -> Unit,
     private val onLongClick: (SessionInfo) -> Unit,
-    /** External row icon: new PocketShell terminal with the same shell, folder and size. */
-    private val onNewHere: (SessionInfo) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var rows: List<Row> = emptyList()
@@ -878,9 +878,6 @@ private class SessionAdapter(
                 // External consoles: the host reports the last title/folder/screen change (older hosts: always now).
                 time.text = formatTime(s.lastActivity)
                 time.visibility = if (time.text.isNullOrBlank()) View.GONE else View.VISIBLE
-                val newHere = v.findViewById<View>(R.id.newHere)
-                newHere.visibility = if (s.isExternal && !guest) View.VISIBLE else View.GONE
-                newHere.setOnClickListener { onNewHere(s) }
                 // A web server runs in this project's folder (host ≥ 0.2.88): open it in the web view.
                 val webHere = v.findViewById<View>(R.id.webHere)
                 webHere.visibility = if (s.webPorts.isNotEmpty() && !guest) View.VISIBLE else View.GONE

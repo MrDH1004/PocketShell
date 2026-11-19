@@ -67,7 +67,7 @@ class ProtocolTest {
     }
 
     @Test
-    fun recentShowsEveryPastSession() {
+    fun recentShowsEveryFolderOnce() {
         val text = """{"sessions":[
             {"id":"rec-old","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"E:\\vailvpn","state":"exited","lastActivity":"2026-11-14T01:00:00.000Z","agent":"claude"},
             {"id":"rec-new","kind":"recent","title":"vailvpn","shell":"cmd","cwd":"e:\\VailVpn\\","state":"exited","lastActivity":"2026-11-14T03:08:00.000Z","agent":"claude"},
@@ -80,9 +80,10 @@ class ProtocolTest {
             {"id":"dddddddddddd","kind":"host","title":"h","shell":"pwsh","cwd":"d:\\WORK","state":"running","lastActivity":"2026-11-14T05:10:00.000Z"}
         ]}"""
         val s = SessionSections.of(SessionInfo.listFromJson(text), 10)
-        // all of them, newest first: same folder twice, folders open above too
-        assertEquals(listOf("rec-open", "hist-open", "rec-new", "rec-old", "rec-gpt", "aaaaaaaaaaaa", "cccccccccccc"), s.recent.map { it.id })
-        assertEquals(7, SessionSections.of(SessionInfo.listFromJson(text)).recent.size) // default: no limit
+        // every folder once (its newest record, whatever the AI or shell), newest first; folders open above too;
+        // records without a folder are each their own
+        assertEquals(listOf("rec-open", "hist-open", "rec-new", "aaaaaaaaaaaa", "cccccccccccc"), s.recent.map { it.id })
+        assertEquals(5, SessionSections.of(SessionInfo.listFromJson(text)).recent.size) // default: no limit
         assertEquals(listOf("dddddddddddd"), s.running.map { it.id })
         assertEquals(listOf("ext-42"), s.external.map { it.id })
     }
@@ -137,6 +138,7 @@ class ProtocolTest {
         val unshare = com.neststudio.pocketshell.core.SessionAction.UNSHARE
         val git = com.neststudio.pocketshell.core.SessionAction.GIT
         val end = com.neststudio.pocketshell.core.SessionAction.END
+        val term = com.neststudio.pocketshell.core.SessionAction.NEW_TERMINAL
         val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
         val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
         val of = com.neststudio.pocketshell.core.SessionActions::of
@@ -149,10 +151,10 @@ class ProtocolTest {
         // A record cannot be ended or shared any more.
         assertEquals(listOf(git, delete, folder), of(session("history", "exited", true)))
         assertEquals(listOf(git, delete), of(session("recent", "exited", false)))
-        // A console opened on the PC: shared or ended, never deleted (and never its folder).
-        assertEquals(listOf(end, share, git), of(session("external", "running", true)))
+        // A console opened on the PC: ended, a new terminal in its folder, shared; never deleted (and never its folder).
+        assertEquals(listOf(end, term, share, git), of(session("external", "running", true)))
         // No folder: nothing to look at.
-        assertEquals(listOf(end, share), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
+        assertEquals(listOf(end, term, share), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
         // An older PC does not send the fields.
         assertFalse(SessionInfo.fromJson(JSONObject(sessionJson)).folderDeletable)
         assertEquals(0, SessionInfo.fromJson(JSONObject(sessionJson)).shares)
