@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GPT (Codex) mark for session cards: six interlocking loops, one colour (tinted by the view). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group android:pivotX="12" android:pivotY="12" android:rotation="0">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="60">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="120">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="180">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="240">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+    <group android:pivotX="12" android:pivotY="12" android:rotation="300">
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:fillColor="#00000000"
+            android:pathData="M9.6,11.2 L9.6,5.2 A2.4,2.4 0 0 1 14.4,5.2 L14.4,11.2" />
+    </group>
+</vector>

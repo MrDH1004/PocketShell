@@ -13,8 +13,7 @@
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="@string/sessions_title" />
+            android:layout_height="?attr/actionBarSize" />
 
         <TextView
             android:id="@+id/message"

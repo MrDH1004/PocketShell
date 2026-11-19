@@ -96,7 +96,8 @@ class SessionListActivity : AppCompatActivity() {
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         guest = app.pairing()?.share
         guestOpened = savedInstanceState?.getBoolean(STATE_GUEST_OPENED) ?: false
-        toolbar.subtitle = guest?.let { g ->
+        // One line: the PC's name (no "세션" title above it), so the bar keeps its normal height.
+        toolbar.title = guest?.let { g ->
             getString(R.string.guest_subtitle, app.pairing()?.displayName.orEmpty(),
                 getString(if (g.readOnly) R.string.collab_mode_view_short else R.string.collab_mode_edit_short), untilText(g))
         } ?: app.pairing()?.displayName
@@ -815,16 +816,20 @@ private class SessionAdapter(
                 v.findViewById<View>(R.id.stateDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(v.context, if (live) R.color.live else R.color.text_muted),
                 )
-                // External consoles: only what tells them apart (AI CLI + folder).
-                val detail = buildList {
-                    when (s.agent) {
-                        "claude" -> add("Claude")
-                        "gpt" -> add("GPT")
-                    }
-                    if (!s.isExternal && s.shell.isNotBlank()) add(s.shell)
-                    if (s.cwd.isNotBlank()) add(s.cwd)
-                }.joinToString(" · ")
-                v.findViewById<TextView>(R.id.detail).text = detail
+                // Under the name: the AI CLI's mark (one colour) and the folder; the shell only when there is no folder.
+                val mark = v.findViewById<android.widget.ImageView>(R.id.agentMark)
+                val markRes = when (s.agent) {
+                    "claude" -> R.drawable.ic_agent_claude
+                    "gpt" -> R.drawable.ic_agent_gpt
+                    else -> 0
+                }
+                mark.visibility = if (markRes == 0) View.GONE else View.VISIBLE
+                if (markRes != 0) mark.setImageResource(markRes)
+                val detail = v.findViewById<TextView>(R.id.detail)
+                detail.text = s.cwd.ifBlank { if (s.isExternal) "" else s.shell }
+                detail.contentDescription = listOfNotNull(
+                    when (s.agent) { "claude" -> "Claude"; "gpt" -> "GPT"; else -> null }, detail.text.toString().ifBlank { null },
+                ).joinToString(", ")
                 val state = v.findViewById<TextView>(R.id.agentState)
                 val (label, color) = when (s.agentState) {
                     com.neststudio.pocketshell.core.AgentState.WAITING -> R.string.agent_waiting to R.color.attention
