@@ -49,6 +49,7 @@ import com.neststudio.pocketshell.net.ApiException
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
 import org.json.JSONException
@@ -163,6 +164,7 @@ class FileBrowserActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_UPLOAD, 2, R.string.files_upload).setIcon(R.drawable.ic_upload)
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_NEW_FOLDER, 3, R.string.files_new_folder).setIcon(R.drawable.ic_new_folder)
+        toolbar.menu.add(0, MENU_NEW_FILE, 3, R.string.files_new_file).setIcon(R.drawable.ic_add)
         toolbar.menu.add(0, MENU_REFRESH, 4, R.string.refresh)
         if (pcMode) {
             toolbar.menu.add(0, MENU_OPEN_HERE, 0, R.string.pc_open_here).setIcon(R.drawable.ic_new_terminal_here)
@@ -186,6 +188,7 @@ class FileBrowserActivity : AppCompatActivity() {
                 MENU_SORT -> chooseSort()
                 MENU_UPLOAD -> pickUpload.launch(arrayOf("*/*"))
                 MENU_NEW_FOLDER -> newFolder()
+                MENU_NEW_FILE -> newFile()
                 MENU_REFRESH -> load()
                 MENU_DOWNLOAD -> downloadSelected()
                 MENU_COPY -> toClipboard(cut = false)
@@ -468,17 +471,26 @@ class FileBrowserActivity : AppCompatActivity() {
             action(R.drawable.ic_visibility, R.string.files_view) { preview(e) }
             action(R.drawable.ic_download, R.string.files_download) { startDownload(e) }
         }
+        if (e.dir) {
+            // Add inside the pressed folder (it is opened, then the name is asked).
+            action(R.drawable.ic_new_folder, R.string.files_new_folder_in) { open(path); newFolder() }
+            action(R.drawable.ic_add, R.string.files_new_file_in) { open(path); newFile() }
+            if (canPaste()) action(R.drawable.ic_paste, R.string.files_paste_into) { paste(path) }
+        }
         if (!atTop) { // "내 PC" places are not files to rename, copy or delete
             if (e.dir) action(R.drawable.ic_download, R.string.files_download) { selectOnly(e); downloadSelected() }
             action(R.drawable.ic_edit, R.string.files_rename) { rename(e) }
+            action(R.drawable.ic_copy, R.string.files_duplicate) { duplicate(e) }
             action(R.drawable.ic_copy, R.string.files_copy) { selectOnly(e); toClipboard(cut = false) }
             action(R.drawable.ic_cut, R.string.files_cut) { selectOnly(e); toClipboard(cut = true) }
             action(R.drawable.ic_delete, R.string.files_delete) { selectOnly(e); confirmDelete() }
             action(R.drawable.ic_check, R.string.files_select) { toggle(e) }
+            action(R.drawable.ic_file, R.string.files_more) { details(e) }
         }
         action(R.drawable.ic_copy, R.string.files_copy_path) { copy(path) }
         action(R.drawable.ic_copy, R.string.files_copy_name) { copy(e.name) }
-        sheet.setContentView(box)
+        // Many commands: the sheet scrolls instead of cutting the last ones off on a short screen.
+        sheet.setContentView(androidx.core.widget.NestedScrollView(this).apply { addView(box) })
         sheet.show()
     }
 
@@ -513,6 +525,7 @@ class FileBrowserActivity : AppCompatActivity() {
         menu.findItem(MENU_REFRESH)?.isVisible = !selecting
         menu.findItem(MENU_UPLOAD)?.isVisible = !selecting && !atTop
         menu.findItem(MENU_NEW_FOLDER)?.isVisible = !selecting && !atTop
+        menu.findItem(MENU_NEW_FILE)?.isVisible = !selecting && !atTop
         menu.findItem(MENU_OPEN_HERE)?.isVisible = !selecting && !atTop
         toolbar.title = if (selecting) getString(R.string.files_selected, n) else baseTitle
         toolbar.setNavigationIcon(if (selecting) R.drawable.ic_close else R.drawable.ic_arrow_back)
@@ -535,15 +548,17 @@ class FileBrowserActivity : AppCompatActivity() {
         clearSelection()
     }
 
-    private fun paste() {
+    private fun canPaste() = !FileClipboard.isEmpty && FileClipboard.pcId == pcId && !atTop
+
+    /** Pastes the copied / cut items into [dest] (default: this folder). */
+    private fun paste(dest: String = current) {
         val clip = FileClipboard
-        if (clip.cut && clip.allIn(current)) {
+        if (clip.cut && clip.allIn(dest)) {
             Toast.makeText(this, R.string.files_clip_same_folder, Toast.LENGTH_SHORT).show()
             return
         }
         val paths = clip.paths
         val cut = clip.cut
-        val dest = current
         Toast.makeText(this, R.string.files_pasting, Toast.LENGTH_SHORT).show()
         runOp({ api.fileOp(if (cut) "move" else "copy", paths, dest = dest) }) { r ->
             if (cut) FileClipboard.clear() // moved: the old paths are gone (a copy can be pasted again, as in Explorer)
@@ -576,9 +591,51 @@ class FileBrowserActivity : AppCompatActivity() {
     }
 
     private fun newFolder() {
+        val dir = current
         askName(R.string.files_new_folder, getString(R.string.files_new_folder), selectStem = false) { name ->
-            runOp({ api.fileOp("mkdir", emptyList(), dest = current, name = name) }) { null }
+            runOp({ api.fileOp("mkdir", emptyList(), dest = dir, name = name) }) { null }
         }
+    }
+
+    /** An empty file in this folder (an empty upload: an existing name is refused, not overwritten). */
+    private fun newFile() {
+        val dir = current
+        askName(R.string.files_new_file, getString(R.string.files_new_file_default), selectStem = true) { name ->
+            runOp({
+                try {
+                    api.upload(dir, name, ByteArray(0).toRequestBody(null), overwrite = false)
+                    FileOpResult(1, listOf(PcPath.child(dir, name)), emptyList())
+                } catch (e: ApiException) {
+                    if (e.code != 409) throw e
+                    FileOpResult(0, emptyList(), listOf(getString(R.string.files_exists, name)))
+                }
+            }) { getString(R.string.files_created, name) }
+        }
+    }
+
+    /** A copy next to the original ("이름 - 복사본"; the host picks a free name). */
+    private fun duplicate(e: FileEntry) {
+        val dir = current
+        runOp({ api.fileOp("copy", listOf(PcPath.child(dir, e.name)), dest = dir) }) { getString(R.string.files_duplicated, e.name) }
+    }
+
+    private fun details(e: FileEntry) {
+        val path = pathOf(e)
+        val modified = runCatching {
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.parse(e.modified))
+        }.getOrDefault(e.modified)
+        val lines = buildList {
+            add(getString(R.string.files_detail_kind, getString(if (e.dir) R.string.files_kind_folder else R.string.files_kind_file)))
+            if (!e.dir) add(getString(R.string.files_detail_size, FilePreview.humanSize(e.size), e.size))
+            if (modified.isNotEmpty()) add(getString(R.string.files_detail_modified, modified))
+            add(getString(R.string.files_detail_path, path))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(e.name)
+            .setMessage(lines.joinToString(NL))
+            .setPositiveButton(R.string.confirm, null)
+            .setNeutralButton(R.string.files_copy_path) { _, _ -> copy(path) }
+            .show()
     }
 
     /** Name dialog; [selectStem] selects the name without its extension (renaming a file). */
@@ -812,6 +869,8 @@ class FileBrowserActivity : AppCompatActivity() {
         private const val MENU_MORE = 11
         private const val MENU_SELECT_ALL = 12
         private const val MENU_DOWNLOAD = 13
+        private const val MENU_NEW_FILE = 14
+        private const val NL = "\n"
         private const val EXTRA_PC = "pc"
         const val RESULT_PATH = "path"
         const val RESULT_AGENT = "agent"
