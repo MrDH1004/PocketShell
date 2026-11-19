@@ -179,6 +179,10 @@ class ApiClient(
         request("POST", "/api/sessions/$id/input", JSONObject().put("text", text).put("enter", enter))
     }
 
+    /** `GET /api/system` (host ≥ 0.2.105; older hosts answer 404): CPU / GPU / RAM. */
+    suspend fun pcLoad(): com.neststudio.pocketshell.core.PcLoad =
+        com.neststudio.pocketshell.core.PcLoad.parse(request("GET", "/api/system"))
+
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
 
     /** `GET /api/drives`: where the PC browser starts (host ≥ 0.2.73; older hosts answer 404). */

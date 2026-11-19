@@ -25,6 +25,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.neststudio.pocketshell.core.PcLoad
+import kotlin.math.roundToInt
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -60,6 +62,8 @@ class SessionListActivity : AppCompatActivity() {
     private val adapter = SessionAdapter(::openSession, ::showSessionActions)
     private val appUpdate = AppUpdateController(this)
     private var autoRefresh: kotlinx.coroutines.Job? = null
+    private var loadRefresh: kotlinx.coroutines.Job? = null
+    private lateinit var pcLoad: View
     private var loading = false
 
     /** This PC shared one session with this phone: only that session, nothing of the owner's (no new sessions, files). */
@@ -106,11 +110,15 @@ class SessionListActivity : AppCompatActivity() {
             .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 1, R.string.update_check)
+        toolbar.menu.add(0, MENU_PC_LOAD, 2, R.string.pc_load_menu).apply {
+            isCheckable = true
+            isChecked = UiPrefs(this@SessionListActivity).pcLoad
+        }
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
         toolbar.menu.add(0, MENU_UNPAIR, 4, R.string.unpair)
         if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
-        if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT).forEach { toolbar.menu.removeItem(it) }
+        if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT, MENU_PC_LOAD).forEach { toolbar.menu.removeItem(it) }
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_PC_BROWSER -> pcBrowser.launch(FileBrowserActivity.pcIntent(this, app.pairing()?.displayName.orEmpty()))
@@ -118,6 +126,12 @@ class SessionListActivity : AppCompatActivity() {
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
+                MENU_PC_LOAD -> {
+                    val on = !UiPrefs(this).pcLoad
+                    UiPrefs(this).pcLoad = on
+                    it.isChecked = on
+                    startPcLoad()
+                }
                 MENU_VIEW_SETTINGS -> ViewSettingsDialog.show(this)
                 MENU_UNPAIR -> confirmUnpair()
                 MENU_DEBUG_UPDATE_URL -> appUpdate.showDebugUrlDialog()
@@ -153,6 +167,10 @@ class SessionListActivity : AppCompatActivity() {
         hostUpdateText = findViewById(R.id.hostUpdateText)
         hostUpdateApply = findViewById(R.id.hostUpdateApply)
         hostUpdateApply.setOnClickListener { confirmHostUpdate() }
+        pcLoad = findViewById(R.id.pcLoad)
+        listOf(R.id.loadCpu to "CPU", R.id.loadGpu to "GPU", R.id.loadRam to "RAM").forEach { (id, name) ->
+            pcLoad.findViewById<View>(id).findViewById<TextView>(R.id.loadName).text = name
+        }
     }
 
     override fun onResume() {
@@ -161,6 +179,7 @@ class SessionListActivity : AppCompatActivity() {
         if ((application as PkshellApp).pairing() != null) refresh()
         // A PC paired just now lands here without passing the PC list: make sure its notifications are being watched.
         com.neststudio.pocketshell.notify.AgentWatchService.apply(this)
+        startPcLoad()
         // Agent states (작업 중 / 입력 대기) change on their own: keep the cards current while the list is shown.
         autoRefresh = lifecycleScope.launch {
             while (true) {
@@ -174,6 +193,57 @@ class SessionListActivity : AppCompatActivity() {
         super.onPause()
         autoRefresh?.cancel()
         autoRefresh = null
+        loadRefresh?.cancel()
+        loadRefresh = null
+    }
+
+    /** PC load above the sessions, every [LOAD_REFRESH_MS] while shown. Off (⋮ menu), a guest or an older host: hidden. */
+    private fun startPcLoad() {
+        loadRefresh?.cancel()
+        loadRefresh = null
+        val api = (application as PkshellApp).api()
+        if (api == null || guest != null || !UiPrefs(this).pcLoad) {
+            showPcLoad(null)
+            return
+        }
+        loadRefresh = lifecycleScope.launch {
+            while (true) {
+                try {
+                    showPcLoad(api.pcLoad())
+                } catch (e: ApiException) {
+                    showPcLoad(null)
+                    if (e.code == 404 || e.code == 403) return@launch // host before 0.2.105, or not allowed
+                } catch (e: IOException) {
+                    // PC unreachable for a moment: keep the last values
+                } catch (e: org.json.JSONException) {
+                    showPcLoad(null)
+                    return@launch
+                }
+                delay(LOAD_REFRESH_MS)
+            }
+        }
+    }
+
+    private fun showPcLoad(l: PcLoad?) {
+        val visible = l != null
+        if ((pcLoad.visibility == View.VISIBLE) != visible) {
+            pcLoad.visibility = if (visible) View.VISIBLE else View.GONE
+            adapter.tightTop = visible
+        }
+        if (l == null) return
+        fun meter(id: Int, p: Double?, desc: String) {
+            val v = pcLoad.findViewById<View>(id)
+            v.findViewById<TextView>(R.id.loadValue).text = PcLoad.percentText(p)
+            val bar = v.findViewById<com.google.android.material.progressindicator.LinearProgressIndicator>(R.id.loadBar)
+            bar.setProgressCompat((p ?: 0.0).roundToInt(), false)
+            val high = (p ?: 0.0) >= LOAD_HIGH
+            bar.setIndicatorColor(androidx.core.content.ContextCompat.getColor(this, if (high) R.color.attention else R.color.accent))
+            v.contentDescription = desc
+        }
+        meter(R.id.loadCpu, l.cpu, "CPU " + PcLoad.percentText(l.cpu))
+        meter(R.id.loadGpu, l.gpu, "GPU " + PcLoad.percentText(l.gpu))
+        meter(R.id.loadRam, l.memPercent,
+            getString(R.string.pc_load_ram_desc, PcLoad.percentText(l.memPercent), PcLoad.gbText(l.memUsed, l.memTotal)))
     }
 
     /** [silent]: the periodic refresh. No spinner, no host update check, and a failure leaves the list as it is. */
@@ -779,6 +849,10 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_WEB = 8
         const val HOST_RESTART_WAIT_MS = 5000L
         const val AUTO_REFRESH_MS = 5000L
+        const val MENU_PC_LOAD = 9
+        const val LOAD_REFRESH_MS = 2000L
+        /** A meter at or above this percent turns amber. */
+        const val LOAD_HIGH = 85.0
     }
 }
 
@@ -799,6 +873,14 @@ private class SessionAdapter(
 
     /** A shared session on someone else's PC: no per-row owner actions (new terminal, web, long press). */
     var guest = false
+
+    /** The PC load bar sits above the list: the first section title drops most of its top gap. */
+    var tightTop = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (rows.isNotEmpty()) notifyItemChanged(0)
+        }
 
     fun submit(s: SessionSections, running: String, external: String, recent: String) {
         val out = ArrayList<Row>()
@@ -840,7 +922,11 @@ private class SessionAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
-            is Row.Header -> (holder.itemView as TextView).text = row.title
+            is Row.Header -> (holder.itemView as TextView).apply {
+                text = row.title
+                val d = resources.displayMetrics.density
+                setPaddingRelative(paddingStart, ((if (position == 0 && tightTop) 12 else 24) * d).toInt(), paddingEnd, paddingBottom)
+            }
             is Row.Item -> {
                 val s = row.session
                 val v = holder.itemView

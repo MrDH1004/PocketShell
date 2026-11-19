@@ -39,6 +39,8 @@
     <string name="voice_prompt">말하면 터미널에 입력됩니다 (Enter는 직접)</string>
     <string name="voice_unavailable">이 기기에서 음성 인식을 사용할 수 없습니다. Google 앱(음성 입력)을 설치하거나 켜세요.</string>
     <string name="voice_not_connected">세션에 연결된 뒤 다시 시도하세요.</string>
+    <string name="pc_load_menu">PC 사용량 표시 (CPU·GPU·RAM)</string>
+    <string name="pc_load_ram_desc">RAM %1$s, %2$s 사용</string>
     <string name="recent_limit_menu">최근 목록 개수</string>
     <string name="recent_limit_off">표시 안 함</string>
     <string name="recent_limit_all">전체</string>

@@ -122,8 +122,14 @@ class UiPrefs(context: Context) {
         get() = prefs.getBoolean(K_QUICK_REPLIES, true)
         set(value) = prefs.edit().putBoolean(K_QUICK_REPLIES, value).apply()
 
+    /** Session list: PC load (CPU / GPU / RAM) above the sessions (⋮ menu toggle, on by default). */
+    var pcLoad: Boolean
+        get() = prefs.getBoolean(K_PC_LOAD, true)
+        set(value) = prefs.edit().putBoolean(K_PC_LOAD, value).apply()
+
     companion object {
         private const val PREFS = "ui"
+        private const val K_PC_LOAD = "pc_load"
         private const val K_QUICK_REPLIES = "quick_replies"
         private const val K_MUTED = "muted_sessions"
         private const val MUTED_MAX = 200

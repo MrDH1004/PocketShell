@@ -106,6 +106,7 @@ public sealed class HostServer : IDisposable
     private readonly ShareInvites _shareInvites = new();
     private WtTabLauncher _wt = null!;
     private UpdateService _update = null!;
+    private readonly Pkshell.Core.Native.SystemStats _stats = new();
     private DiscoveryResponder? _discovery;
     private X509Certificate2 _cert = null!;
     private string _fp = "";
@@ -274,6 +275,7 @@ public sealed class HostServer : IDisposable
         // Null when RunAsync never got far enough to create them.
         _recent?.Flush();
         _update?.Dispose();
+        _stats.Dispose();
         _externals?.Dispose();
         _sessions?.Dispose();
     }
@@ -842,6 +844,13 @@ public sealed class HostServer : IDisposable
         });
 
         app.MapGet("/api/update", () => Json(_update.Status));
+
+        // PC load for the session list (host >= 0.2.105): CPU %, GPU % (busiest engine, null without GPU counters), RAM bytes.
+        app.MapGet("/api/system", async () =>
+        {
+            var s = await _stats.ReadAsync();
+            return Json(new { cpu = s.Cpu, gpu = s.Gpu, memUsed = s.MemUsed, memTotal = s.MemTotal });
+        });
         app.MapPost("/api/update/check", async () => Json(await _update.CheckAsync()));
         app.MapPost("/api/update/apply", async (HttpContext ctx) =>
         {
