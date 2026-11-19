@@ -26,7 +26,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.neststudio.pocketshell.core.PcLoad
-import kotlin.math.roundToInt
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -233,11 +232,10 @@ class SessionListActivity : AppCompatActivity() {
         if (l == null) return
         fun meter(id: Int, p: Double?, desc: String) {
             val v = pcLoad.findViewById<View>(id)
-            v.findViewById<TextView>(R.id.loadValue).text = PcLoad.percentText(p)
-            val bar = v.findViewById<com.google.android.material.progressindicator.LinearProgressIndicator>(R.id.loadBar)
-            bar.setProgressCompat((p ?: 0.0).roundToInt(), false)
+            val value = v.findViewById<TextView>(R.id.loadValue)
+            value.text = PcLoad.percentText(p)
             val high = (p ?: 0.0) >= LOAD_HIGH
-            bar.setIndicatorColor(androidx.core.content.ContextCompat.getColor(this, if (high) R.color.attention else R.color.accent))
+            value.setTextColor(androidx.core.content.ContextCompat.getColor(this, if (high) R.color.attention else R.color.text_primary))
             v.contentDescription = desc
         }
         meter(R.id.loadCpu, l.cpu, "CPU " + PcLoad.percentText(l.cpu))
@@ -851,7 +849,7 @@ class SessionListActivity : AppCompatActivity() {
         const val AUTO_REFRESH_MS = 5000L
         const val MENU_PC_LOAD = 9
         const val LOAD_REFRESH_MS = 2000L
-        /** A meter at or above this percent turns amber. */
+        /** A value at or above this percent turns amber. */
         const val LOAD_HIGH = 85.0
     }
 }
@@ -925,7 +923,7 @@ private class SessionAdapter(
             is Row.Header -> (holder.itemView as TextView).apply {
                 text = row.title
                 val d = resources.displayMetrics.density
-                setPaddingRelative(paddingStart, ((if (position == 0 && tightTop) 12 else 24) * d).toInt(), paddingEnd, paddingBottom)
+                setPaddingRelative(paddingStart, ((if (position == 0 && tightTop) 8 else 24) * d).toInt(), paddingEnd, paddingBottom)
             }
             is Row.Item -> {
                 val s = row.session

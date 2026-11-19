@@ -56,7 +56,7 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- PC load (CPU / GPU / RAM), /api/system every 2 s; ⋮ menu toggle -->
+        <!-- PC load (CPU / GPU / RAM) as text, /api/system every 2 s; ⋮ menu toggle -->
         <LinearLayout
             android:id="@+id/pcLoad"
             android:layout_width="match_parent"
@@ -74,18 +74,16 @@
             <include
                 android:id="@+id/loadGpu"
                 layout="@layout/view_pc_load_item"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_weight="1" />
+                android:layout_marginStart="20dp" />
 
             <include
                 android:id="@+id/loadRam"
                 layout="@layout/view_pc_load_item"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_weight="1" />
+                android:layout_marginStart="20dp" />
         </LinearLayout>
 
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
