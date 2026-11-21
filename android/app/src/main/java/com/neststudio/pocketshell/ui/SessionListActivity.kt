@@ -118,9 +118,10 @@ class SessionListActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_TERMINAL_HISTORY, 2, R.string.terminal_history_menu)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
         toolbar.menu.add(0, MENU_PATCH_NOTES, 4, R.string.patch_notes_menu)
+        toolbar.menu.add(0, MENU_FEEDBACK, 4, R.string.feedback_menu)
         toolbar.menu.add(0, MENU_UNPAIR, 4, R.string.unpair)
         if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
-        if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT, MENU_PC_LOAD).forEach { toolbar.menu.removeItem(it) }
+        if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT, MENU_PC_LOAD, MENU_FEEDBACK).forEach { toolbar.menu.removeItem(it) }
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_PC_BROWSER -> pcBrowser.launch(FileBrowserActivity.pcIntent(this, app.pairing()?.displayName.orEmpty()))
@@ -130,6 +131,7 @@ class SessionListActivity : AppCompatActivity() {
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
                 MENU_TERMINAL_HISTORY -> showTerminalHistoryDialog()
                 MENU_PATCH_NOTES -> PatchNotesController.showAll(this)
+                MENU_FEEDBACK -> FeedbackController.show(this)
                 MENU_PC_LOAD -> {
                     val on = !UiPrefs(this).pcLoad
                     UiPrefs(this).pcLoad = on
@@ -758,6 +760,7 @@ class SessionListActivity : AppCompatActivity() {
         const val MENU_PC_LOAD = 9
         const val MENU_TERMINAL_HISTORY = 10
         const val MENU_PATCH_NOTES = 11
+        const val MENU_FEEDBACK = 12
         const val LOAD_REFRESH_MS = 2000L
         /** A value at or above this percent turns amber. */
         const val LOAD_HIGH = 85.0

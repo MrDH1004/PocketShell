@@ -70,6 +70,7 @@ class PcListActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 2, R.string.update_check)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
         toolbar.menu.add(0, MENU_PATCH_NOTES, 4, R.string.patch_notes_menu)
+        toolbar.menu.add(0, MENU_FEEDBACK, 4, R.string.feedback_menu)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_NOTIFY -> toggleNotifications()
@@ -79,6 +80,7 @@ class PcListActivity : AppCompatActivity() {
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_VIEW_SETTINGS -> ViewSettingsDialog.show(this)
                 MENU_PATCH_NOTES -> PatchNotesController.showAll(this)
+                MENU_FEEDBACK -> FeedbackController.show(this)
             }
             true
         }
@@ -331,6 +333,7 @@ class PcListActivity : AppCompatActivity() {
         private const val MENU_NOTIFY = 5
         private const val MENU_QUIET = 6
         private const val MENU_PATCH_NOTES = 7
+        private const val MENU_FEEDBACK = 8
         private const val PROBE_TIMEOUT_MS = 8000L
         private const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"

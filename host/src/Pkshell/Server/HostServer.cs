@@ -1113,6 +1113,28 @@ public sealed class HostServer : IDisposable
         });
 
         // Phone app update over the LAN (DESIGN.md §11.4): the APK shipped next to psh.exe in the release zip.
+        // 의견 보내기: one JSON file per report, in the shared OneDrive apppatch folder when this PC syncs it.
+        app.MapPost("/api/feedback", async (HttpContext ctx) =>
+        {
+            var auth = AuthOf(ctx);
+            if (auth.IsGuest) return Error(403, "공유받은 세션에서는 보낼 수 없습니다");
+            var req = await ReadBody<FeedbackRequest>(ctx) ?? new FeedbackRequest();
+            var invalid = Feedback.Validate(req);
+            if (invalid != null) return Error(400, invalid);
+            var deviceName = auth.DeviceId == null ? null : _auth.Devices.List().FirstOrDefault(d => d.Id == auth.DeviceId)?.Name;
+            try
+            {
+                var (file, shared) = Feedback.Save(_home, req, Version, auth.DeviceId, deviceName);
+                Log.Info($"feedback: {req.Category} from {deviceName ?? auth.DeviceId ?? "local"} -> {file}");
+                return Json(new { saved = true, shared, file = Path.GetFileName(file) });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Error($"feedback save failed: {ex.Message}");
+                return Error(500, "의견을 저장하지 못했습니다: " + ex.Message);
+            }
+        });
+
         app.MapGet("/api/app/android", () =>
         {
             var apk = Pkshell.Core.Update.AndroidApk.Find(AppContext.BaseDirectory);
