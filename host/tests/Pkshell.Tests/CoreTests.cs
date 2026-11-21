@@ -112,6 +112,15 @@ public class ScrollbackTests
     }
 
     [Fact]
+    public void TailKeepsWholeLinesOrEverything()
+    {
+        var data = Encoding.ASCII.GetBytes("aaaa\nbbbb\ncccc\ndddd\n");
+        Assert.Equal("cccc\ndddd\n", Encoding.ASCII.GetString(ScrollbackFile.Tail(data, 12)));
+        Assert.Same(data, ScrollbackFile.Tail(data, 0));   // 0 = all (option 전체, or an older phone)
+        Assert.Same(data, ScrollbackFile.Tail(data, 100)); // already small enough
+    }
+
+    [Fact]
     public void NoTrimWhenSmall()
     {
         Assert.Equal(0, ScrollbackFile.FindTrimOffset(new byte[10], 10));

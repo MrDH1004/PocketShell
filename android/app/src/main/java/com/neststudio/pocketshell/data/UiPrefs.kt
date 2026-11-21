@@ -127,8 +127,20 @@ class UiPrefs(context: Context) {
         get() = prefs.getBoolean(K_PC_LOAD, true)
         set(value) = prefs.edit().putBoolean(K_PC_LOAD, value).apply()
 
+    /** How much past output a session sends when it opens (sessions ⋮ menu 터미널 기록 양). */
+    var terminalHistory: com.neststudio.pocketshell.core.TerminalHistory
+        get() = com.neststudio.pocketshell.core.TerminalHistory.of(prefs.getString(K_TERMINAL_HISTORY, null))
+        set(value) = prefs.edit().putString(K_TERMINAL_HISTORY, value.id).apply()
+
+    /** App version whose patch notes were shown last (empty until the first time). */
+    var patchNotesSeen: String
+        get() = prefs.getString(K_PATCH_NOTES_SEEN, null).orEmpty()
+        set(value) = prefs.edit().putString(K_PATCH_NOTES_SEEN, value).apply()
+
     companion object {
         private const val PREFS = "ui"
+        private const val K_TERMINAL_HISTORY = "terminal_history"
+        private const val K_PATCH_NOTES_SEEN = "patch_notes_seen"
         private const val K_PC_LOAD = "pc_load"
         private const val K_QUICK_REPLIES = "quick_replies"
         private const val K_MUTED = "muted_sessions"

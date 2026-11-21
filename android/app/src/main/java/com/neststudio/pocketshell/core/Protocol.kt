@@ -220,10 +220,15 @@ object ClientProtocol {
      * `wss://host:port/ws/sessions/{id}?client=android&cols=N&rows=N&openPcTab=1`.
      * The token is sent only in the `Authorization: Bearer` header, never in the URL (keeps it out of logs).
      */
-    fun webSocketUrl(host: String, port: Int, sessionId: String, cols: Int, rows: Int, openPcTab: Boolean): String {
+    /** [history]: how much past output to replay (hosts before 0.2.109 ignore it and send everything). */
+    fun webSocketUrl(
+        host: String, port: Int, sessionId: String, cols: Int, rows: Int, openPcTab: Boolean,
+        history: TerminalHistory = TerminalHistory.ALL,
+    ): String {
         val h = if (host.contains(':') && !host.startsWith("[")) "[$host]" else host
+        val limit = if (history.replayKb > 0) "&replayKb=${history.replayKb}&historyLines=${history.historyLines}" else ""
         return "wss://$h:$port/ws/sessions/${urlEncode(sessionId)}" +
-            "?client=android&cols=$cols&rows=$rows&openPcTab=${if (openPcTab) 1 else 0}"
+            "?client=android&cols=$cols&rows=$rows&openPcTab=${if (openPcTab) 1 else 0}" + limit
     }
 
     /** `wss://host:port/ws/tunnel?host=T&port=P` (host ≥ 0.2.81): a TCP connection from the PC to T:P. */

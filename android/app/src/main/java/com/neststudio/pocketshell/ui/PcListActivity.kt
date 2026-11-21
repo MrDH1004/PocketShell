@@ -69,6 +69,7 @@ class PcListActivity : AppCompatActivity() {
         toolbar.menu.add(0, MENU_INSTALL, 1, R.string.pcs_install_menu)
         toolbar.menu.add(0, MENU_CHECK_UPDATE, 2, R.string.update_check)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
+        toolbar.menu.add(0, MENU_PATCH_NOTES, 4, R.string.patch_notes_menu)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
                 MENU_NOTIFY -> toggleNotifications()
@@ -77,6 +78,7 @@ class PcListActivity : AppCompatActivity() {
                 MENU_INSTALL -> showInstallGuide()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_VIEW_SETTINGS -> ViewSettingsDialog.show(this)
+                MENU_PATCH_NOTES -> PatchNotesController.showAll(this)
             }
             true
         }
@@ -101,6 +103,7 @@ class PcListActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         appUpdate.autoCheck() // at most every 15 minutes (UpdatePolicy); a newer version shows the floating update pill
+        PatchNotesController.showOnceAfterUpdate(this)
         refresh()
         ensureNotifications()
     }
@@ -327,6 +330,7 @@ class PcListActivity : AppCompatActivity() {
         private const val MENU_VIEW_SETTINGS = 4
         private const val MENU_NOTIFY = 5
         private const val MENU_QUIET = 6
+        private const val MENU_PATCH_NOTES = 7
         private const val PROBE_TIMEOUT_MS = 8000L
         private const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"

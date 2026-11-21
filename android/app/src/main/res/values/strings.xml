@@ -42,6 +42,15 @@
     <string name="pc_load_menu">PC 사용량 표시</string>
     <string name="pc_load_ram_desc">RAM %1$s, %2$s 사용</string>
     <string name="recent_limit_menu">최근 목록 개수</string>
+    <string name="terminal_history_menu">터미널 기록 양</string>
+    <string name="terminal_history_small">적게 (빠름, 최근 256KB · 500줄)</string>
+    <string name="terminal_history_normal">보통 (최근 1MB · 1500줄)</string>
+    <string name="terminal_history_large">많이 (최근 4MB · 3000줄)</string>
+    <string name="terminal_history_all">전체 (느림)</string>
+    <string name="patch_notes_menu">패치내역</string>
+    <string name="patch_notes_updated">v%1$s 업데이트 내용</string>
+    <string name="patch_notes_failed">패치내역을 불러오지 못했습니다. 인터넷 연결을 확인하세요.</string>
+    <string name="patch_notes_empty">패치내역이 없습니다.</string>
     <string name="recent_limit_off">표시 안 함</string>
     <string name="recent_limit_all">전체</string>
     <string name="recent_limit_n">%1$d개</string>

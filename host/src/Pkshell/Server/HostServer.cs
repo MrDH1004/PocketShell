@@ -1470,6 +1470,10 @@ public sealed class HostServer : IDisposable
     /// <summary>Positive query dimension clamped to SizePolicy bounds; 0 when absent/invalid (= size not reported).</summary>
     private static int QueryDim(HttpContext ctx, string key) => int.TryParse(ctx.Request.Query[key].ToString(), out var v) && v > 0 ? SizePolicy.Clamp(v) : 0;
 
+    /// <summary>Non-negative query count (capped at 1,000,000); 0 when absent or invalid.</summary>
+    private static int QueryCount(HttpContext ctx, string key) =>
+        int.TryParse(ctx.Request.Query[key].ToString(), out var v) && v > 0 ? Math.Min(v, 1_000_000) : 0;
+
     private async Task HandleWs(HttpContext ctx, string id)
     {
         if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
@@ -1477,6 +1481,8 @@ public sealed class HostServer : IDisposable
         if (clientType is not ("android" or "cli" or "qa")) clientType = "qa";
         int cols = QueryDim(ctx, "cols"), rows = QueryDim(ctx, "rows");
         bool openPcTab = ctx.Request.Query["openPcTab"].ToString() != "0";
+        // Phone option (0.2.109): how much past output to send on connect; absent or 0 = all of it.
+        int replayKb = QueryCount(ctx, "replayKb"), historyLines = QueryCount(ctx, "historyLines");
 
         HostSession? host = null;
         ExternalBridge? bridge = null;
@@ -1510,11 +1516,11 @@ public sealed class HostServer : IDisposable
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
         try
         {
-            if (host != null) await RunHostWs(conn, host, clientType, cols, rows, openPcTab, cts);
+            if (host != null) await RunHostWs(conn, host, clientType, cols, rows, openPcTab, replayKb, cts);
             else
             {
                 bridge = _externals.Bridge(pid, extInfo!);
-                await RunExternalWs(conn, bridge, extInfo!, clientType, cols, rows, cts);
+                await RunExternalWs(conn, bridge, extInfo!, clientType, cols, rows, historyLines, cts);
             }
         }
         catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or IOException)
@@ -1614,7 +1620,7 @@ public sealed class HostServer : IDisposable
         }
     }
 
-    private async Task RunHostWs(WsConn conn, HostSession s, string clientType, int cols, int rows, bool openPcTab, CancellationTokenSource cts)
+    private async Task RunHostWs(WsConn conn, HostSession s, string clientType, int cols, int rows, bool openPcTab, int replayKb, CancellationTokenSource cts)
     {
         var a = s.Attach(clientType, cols, rows);
         Log.Info($"ws attach {s.Id}: client={clientType}/{a.Client.Id} {cols}x{rows}");
@@ -1625,7 +1631,7 @@ public sealed class HostServer : IDisposable
                 _wt.MaybeOpen(s.Id, a.Hello.Title, s.HasClientOfType("cli"));
 
             await conn.SendTextAsync(ControlMessages.Hello(a.Hello), cts.Token);
-            await conn.SendChunkedAsync(a.Replay, cts.Token);
+            await conn.SendChunkedAsync(ScrollbackFile.Tail(a.Replay, replayKb * 1024L), cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var (c, r) = s.CurrentSize;
             await conn.SendTextAsync(ControlMessages.Size(c, r), cts.Token);
@@ -1645,7 +1651,7 @@ public sealed class HostServer : IDisposable
         }
     }
 
-    private static async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, CancellationTokenSource cts)
+    private static async Task RunExternalWs(WsConn conn, ExternalBridge b, SessionDto info, string clientType, int cols, int rows, int historyLines, CancellationTokenSource cts)
     {
         var a = b.Attach(clientType, cols, rows);
         try
@@ -1654,7 +1660,8 @@ public sealed class HostServer : IDisposable
             hello.Clients = b.Clients();
             await conn.SendTextAsync(ControlMessages.Hello(hello), cts.Token);
             if (a.Size is var (sc, sr)) await conn.SendTextAsync(ControlMessages.Size(sc, sr), cts.Token);
-            if (a.History.Count > 0) await conn.SendTextAsync(ControlMessages.History(a.History), cts.Token);
+            var history = historyLines > 0 && a.History.Count > historyLines ? a.History.GetRange(a.History.Count - historyLines, historyLines) : a.History;
+            if (history.Count > 0) await conn.SendTextAsync(ControlMessages.History(history), cts.Token);
             if (a.Replay.Length > 0) await conn.SendChunkedAsync(a.Replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var sender = PumpAsync(conn, a.Subscriber, cts.Token);

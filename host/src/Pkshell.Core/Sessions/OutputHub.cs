@@ -71,6 +71,16 @@ public sealed class ScrollbackFile : IDisposable
         return idx < 0 ? start : start + idx + 1;
     }
 
+    /// <summary>
+    /// The last <paramref name="maxBytes"/> of <paramref name="data"/>, starting at a line (a client asked for a
+    /// shorter replay so the session opens faster). <paramref name="maxBytes"/> of 0 or less keeps everything.
+    /// </summary>
+    public static byte[] Tail(byte[] data, long maxBytes)
+    {
+        if (maxBytes <= 0 || data.Length <= maxBytes) return data;
+        return data[FindTrimOffset(data, maxBytes)..];
+    }
+
     public void Dispose() => _fs.Dispose();
 }
 

@@ -55,6 +55,9 @@ class TerminalConnection(
 
     var sessionId: String = ""
 
+    /** Past output the PC replays on each (re)connect; read at every attempt so a changed option applies. */
+    var history: com.neststudio.pocketshell.core.TerminalHistory = com.neststudio.pocketshell.core.TerminalHistory.DEFAULT
+
     /** False after the remote shell exited: a dropped socket is then not re-opened. */
     var autoReconnect: Boolean = true
 
@@ -123,7 +126,7 @@ class TerminalConnection(
         val gen = ++generation
         val host = hosts[index]
         val (cols, rows) = sizeProvider()
-        val url = ClientProtocol.webSocketUrl(host, port, sessionId, cols, rows, openPcTab = true)
+        val url = ClientProtocol.webSocketUrl(host, port, sessionId, cols, rows, openPcTab = true, history = history)
         val request = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
             private var opened = false

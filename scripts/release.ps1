@@ -245,7 +245,28 @@ Invoke-Checked 'git' @('-C', $Root, 'push')
 Invoke-Checked 'git' @('-C', $Root, 'push', 'origin', "v$Version")
 
 Step "gh release create v$Version"
-$ghArgs = @('release', 'create', "v$Version", $setupOut, $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version", '--generate-notes')
+$ghArgs = @('release', 'create', "v$Version", $setupOut, $hostZip, $apkOut, $sumsPath, '--title', "PocketShell v$Version")
+# Release notes: this version's section of PATCHNOTES.md (what the phone's update dialog shows); else GitHub's list.
+$notesSection = $null
+$patchNotes = Join-Path $Root 'PATCHNOTES.md'
+if (Test-Path -LiteralPath $patchNotes) {
+    $lines = [System.IO.File]::ReadAllLines($patchNotes, [System.Text.Encoding]::UTF8)
+    $start = -1
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+        if ($start -lt 0) {
+            if ($lines[$i] -match ('^##\s+v?' + [regex]::Escape($Version) + '(\s|$)')) { $start = $i + 1 }
+        } elseif ($lines[$i] -match '^#') { break }
+        elseif ($lines[$i].Trim()) { if (-not $notesSection) { $notesSection = @() }; $notesSection += $lines[$i] }
+    }
+}
+if ($notesSection) {
+    $notesFile = Join-Path $OutDir "notes-v$Version.md"
+    [System.IO.File]::WriteAllText($notesFile, ($notesSection -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    $ghArgs += @('--notes-file', $notesFile)
+} else {
+    Write-Warning "PATCHNOTES.md has no section for v$Version; using GitHub's generated notes"
+    $ghArgs += '--generate-notes'
+}
 if ($IsPrerelease) { $ghArgs += '--prerelease' }
 Invoke-Checked 'gh' $ghArgs
 

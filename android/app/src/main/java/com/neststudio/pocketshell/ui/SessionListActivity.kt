@@ -115,7 +115,9 @@ class SessionListActivity : AppCompatActivity() {
             isChecked = UiPrefs(this@SessionListActivity).pcLoad
         }
         toolbar.menu.add(0, MENU_RECENT_LIMIT, 2, R.string.recent_limit_menu)
+        toolbar.menu.add(0, MENU_TERMINAL_HISTORY, 2, R.string.terminal_history_menu)
         toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
+        toolbar.menu.add(0, MENU_PATCH_NOTES, 4, R.string.patch_notes_menu)
         toolbar.menu.add(0, MENU_UNPAIR, 4, R.string.unpair)
         if (BuildConfig.DEBUG) toolbar.menu.add(0, MENU_DEBUG_UPDATE_URL, 5, R.string.update_debug_url)
         if (guest != null) listOf(MENU_PC_BROWSER, MENU_WEB, MENU_RECENT_LIMIT, MENU_PC_LOAD).forEach { toolbar.menu.removeItem(it) }
@@ -126,6 +128,8 @@ class SessionListActivity : AppCompatActivity() {
                 MENU_REFRESH -> refresh()
                 MENU_CHECK_UPDATE -> appUpdate.manualCheck()
                 MENU_RECENT_LIMIT -> showRecentLimitDialog()
+                MENU_TERMINAL_HISTORY -> showTerminalHistoryDialog()
+                MENU_PATCH_NOTES -> PatchNotesController.showAll(this)
                 MENU_PC_LOAD -> {
                     val on = !UiPrefs(this).pcLoad
                     UiPrefs(this).pcLoad = on
@@ -706,6 +710,27 @@ class SessionListActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showTerminalHistoryDialog() {
+        val prefs = UiPrefs(this)
+        val choices = com.neststudio.pocketshell.core.TerminalHistory.entries
+        val labels = choices.map {
+            when (it) {
+                com.neststudio.pocketshell.core.TerminalHistory.SMALL -> getString(R.string.terminal_history_small)
+                com.neststudio.pocketshell.core.TerminalHistory.NORMAL -> getString(R.string.terminal_history_normal)
+                com.neststudio.pocketshell.core.TerminalHistory.LARGE -> getString(R.string.terminal_history_large)
+                com.neststudio.pocketshell.core.TerminalHistory.ALL -> getString(R.string.terminal_history_all)
+            }
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.terminal_history_menu)
+            .setSingleChoiceItems(labels, choices.indexOf(prefs.terminalHistory)) { dialog, which ->
+                prefs.terminalHistory = choices[which]
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun confirmUnpair() {
         AlertDialog.Builder(this)
             .setTitle(R.string.unpair)
@@ -731,6 +756,8 @@ class SessionListActivity : AppCompatActivity() {
         const val HOST_RESTART_WAIT_MS = 5000L
         const val AUTO_REFRESH_MS = 5000L
         const val MENU_PC_LOAD = 9
+        const val MENU_TERMINAL_HISTORY = 10
+        const val MENU_PATCH_NOTES = 11
         const val LOAD_REFRESH_MS = 2000L
         /** A value at or above this percent turns amber. */
         const val LOAD_HIGH = 85.0
