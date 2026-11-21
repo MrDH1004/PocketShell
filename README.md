@@ -128,7 +128,7 @@ PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `ps
 - 상단 바: PC 이름 한 줄만('세션' 제목 없음).
 - 세션 목록 메뉴 **터미널 기록 양**: 세션에 들어갈 때 PC에서 받아 올 지난 출력 양. 적게(최근 256KB·PC 콘솔 500줄) / 보통(1MB·1500줄, 기본) / 많이(4MB·3000줄) / 전체. 출력이 많이 쌓인 세션도 빨리 열림. 다음 접속부터 적용, PC 호스트 0.2.109 이상(그 전 호스트는 항상 전체).
 - **패치내역**: 저장소의 `PATCHNOTES.md`를 GitHub에서 받아 옴. 업데이트 뒤 앱을 처음 열 때 새 버전 내용을 한 번 보여 주고, PC 목록·세션 목록 메뉴 **패치내역**에서 전체 확인. 릴리스(`scripts/release.ps1`)도 그 버전 구간을 GitHub 릴리스 노트로 씀(없으면 자동 생성 노트).
-- **의견 보내기** (버그 수정 · 개선 · 의견 · 문의): 폰 PC 목록·세션 목록 메뉴, PC 트레이 메뉴 **의견 보내기**. 한 건당 JSON 파일 하나(`<날짜시각>-<종류>-<id>.json`: 종류, 내용, 앱 버전, 기기, PC 이름, 호스트 버전)로 저장. 저장 위치: `PKSHELL_FEEDBACK_DIR` → `<PKSHELL_RELEASE_COPY_DIR>eedback` → `%USERPROFILE%\OneDrive*pppatch\PocketShelleedback` (있을 때) → 없으면 PC 데이터 폴더의 `feedback`. 폰은 연결된 PC 중 응답하는 PC로 보냄(`POST /api/feedback`).
+- **의견 보내기** (버그 수정 · 개선 · 의견 · 문의): 폰 PC 목록·세션 목록 메뉴, PC 트레이 메뉴 **의견 보내기**. 한 건당 JSON 파일 하나(`<날짜시각>-<종류>-<id>.json`: 종류, 내용, 앱 버전, 기기, PC 이름, 호스트 버전)로 저장. 저장 위치: `PKSHELL_FEEDBACK_DIR` → `<PKSHELL_RELEASE_COPY_DIR>\feedback` → `%USERPROFILE%\OneDrive*\apppatch\PocketShell\feedback` (있을 때) → 없으면 PC 데이터 폴더의 `feedback`. 폰은 연결된 PC 중 응답하는 PC로 보냄(`POST /api/feedback`).
 - 세션 이름은 프로젝트 폴더 이름(예: flowdesk)으로 표시. Claude Code·Codex가 창 제목을 대화 주제로 바꿔도 목록·터미널 상단은 폴더 이름.
 - 외부 항목을 길게 누름 → **터미널 띄우기**: 그 콘솔의 폴더에서 새 터미널 열기 (실행 중인 프로그램을 옮기지는 않음).
 - 상단 폴더 아이콘 **PC 탐색기**: "내 PC"(사용자 폴더·바탕 화면·문서·다운로드·프로젝트 폴더·드라이브)부터 PC 어디든 탐색. 폴더를 누르면 바로 들어감. 그 폴더에서 세션을 열려면 폴더를 길게 누름 → **여기서 열기** → 터미널 / Claude / GPT(Codex)(PC에 설치된 것만). 지금 폴더는 상단 아이콘(**여기서 열기**). 파일 미리보기·다운로드·업로드도 프로젝트 파일과 같음. PC 호스트 0.2.73 이상.
