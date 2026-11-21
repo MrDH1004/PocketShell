@@ -1623,7 +1623,8 @@ public sealed class HostServer : IDisposable
     private async Task RunHostWs(WsConn conn, HostSession s, string clientType, int cols, int rows, bool openPcTab, int replayKb, CancellationTokenSource cts)
     {
         var a = s.Attach(clientType, cols, rows);
-        Log.Info($"ws attach {s.Id}: client={clientType}/{a.Client.Id} {cols}x{rows}");
+        var replay = ScrollbackFile.Tail(a.Replay, replayKb * 1024L);
+        Log.Info($"ws attach {s.Id}: client={clientType}/{a.Client.Id} {cols}x{rows} replay {replay.Length}/{a.Replay.Length} B");
         try
         {
             if (clientType == "cli") _wt.ClearPending(s.Id);
@@ -1631,7 +1632,7 @@ public sealed class HostServer : IDisposable
                 _wt.MaybeOpen(s.Id, a.Hello.Title, s.HasClientOfType("cli"));
 
             await conn.SendTextAsync(ControlMessages.Hello(a.Hello), cts.Token);
-            await conn.SendChunkedAsync(ScrollbackFile.Tail(a.Replay, replayKb * 1024L), cts.Token);
+            await conn.SendChunkedAsync(replay, cts.Token);
             await conn.SendTextAsync(ControlMessages.ReplayEnd, cts.Token);
             var (c, r) = s.CurrentSize;
             await conn.SendTextAsync(ControlMessages.Size(c, r), cts.Token);
