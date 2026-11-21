@@ -78,6 +78,7 @@ class FileBrowserActivity : AppCompatActivity() {
     private var all: List<FileEntry> = emptyList()
     private var query = ""
     private var sort = FileSort.NAME
+    private var sortReverse = false
     private lateinit var messageView: TextView
     private lateinit var swipe: SwipeRefreshLayout
     private var pendingDownload: FileEntry? = null
@@ -144,6 +145,7 @@ class FileBrowserActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener { if (selecting) clearSelection() else goUpOrFinish() }
         prefs = UiPrefs(this)
         sort = FileSort.of(prefs.fileSort)
+        sortReverse = prefs.fileSortReverse
         val search = SearchView(this).apply {
             queryHint = getString(R.string.files_search)
             setOnQueryTextListener(object : SearchView.OnQueryTextListener {
@@ -334,7 +336,7 @@ class FileBrowserActivity : AppCompatActivity() {
     /** Applies search + sort to the loaded folder and updates the summary line. */
     private fun render() {
         val matching = all.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
-        val shown = if (atTop) matching else sort.apply(matching) // places keep the host's order (folders, then drives)
+        val shown = if (atTop) matching else sort.apply(matching, sortReverse) // places keep the host's order (folders, then drives)
         adapter.clear()
         adapter.addAll(shown)
         val dirs = all.count { it.dir }
@@ -348,18 +350,36 @@ class FileBrowserActivity : AppCompatActivity() {
         }
     }
 
+    /** Sort dialog: pick an order (its natural direction); tapping the current one, or 순서 뒤집기, flips it. */
     private fun chooseSort() {
         val modes = FileSort.entries
-        val labels = arrayOf(getString(R.string.files_sort_name), getString(R.string.files_sort_modified), getString(R.string.files_sort_size))
+        val labels = modes.map { m ->
+            val name = getString(when (m) {
+                FileSort.NAME -> R.string.files_sort_name
+                FileSort.MODIFIED -> R.string.files_sort_modified
+                FileSort.SIZE -> R.string.files_sort_size
+                FileSort.TYPE -> R.string.files_sort_type
+            })
+            if (m == sort && sortReverse) getString(R.string.files_sort_reversed, name) else name
+        }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(R.string.files_sort)
             .setSingleChoiceItems(labels, modes.indexOf(sort)) { dialog, which ->
-                sort = modes[which]
-                prefs.fileSort = sort.id
-                render()
+                val picked = modes[which]
+                setSort(picked, if (picked == sort) !sortReverse else false)
                 dialog.dismiss()
             }
+            .setNeutralButton(R.string.files_sort_flip) { _, _ -> setSort(sort, !sortReverse) }
+            .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    private fun setSort(mode: FileSort, reverse: Boolean) {
+        sort = mode
+        sortReverse = reverse
+        prefs.fileSort = mode.id
+        prefs.fileSortReverse = reverse
+        render()
     }
 
     /** Folder above [path] this browser may show, or null at its top. */

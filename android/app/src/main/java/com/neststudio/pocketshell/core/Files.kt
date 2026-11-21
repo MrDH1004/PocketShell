@@ -209,26 +209,61 @@ object FileKinds {
     }
 }
 
-/** Browser sort orders; folders always come first. */
+/** Browser sort orders; folders always come first. Each has a natural direction that [apply]'s `reverse` flips. */
 enum class FileSort(val id: String) {
-    NAME("name"), MODIFIED("modified"), SIZE("size");
+    NAME("name"), MODIFIED("modified"), SIZE("size"), TYPE("type");
 
-    fun apply(entries: List<FileEntry>): List<FileEntry> {
-        val byName = compareBy<FileEntry, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+    fun apply(entries: List<FileEntry>, reverse: Boolean = false): List<FileEntry> {
+        val byName = Comparator<FileEntry> { a, b -> NaturalOrder.compare(a.name, b.name) }
         val files = when (this) {
             NAME -> byName
             MODIFIED -> compareByDescending<FileEntry> { it.modified }.then(byName)
             SIZE -> compareByDescending<FileEntry> { it.size }.then(byName)
+            TYPE -> compareBy<FileEntry, String>(String.CASE_INSENSITIVE_ORDER) { FilePreview.extension(it.name) }.then(byName)
         }
         val (dirs, rest) = entries.partition { it.dir }
-        // Folders have no size: by name for SIZE, by time for MODIFIED.
+        // Folders have no size or type: by name for those, by time for MODIFIED.
         val dirOrder = if (this == MODIFIED) files else byName
-        return dirs.sortedWith(dirOrder) + rest.sortedWith(files)
+        // Reversing SIZE / TYPE leaves folders A→Z; reversing NAME / MODIFIED reverses them too.
+        val dirSorted = dirs.sortedWith(if (reverse && (this == NAME || this == MODIFIED)) dirOrder.reversed() else dirOrder)
+        return dirSorted + rest.sortedWith(if (reverse) files.reversed() else files)
     }
 
     companion object {
         fun of(id: String): FileSort = entries.firstOrNull { it.id == id } ?: NAME
     }
+}
+
+/** Case-insensitive name order that compares digit runs as numbers: file2 before file10. */
+object NaturalOrder : Comparator<String> {
+    override fun compare(a: String, b: String): Int {
+        var i = 0
+        var j = 0
+        while (i < a.length && j < b.length) {
+            val ca = a[i]
+            val cb = b[j]
+            if (ca.isAsciiDigit() && cb.isAsciiDigit()) {
+                val si = i
+                val sj = j
+                while (i < a.length && a[i].isAsciiDigit()) i++
+                while (j < b.length && b[j].isAsciiDigit()) j++
+                val na = a.substring(si, i).trimStart('0')
+                val nb = b.substring(sj, j).trimStart('0')
+                if (na.length != nb.length) return na.length - nb.length
+                val c = na.compareTo(nb)
+                if (c != 0) return c
+            } else {
+                val c = ca.lowercaseChar().compareTo(cb.lowercaseChar())
+                if (c != 0) return c
+                i++
+                j++
+            }
+        }
+        val rest = (a.length - i) - (b.length - j)
+        return if (rest != 0) rest else String.CASE_INSENSITIVE_ORDER.compare(a, b).let { if (it != 0) it else a.compareTo(b) }
+    }
+
+    private fun Char.isAsciiDigit() = this in '0'..'9'
 }
 
 /** Breadcrumb segments from the project root to [path]: (label, full path). */

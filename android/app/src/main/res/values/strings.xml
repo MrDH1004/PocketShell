@@ -103,6 +103,9 @@
     <string name="files_sort_name">이름순</string>
     <string name="files_sort_modified">최근 수정순</string>
     <string name="files_sort_size">크기순</string>
+    <string name="files_sort_type">종류순</string>
+    <string name="files_sort_reversed">%1$s (역순)</string>
+    <string name="files_sort_flip">순서 뒤집기</string>
     <string name="files_summary">폴더 %1$d · 파일 %2$d</string>
     <string name="files_summary_filtered">%1$d개 일치 · 전체 %2$d</string>
     <string name="files_no_match">일치하는 항목 없음</string>

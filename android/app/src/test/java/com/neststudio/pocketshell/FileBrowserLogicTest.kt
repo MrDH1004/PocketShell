@@ -37,6 +37,25 @@ class FileBrowserLogicTest {
     }
 
     @Test
+    fun sortByTypeAndReverse() {
+        val list = listOf(f("b.txt", 5, "2026-11-08T03:00:00Z"), d("Zed", "2026-11-08T01:00:00Z"), f("A.txt", 9, "2026-11-08T01:00:00Z"),
+            d("app", "2026-11-08T02:00:00Z"), f("c.kt", 1, "2026-11-08T02:00:00Z"), f("Makefile", 2, "2026-11-08T00:00:00Z"))
+        assertEquals(listOf("app", "Zed", "Makefile", "c.kt", "A.txt", "b.txt"), FileSort.TYPE.apply(list).map { it.name })
+        assertEquals(listOf("app", "Zed", "b.txt", "A.txt", "c.kt", "Makefile"), FileSort.TYPE.apply(list, reverse = true).map { it.name })
+        assertEquals(listOf("Zed", "app", "Makefile", "c.kt", "b.txt", "A.txt"), FileSort.NAME.apply(list, reverse = true).map { it.name })
+        assertEquals(listOf("app", "Zed", "c.kt", "Makefile", "b.txt", "A.txt"), FileSort.SIZE.apply(list, reverse = true).map { it.name })
+        assertEquals(listOf("Zed", "app", "Makefile", "A.txt", "c.kt", "b.txt"), FileSort.MODIFIED.apply(list, reverse = true).map { it.name })
+        assertEquals(FileSort.TYPE, FileSort.of("type"))
+    }
+
+    @Test
+    fun namesCompareNumbersByValue() {
+        val names = listOf("file10.txt", "File2.txt", "file1.txt", "file02b", "img.png", "file2.txt")
+        assertEquals(listOf("file1.txt", "File2.txt", "file2.txt", "file02b", "file10.txt", "img.png"),
+            FileSort.NAME.apply(names.map { f(it) }).map { it.name })
+    }
+
+    @Test
     fun crumbsFromRoot() {
         assertEquals(listOf("proj" to "E:\\w\\proj"), Crumbs.of("E:\\w\\proj", "E:\\w\\proj"))
         assertEquals(

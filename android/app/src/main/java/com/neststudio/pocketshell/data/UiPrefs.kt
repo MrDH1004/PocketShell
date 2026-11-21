@@ -65,6 +65,11 @@ class UiPrefs(context: Context) {
         get() = prefs.getString(K_FILE_SORT, null).orEmpty()
         set(value) = prefs.edit().putString(K_FILE_SORT, value).apply()
 
+    /** File browser sort reversed from its natural direction (FileSort.apply). */
+    var fileSortReverse: Boolean
+        get() = prefs.getBoolean(K_FILE_SORT_REVERSE, false)
+        set(value) = prefs.edit().putBoolean(K_FILE_SORT_REVERSE, value).apply()
+
     /** Notify when an AI CLI on a paired PC stops (AgentWatchService). On until the user turns it off. */
     var agentNotify: Boolean
         get() = prefs.getBoolean(K_AGENT_NOTIFY, true)
@@ -153,6 +158,7 @@ class UiPrefs(context: Context) {
         private const val K_AGENT_NOTIFY = "agent_notify"
         private const val K_NOTIFY_ASKED = "notify_permission_asked"
         private const val K_FILE_SORT = "file_sort"
+        private const val K_FILE_SORT_REVERSE = "file_sort_reverse"
         private const val K_RECENT_LIMIT = "recent_limit_v2"
         private const val K_FONT_SIZE = "font_size_sp"
         private const val K_FONT = "font"
