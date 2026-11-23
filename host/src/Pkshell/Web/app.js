@@ -257,6 +257,15 @@
       actions.appendChild(withAct(button("종료", "danger", function () { endSession(s); }, "세션 종료: " + displayTitle(s)), "end"));
     }
     li.appendChild(actions);
+    // Phones: one compact row like the app; the actions are behind ⋯ (or a long press on the row).
+    var menu = function () {
+      var items = isHistory(s)
+        ? [["다시 열기", function () { openSession(s); }], ["삭제", function () { removeSession(s); }, "danger"]]
+        : [["열기", function () { openSession(s); }], ["세션 종료", function () { endSession(s); }, "danger"]];
+      if (window.PsFiles && window.PsFiles.sheet) window.PsFiles.sheet(displayTitle(s), items);
+    };
+    li.appendChild(withAct(button("⋯", "ghost more", menu, "메뉴: " + displayTitle(s)), "more"));
+    open.addEventListener("contextmenu", function (e) { e.preventDefault(); menu(); });
     return li;
   }
   function withAct(b, act) { b.setAttribute("data-act", act); return b; }

@@ -430,5 +430,5 @@
     $("files-ask-cancel").addEventListener("click", function () { $("files-ask").close(""); });
   }
 
-  window.PsFiles = { init: init, open: open, _test: { natural: natural, sorted: function (e, s, r) { sort = s; reverse = r; return sorted(e); }, parent: parent, previewKind: previewKind } };
+  window.PsFiles = { init: init, open: open, sheet: function (t, items) { sheet(t, items); }, _test: { natural: natural, sorted: function (e, s, r) { sort = s; reverse = r; return sorted(e); }, parent: parent, previewKind: previewKind } };
 })();
