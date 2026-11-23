@@ -125,7 +125,8 @@ html.term-open, html.term-open body { overflow: hidden; overscroll-behavior: non
 .term-bar { position: static; }
 .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .status.bad { color: var(--danger); }
-#term-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#term-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+#term-box { transform-origin: 0 0; }
 #term-box { flex: 1; min-height: 0; background: #0c0c0c; overflow: hidden; }
 /* The page scrolls the terminal itself (app.js, finger 1:1 + fling). Without this, Chrome on Android takes the swipe
    over as its own pan after ~20 px (pointercancel) and the terminal moved about one line per swipe. */

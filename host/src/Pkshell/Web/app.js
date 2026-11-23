@@ -694,6 +694,19 @@
   // xterm.js's own touch scrolling on phones moved about a line per swipe. A re-flowed PC console scrolls its history.
   var stopTouchFling = function () {};
 
+  // Picture zoom of the terminal (pinch): scale + offset of #term-box inside #term-wrap, top-left origin.
+  var ZOOM_MAX = 4;
+  var zoom = { s: 1, x: 0, y: 0 };
+  function setZoom(sc, x, y) {
+    var w = $("term-wrap"), b = $("term-box");
+    var W = w.clientWidth, H = w.clientHeight;
+    sc = Math.min(ZOOM_MAX, Math.max(1, sc));
+    x = Math.min(0, Math.max(W - W * sc, x));
+    y = Math.min(0, Math.max(H - H * sc, y));
+    zoom = { s: sc, x: x, y: y };
+    b.style.transform = sc === 1 ? "" : "translate(" + x + "px, " + y + "px) scale(" + sc + ")";
+  }
+
   function scrollLinesBy(fingerDownLines) {
     if (rf) return scrollReflow(fingerDownLines);
     if (term) term.scrollLines(-fingerDownLines);
@@ -724,10 +737,23 @@
       if (n) { wheelAcc -= n * cellHeight(); scrollReflow(-n); }
     }, { capture: true, passive: false });
 
+    // Pinch zoom like a picture (the phone app's ZoomPanLayout): the terminal is scaled as it is, nothing re-wraps.
+    // Two fingers zoom and move; one finger pans while zoomed in, and scrolls the text once the pan reaches an edge.
+    var pinch = null, lastX = 0;
+    function pt(t) { var r = $("term-wrap").getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; }
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
     box.addEventListener("touchstart", function (e) {
       stopFling();
-      if (e.touches.length !== 1) { lastY = null; return; }
+      if (e.touches.length === 2) {
+        var a = pt(e.touches[0]), b = pt(e.touches[1]);
+        pinch = { d0: Math.max(10, dist(a, b)), s0: zoom.s, m0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, t0: { x: zoom.x, y: zoom.y } };
+        lastY = null;
+        return;
+      }
+      if (e.touches.length !== 1 || pinch) { lastY = null; return; }
       lastY = startY = e.touches[0].clientY;
+      lastX = e.touches[0].clientX;
       lastT = e.timeStamp;
       moved = false;
       acc = 0;
@@ -735,20 +761,42 @@
     }, { capture: true, passive: true });
 
     box.addEventListener("touchmove", function (e) {
+      if (pinch && e.touches.length === 2) {
+        var a = pt(e.touches[0]), b = pt(e.touches[1]);
+        var m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        var sc = Math.min(ZOOM_MAX, Math.max(1, pinch.s0 * dist(a, b) / pinch.d0));
+        // keep the point that was under the fingers under them
+        var cx = (pinch.m0.x - pinch.t0.x) / pinch.s0, cy = (pinch.m0.y - pinch.t0.y) / pinch.s0;
+        setZoom(sc, m.x - cx * sc, m.y - cy * sc);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (lastY == null || e.touches.length !== 1) return;
-      var y = e.touches[0].clientY;
-      if (!moved && Math.abs(y - startY) < TAP_SLOP) return; // still a tap
+      var y = e.touches[0].clientY, x = e.touches[0].clientX;
+      if (!moved && Math.abs(y - startY) < TAP_SLOP && Math.abs(x - lastX) < TAP_SLOP) return; // still a tap
       moved = true;
-      var dy = y - lastY, dt = Math.max(1, e.timeStamp - lastT);
-      v = 0.8 * (dy / dt) + 0.2 * v; // px per ms, smoothed
+      var dy = y - lastY, dx = x - lastX, dt = Math.max(1, e.timeStamp - lastT);
       lastY = y;
+      lastX = x;
       lastT = e.timeStamp;
-      applyDy(dy);
+      if (zoom.s > 1) {
+        var py = zoom.y;
+        setZoom(zoom.s, zoom.x + dx, zoom.y + dy);
+        dy -= zoom.y - py; // what the pan could not take scrolls the text
+      }
+      v = 0.8 * (dy / dt) + 0.2 * v; // px per ms, smoothed
+      if (dy) applyDy(dy);
       e.preventDefault();
       e.stopPropagation();
     }, { capture: true, passive: false });
 
     box.addEventListener("touchend", function (e) {
+      if (pinch) {
+        if (e.touches.length === 0) { pinch = null; if (zoom.s < 1.05) setZoom(1, 0, 0); }
+        e.stopPropagation();
+        return;
+      }
       if (lastY == null) return;
       lastY = null;
       if (!moved) return;
@@ -844,6 +892,7 @@
     ensureTerm();
     term.reset();
     serverSize = null;
+    setZoom(1, 0, 0);
     if (rf) { rf = null; term.options.scrollback = 10000; }
     BASE_FONT = autoFont();
     setFont(BASE_FONT);
@@ -1133,7 +1182,7 @@
   $("tool-file").addEventListener("click", function () { $("pick-file").click(); });
   $("pick-image").addEventListener("change", function (e) { if (e.target.files.length) pasteImages(e.target.files); e.target.value = ""; });
   $("pick-file").addEventListener("change", function (e) { if (e.target.files.length) uploadFiles(e.target.files); e.target.value = ""; });
-  $("tool-fit").addEventListener("click", function () { lastSent = ""; doFit(); if (term) term.scrollToBottom(); });
+  $("tool-fit").addEventListener("click", function () { setZoom(1, 0, 0); lastSent = ""; doFit(); if (term) term.scrollToBottom(); });
 
   // File explorer at the session's current folder (asked fresh: the shell may have cd'd since the list was read).
   if (window.PsFiles) {
