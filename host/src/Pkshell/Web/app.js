@@ -18,6 +18,8 @@
   // ---------- views ----------
   function show(id) {
     ["pair", "list", "term"].forEach(function (v) { $(v).hidden = v !== id; });
+    // The terminal has its own scrollbar (past output); the page itself never scrolls behind it.
+    document.documentElement.classList.toggle("term-open", id === "term");
   }
 
   // ---------- api ----------

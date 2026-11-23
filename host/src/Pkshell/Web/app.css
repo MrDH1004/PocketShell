@@ -120,7 +120,8 @@ label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
 .empty { color: var(--muted); padding: 24px 0; }
 
 /* Terminal */
-#term { display: flex; flex-direction: column; height: 100dvh; min-height: 0; }
+#term { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
+html.term-open, html.term-open body { overflow: hidden; overscroll-behavior: none; }
 .term-bar { position: static; }
 .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .status.bad { color: var(--danger); }
