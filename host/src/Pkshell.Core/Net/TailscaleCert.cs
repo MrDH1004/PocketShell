@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Pkshell.Core.Util;
@@ -14,7 +15,11 @@ namespace Pkshell.Core.Net;
 /// </summary>
 public sealed class TailscaleCert
 {
-    public sealed record Issued(string Domain, X509Certificate2 Cert);
+    /// <summary>
+    /// The certificate and what TLS sends: leaf + the intermediates from the PEM. Android Chrome does not fetch a missing
+    /// intermediate (desktop Chrome does), so with the leaf alone every request from the phone failed ("Failed to fetch").
+    /// </summary>
+    public sealed record Issued(string Domain, X509Certificate2 Cert, SslStreamCertificateContext Context);
 
     private readonly string _dir;
     private readonly string? _exe;
@@ -85,7 +90,12 @@ public sealed class TailscaleCert
             // Schannel cannot use the ephemeral key of a PEM load: round-trip through PKCS#12.
             var cert = new X509Certificate2(pem.Export(X509ContentType.Pkcs12), (string?)null, X509KeyStorageFlags.Exportable);
             if (cert.NotAfter.ToUniversalTime() < DateTime.UtcNow) { why($"certificate expired {cert.NotAfter:u}"); cert.Dispose(); return null; }
-            return new Issued(domain, cert);
+            var all = new X509Certificate2Collection();
+            all.ImportFromPemFile(crt);
+            var chain = new X509Certificate2Collection();
+            foreach (var c in all)
+                if (!string.Equals(c.Thumbprint, cert.Thumbprint, StringComparison.OrdinalIgnoreCase)) chain.Add(c);
+            return new Issued(domain, cert, SslStreamCertificateContext.Create(cert, chain, offline: true));
         }
         catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException)
         {

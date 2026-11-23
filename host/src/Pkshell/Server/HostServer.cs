@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 using System.Net;
+using System.Net.Security;
 using System.Net.NetworkInformation;
 using System.Net.WebSockets;
 using System.Reflection;
@@ -400,10 +401,14 @@ public sealed class HostServer : IDisposable
         catch (OperationCanceledException) { /* shutting down */ }
     }
 
-    private X509Certificate2 SelectCert(string? sniName)
+    private SslStreamCertificateContext? _ownCertContext;
+
+    /// <summary>By the Tailscale name: that certificate with its intermediates; otherwise the PC's own (pinned by the phone app).</summary>
+    private SslStreamCertificateContext SelectCert(string? sniName)
     {
         var ts = _tsCert;
-        return ts != null && sniName != null && string.Equals(sniName.TrimEnd('.'), ts.Domain, StringComparison.OrdinalIgnoreCase) ? ts.Cert : _cert;
+        if (ts != null && sniName != null && string.Equals(sniName.TrimEnd('.'), ts.Domain, StringComparison.OrdinalIgnoreCase)) return ts.Context;
+        return _ownCertContext ??= SslStreamCertificateContext.Create(_cert, additionalCertificates: null, offline: true);
     }
 
     /// <summary>Browser address with a trusted certificate (installable web app), or null.</summary>
@@ -520,7 +525,14 @@ public sealed class HostServer : IDisposable
                     lo.Protocols = HttpProtocols.Http1;
                     // By IP (the phone app, which pins it): the PC's own certificate. By the Tailscale name (browser /
                     // installed web app): the trusted Tailscale one.
-                    lo.UseHttps(new HttpsConnectionAdapterOptions { ServerCertificateSelector = (_, name) => SelectCert(name) });
+                    lo.UseHttps(new TlsHandshakeCallbackOptions
+                    {
+                        OnConnection = c => ValueTask.FromResult(new SslServerAuthenticationOptions
+                        {
+                            ServerCertificateContext = SelectCert(c.ClientHelloInfo.ServerName),
+                            ApplicationProtocols = new List<SslApplicationProtocol> { SslApplicationProtocol.Http11 },
+                        }),
+                    });
                 });
         });
 
