@@ -23,7 +23,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 |---|---|
 | `host/src/PocketShell.Tray` | 트레이 앱 `PocketShell.exe` — 서버를 백그라운드로 실행·중지, 휴대폰 연결(PIN), 로그인 시 자동 실행 |
 | `host/src/Pkshell` | 서버 + CLI `psh.exe` (`psh serve`, `psh attach` …) |
-| `host/src/Pkshell/Web` | 브라우저 클라이언트(Mac·iPhone) — psh.exe에 내장, `https://<PC>:7380/`에서 서빙. xterm.js 5.5(MIT) 포함 |
+| `host/src/Pkshell/Web` | 브라우저 클라이언트(Mac·iPhone) — psh.exe에 내장, `https://<PC>:7380/`에서 서빙. xterm.js 5.5(MIT), 나눔고딕코딩(SIL OFL, `Web/fonts`) 포함 |
 | `android/` | Kotlin Android 앱 `com.neststudio.pocketshell` (Termux terminal-emulator/view 기반, Apache-2.0) |
 | `qa/Pkshell.QA` | E2E QA 드라이버 |
 | `installer/PocketShell.iss` | Windows 원클릭 설치 파일(Inno Setup) 스크립트 |

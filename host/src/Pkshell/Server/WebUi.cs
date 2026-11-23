@@ -27,6 +27,7 @@ public static class WebUi
         [".png"] = "image/png",
         [".svg"] = "image/svg+xml",
         [".txt"] = "text/plain; charset=utf-8",
+        [".woff2"] = "font/woff2",
     };
 
     /// <summary>Served path ("/", "/app.js", "/vendor/xterm.js") → file; "/" is index.html.</summary>

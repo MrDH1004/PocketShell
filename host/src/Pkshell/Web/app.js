@@ -327,6 +327,8 @@
   var retry = 0, retryTimer = null, closedByUs = false, exited = false;
   var resizeTimer = null, lastSent = "", serverSize = null;
   var BASE_FONT = 14, MIN_FONT = 7;
+  var TERM_FONT_FALLBACK = 'Menlo, "SF Mono", "D2Coding", Consolas, "Apple SD Gothic Neo", "Malgun Gothic", monospace';
+  var TERM_FONT = '"Nanum Gothic Coding", ' + TERM_FONT_FALLBACK;
   /**
    * Font size for this screen: phones 13px, tablets / small windows 14px, laptops 15px, large monitors 16px.
    * Re-read on every fit, so rotating the phone or resizing the window adjusts it.
@@ -373,7 +375,7 @@
       cursorBlink: true,
       scrollback: 10000,
       fontSize: BASE_FONT,
-      fontFamily: 'Menlo, "SF Mono", "D2Coding", Consolas, "Apple SD Gothic Neo", "Malgun Gothic", monospace',
+      fontFamily: TERM_FONT_FALLBACK,
       allowProposedApi: true,
       macOptionIsMeta: false,
       // Windows Terminal (Campbell) colors. black must equal the background: PC consoles mark cells with an explicit
@@ -388,6 +390,14 @@
     term.loadAddon(fit);
     if (window.WebLinksAddon) term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     term.open($("term-box"));
+    // Hangul in other monospace fonts is narrower than its two cells, so Korean showed with gaps between letters.
+    // Nanum Gothic Coding (shipped with the page) is drawn exactly two cells wide; switch once it is loaded.
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load(BASE_FONT + 'px "Nanum Gothic Coding"', "가A").then(function () {
+        term.options.fontFamily = TERM_FONT;
+        scheduleFit();
+      }).catch(function () { /* keep the fallback */ });
+    }
     // '↓ 실시간' follows any scroll (finger, wheel, scrollbar); the buffer position settles on the next frame.
     var liveCheck = function () { requestAnimationFrame(updateToLive); };
     term.onScroll(liveCheck);
