@@ -1,4 +1,5 @@
-Google Inc.
+D2Coding (https://github.com/naver/d2codingfont)
+Copyright (c) 2015, NAVER Corporation (https://www.navercorp.com/).
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

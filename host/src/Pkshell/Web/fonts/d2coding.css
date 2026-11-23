@@ -1,0 +1,7 @@
+/* D2Coding (NAVER, SIL OFL 1.1, see LICENSE-d2coding.txt) via @kfonts/d2coding 0.2.0: Hangul exactly two ASCII cells wide. */
+@font-face {
+  font-family: 'D2Coding';
+  src: local('D2Coding'), url(D2Coding.woff2) format('woff2');
+  font-display: block;
+  font-weight: 400;
+}
