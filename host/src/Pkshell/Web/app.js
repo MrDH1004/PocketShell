@@ -791,6 +791,7 @@
       e.stopPropagation();
     }, { capture: true, passive: false });
 
+    box.addEventListener("touchcancel", function () { pinch = null; lastY = null; if (zoom.s < 1.05) setZoom(1, 0, 0); }, { capture: true, passive: true });
     box.addEventListener("touchend", function (e) {
       if (pinch) {
         if (e.touches.length === 0) { pinch = null; if (zoom.s < 1.05) setZoom(1, 0, 0); }

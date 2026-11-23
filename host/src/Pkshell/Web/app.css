@@ -131,6 +131,9 @@ html.term-open, html.term-open body { overflow: hidden; overscroll-behavior: non
 /* The page scrolls the terminal itself (app.js, finger 1:1 + fling). Without this, Chrome on Android takes the swipe
    over as its own pan after ~20 px (pointercancel) and the terminal moved about one line per swipe. */
 #term-box, #term-box * { touch-action: none; }
+/* Rows are redrawn while scrolling; a touch that started on a replaced row element stopped reaching the scroll
+   handler (every other swipe moved one line). Touches land on the persistent rows container instead. */
+#term-box .xterm-rows * { pointer-events: none; }
 #term-box .xterm { padding: 4px 0 0 6px; }
 #term-box .xterm { height: 100%; }
 .keybar {
