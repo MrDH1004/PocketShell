@@ -44,13 +44,13 @@ internal sealed class PinForm : Form
         BackColor = Bg;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10f);
-        ClientSize = new Size(460, 400);
+        ClientSize = new Size(460, 420);
         Padding = new Padding(24);
 
         var title = new Label { Text = "휴대폰에서 이 PC 연결", Font = new Font("Segoe UI Semibold", 14f), AutoSize = true, Location = new Point(24, 20) };
         var help = new Label
         {
-            Text = "폰 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\n폰에 뜨는 인증서 지문이 아래와 같은지 확인하세요.",
+            Text = "폰 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\nMac·iPhone은 아래 브라우저 주소를 열고 같은 PIN을 입력하세요.",
             ForeColor = Muted, Location = new Point(24, 56), Size = new Size(412, 48),
         };
         var card = new Panel { BackColor = Panel, Location = new Point(24, 110), Size = new Size(412, 120) };
@@ -62,10 +62,10 @@ internal sealed class PinForm : Form
         card.Controls.Add(_pin);
         _expiry = new Label { ForeColor = Muted, Location = new Point(24, 238), Size = new Size(412, 22), TextAlign = ContentAlignment.MiddleCenter };
         _fp = new Label { Location = new Point(24, 270), Size = new Size(412, 22) };
-        _hosts = new Label { ForeColor = Muted, Location = new Point(24, 296), Size = new Size(412, 40) };
-        _renew = MakeButton("새 PIN", new Point(236, 346));
+        _hosts = new Label { ForeColor = Muted, Location = new Point(24, 296), Size = new Size(412, 60) };
+        _renew = MakeButton("새 PIN", new Point(236, 366));
         _renew.Click += async (_, _) => await IssueAsync();
-        var close = MakeButton("닫기", new Point(340, 346));
+        var close = MakeButton("닫기", new Point(340, 366));
         close.Click += (_, _) => Close();
         Controls.AddRange(new Control[] { title, help, card, _expiry, _fp, _hosts, _renew, close });
 
@@ -74,6 +74,10 @@ internal sealed class PinForm : Form
         Shown += async (_, _) => await IssueAsync();
         FormClosed += (_, _) => _countdown.Dispose();
     }
+
+    /// <summary>The browser client's address (Mac / iPhone): https://host:port/ (IPv6 in brackets).</summary>
+    internal static string BrowserUrl(string host, int port) =>
+        $"https://{(host.Contains(':') && !host.StartsWith('[') ? "[" + host + "]" : host)}:{port}/";
 
     private static Button MakeButton(string text, Point at) => new()
     {
@@ -93,9 +97,10 @@ internal sealed class PinForm : Form
             var pin = r.GetProperty("pin").GetString() ?? "";
             _pin.Text = pin.Length == 6 ? pin[..3] + " " + pin[3..] : pin;
             _fp.Text = "인증서 지문   " + (r.TryGetProperty("fpShort", out var f) ? f.GetString() : "");
-            var hosts = r.TryGetProperty("hosts", out var h) && h.ValueKind == JsonValueKind.Array
-                ? string.Join(", ", h.EnumerateArray().Select(x => x.GetString())) : "";
-            _hosts.Text = $"이 PC 주소   {hosts}  (포트 {_port})";
+            var list = r.TryGetProperty("hosts", out var h) && h.ValueKind == JsonValueKind.Array
+                ? h.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : new List<string>();
+            _hosts.Text = $"이 PC 주소   {string.Join(", ", list)}  (포트 {_port})"
+                + (list.Count > 0 ? $"\n브라우저   {BrowserUrl(list[0], _port)}" : "");
             _expiresAt = r.TryGetProperty("expiresAt", out var e) && DateTimeOffset.TryParse(e.GetString(), out var at)
                 ? at : DateTimeOffset.Now.AddMinutes(5);
             _countdown.Start();

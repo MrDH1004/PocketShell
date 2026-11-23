@@ -21,6 +21,10 @@
     <Using Include="System.Net.Http" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Browser client (Server/WebUi.cs): served at https://<PC>:7380/ from the exe itself. -->
+    <EmbeddedResource Include="Web\**\*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>

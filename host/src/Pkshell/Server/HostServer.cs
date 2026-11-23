@@ -785,7 +785,12 @@ public sealed class HostServer : IDisposable
         if (path.StartsWithSegments("/api/pair/claim")) { await next(); return; }
         bool isApi = path.StartsWithSegments("/api");
         bool isWs = path.StartsWithSegments("/ws");
-        if (!isApi && !isWs) { ctx.Response.StatusCode = 404; return; }
+        if (!isApi && !isWs)
+        {
+            // The browser client's page files (no token: they hold no data); anything else is 404.
+            if (!await WebUi.TryServe(ctx)) ctx.Response.StatusCode = 404;
+            return;
+        }
         string? token = TokenAuthenticator.ParseBearer(ctx.Request.Headers.Authorization.ToString());
         if (token == null && isWs) token = ctx.Request.Query["token"].ToString();
         var auth = _auth.Authenticate(token, ctx.Connection.RemoteIpAddress);
@@ -1500,7 +1505,7 @@ public sealed class HostServer : IDisposable
     {
         if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
         var clientType = ctx.Request.Query["client"].ToString();
-        if (clientType is not ("android" or "cli" or "qa")) clientType = "qa";
+        if (clientType is not ("android" or "web" or "cli" or "qa")) clientType = "qa";
         int cols = QueryDim(ctx, "cols"), rows = QueryDim(ctx, "rows");
         bool openPcTab = ctx.Request.Query["openPcTab"].ToString() != "0";
         // Phone option (0.2.109): how much past output to send on connect; absent or 0 = all of it.

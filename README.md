@@ -14,6 +14,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 - **한눈에 보기**: 홈 화면 위젯과 빠른 설정 타일에 Claude/GPT 입력 대기·작업 중·끝남 수
 - **Git 변경 보기**: 프로젝트의 커밋 안 한 변경 파일과 diff를 폰에서 확인(읽기 전용)
 - **앱 아이콘 바로가기**: 앱 아이콘을 길게 누르면 최근 프로젝트
+- **Mac · iPhone · 브라우저**: 앱 설치 없이 브라우저로 PC 터미널 열기 (세션 목록·새 세션·종료, 한글 입력, 터치 키 바)
 - **여러 PC**: PIN 페어링, LAN·Tailscale 자동 선택, PC별 상태 한눈에
 - **자동 업데이트**: PC 앱·폰 앱 모두 GitHub Releases에서 확인, 진행 상황 표시
 
@@ -22,6 +23,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 |---|---|
 | `host/src/PocketShell.Tray` | 트레이 앱 `PocketShell.exe` — 서버를 백그라운드로 실행·중지, 휴대폰 연결(PIN), 로그인 시 자동 실행 |
 | `host/src/Pkshell` | 서버 + CLI `psh.exe` (`psh serve`, `psh attach` …) |
+| `host/src/Pkshell/Web` | 브라우저 클라이언트(Mac·iPhone) — psh.exe에 내장, `https://<PC>:7380/`에서 서빙. xterm.js 5.5(MIT) 포함 |
 | `android/` | Kotlin Android 앱 `com.neststudio.pocketshell` (Termux terminal-emulator/view 기반, Apache-2.0) |
 | `qa/Pkshell.QA` | E2E QA 드라이버 |
 | `installer/PocketShell.iss` | Windows 원클릭 설치 파일(Inno Setup) 스크립트 |
@@ -70,6 +72,19 @@ PowerShell로 하고, 단계마다 결과를 확인한 뒤 다음으로 넘어�
 PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh share <id> [--view] [--hours N]`, `psh shares`, `psh unshare <id>`, `psh update [--check] [--force [--kill-working]]`, `psh firewall-cleanup [--list]`
 - 업데이트해도 실행 중인 세션은 안 끊김(0.2.98부터): 셸을 세션마다 따로 띄운 `psh pty-hold` 프로세스가 쥐고 있고, 새 버전 서버가 뜨면 다시 붙음. 폰은 몇 초 끊겼다 자동으로 다시 연결. 0.2.97 이하 서버가 만든 세션만 예전처럼 끝날 세션 목록을 보여 주고 다시 물음(`--force`, AI 작업 중이면 `--kill-working`).
 - `psh firewall-cleanup`: 예전 설치(이전 이름 mpta 포함)와 지워진 실행 파일이 남긴 Windows 방화벽 규칙을 지움. `--list`는 목록만. 지울 때 관리자 권한 확인 창이 뜸.
+
+## Mac · iPhone (브라우저)
+Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·개발자 계정·서명 불필요.
+1. PC 트레이 → **휴대폰 연결 (PIN)** 창의 **브라우저** 주소(`https://<PC IP>:7380/`)를 Mac·iPhone에서 열기 (같은 Wi-Fi 또는 Tailscale)
+2. 자체 서명 인증서 경고가 한 번 뜸 → Safari: **세부사항 보기 → 이 웹 사이트 방문**, Chrome: **고급 → 계속**
+3. 같은 창의 6자리 PIN 입력 → 연결. 토큰은 그 브라우저에 저장돼 다음부터 바로 열림
+- 세션 목록(실행 중 · PC에서 연 콘솔 · 최근, Claude/GPT 작업 중·입력 대기·끝남 표시), 새 세션(폴더 + AI CLI 선택), 종료, 다시 열기, 기록 삭제
+- 터미널: 24bit 색·한글 조합 입력·복사/붙여넣기(⌘C/⌘V), 창 크기에 맞춰 PC 세션 크기 조정, 끊기면 자동 재연결, 주소 끝 `#세션id`로 새로 고침해도 같은 세션
+- 터치 화면(iPhone·iPad)은 아래에 Esc · Tab · Ctrl · ^C · 방향키 · Enter 키 바
+- Mac Safari: **파일 → Dock에 추가**로 앱처럼 실행. iPhone Safari: **공유 → 홈 화면에 추가**
+- 연결 해제: 목록 위 **연결 해제**(이 브라우저의 토큰 삭제). PC 쪽 기기 목록에서 지우려면 `psh revoke <id>`
+- 주소(LAN · Tailscale)마다 브라우저 저장소가 달라 주소를 바꾸면 PIN으로 다시 연결
+- 아직 없는 것: 파일 보기·업로드, Git 변경, 알림(폰 앱 전용)
 
 ## 폰 앱 사용법
 
@@ -208,4 +223,5 @@ powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releas
 - 페어링: 일회용 PIN(5분, 5회 실패 시 무효) + 인증서 지문 확인 → 기기 토큰(서버에는 SHA-256만 저장), PC에서 `psh revoke`로 취소.
 - 세션 공유: 공유 PIN(10분, 1회, 5회 실패 시 열린 PIN 모두 무효)으로 받은 토큰은 그 세션 하나에만 쓰이고(허용 목록 밖은 403), 정한 시간·세션 종료·공유 중지 때 끊김.
 - 클라이언트는 서버 자체서명 인증서를 SHA-256 지문으로 핀닝.
+- 브라우저 클라이언트: 페이지 파일(HTML·JS)만 토큰 없이 받음(데이터 없음), `/api`·`/ws`는 기기 토큰 필요. 스크립트는 PC에서만 받음(CSP, 외부 CDN 없음), 다른 사이트 안에 못 넣음(frame 금지). 인증서는 브라우저의 예외 승인으로 확인(지문 핀닝 없음 — 트레이 PIN 창의 인증서 지문 16자리 = 브라우저 인증서 정보의 SHA-256 지문 앞 16자리).
 - 데이터: `%APPDATA%\PocketShell` (인증서, 토큰, 세션 기록, 로그).
