@@ -319,10 +319,34 @@
   }
   var ctrlArmed = false, altArmed = false;
 
+  var connected = false;
+  /**
+   * Connection line. Wide screens: the right of the bar. Narrow ones (phones) have no room there, so the subtitle
+   * (folder) shows it instead whenever it is not plain "연결됨", and a lost connection also gets a banner with the
+   * likely reason — a frozen screen was the only sign before.
+   */
   function status(text, bad) {
     var s = $("term-status");
     s.textContent = text;
     s.classList.toggle("bad", !!bad);
+    connected = text === "연결됨" || text.indexOf("기록 ") === 0;
+    var sub = $("term-cwd");
+    var plain = connected;
+    sub.textContent = plain ? (current && (current.cwd || current.shell)) || "" : text;
+    sub.classList.toggle("bad", !plain && !!bad);
+    sub.classList.toggle("busy", !plain && !bad);
+    var banner = $("conn-banner");
+    if (bad && /끊김/.test(text)) {
+      banner.textContent = "PC에 연결 안 됨. " + reachHint() + " (" + text.replace(/^끊김 /, "") + ")";
+      banner.hidden = false;
+    } else banner.hidden = true;
+  }
+
+  /** What to check when the PC cannot be reached from this page. */
+  function reachHint() {
+    if (/\.ts\.net$/.test(location.hostname)) return "이 주소는 Tailscale 주소: 이 기기에서 Tailscale이 켜져 있는지 확인.";
+    if (/^100\./.test(location.hostname)) return "Tailscale 주소: 이 기기에서 Tailscale이 켜져 있는지 확인.";
+    return "PC가 켜져 있고 같은 Wi-Fi인지 확인.";
   }
 
   function ensureTerm() {
@@ -346,6 +370,11 @@
     term.loadAddon(fit);
     if (window.WebLinksAddon) term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     term.open($("term-box"));
+    // '↓ 실시간' follows any scroll (finger, wheel, scrollbar); the buffer position settles on the next frame.
+    var liveCheck = function () { requestAnimationFrame(updateToLive); };
+    term.onScroll(liveCheck);
+    var vpEl = term.element && term.element.querySelector(".xterm-viewport");
+    if (vpEl) vpEl.addEventListener("scroll", liveCheck, { passive: true });
     term.onData(function (d) { sendInput(applyAlt(applyCtrl(d))); });
     term.onBinary(function (d) {
       var b = new Uint8Array(d.length);
@@ -415,8 +444,23 @@
   function drawReflow() {
     if (!rf || !rf.h.hasFrame) return;
     term.write(rf.h.render(term.rows, rf.scroll, rf.cols));
-    if (!exited) status(rf.scroll > 0 ? "기록 " + rf.scroll + "줄 위" : "연결됨");
+    // Only while connected: a redraw must not hide that the connection is gone (the screen would just look frozen).
+    if (!exited && ws && ws.readyState === 1) status(rf.scroll > 0 ? "기록 " + rf.scroll + "줄 위" : "연결됨");
+    updateToLive();
   }
+
+  function scrolledBack() {
+    if (rf) return rf.scroll > 0;
+    if (!term) return false;
+    var b = term.buffer.active;
+    return b.viewportY < b.baseY;
+  }
+  function updateToLive() { $("to-live").hidden = !scrolledBack(); }
+  $("to-live").addEventListener("click", function () {
+    stopTouchFling();
+    if (rf) { rf.scroll = 0; drawReflow(); } else if (term) term.scrollToBottom();
+    updateToLive();
+  });
 
   function scrollReflow(linesUp) {
     if (!rf || !rf.h.hasFrame) return false;
@@ -682,6 +726,7 @@
   function unpairedSafe() { try { unpaired(); } catch (e) { /* thrown on purpose */ } }
 
   function scheduleReconnect(reason) {
+    if (reason === "Failed to fetch" || reason === "Load failed") reason = "네트워크 오류";
     retry++;
     var delay = Math.min(15000, 500 * Math.pow(2, Math.min(retry, 5)));
     status("끊김 (" + reason + ") · " + Math.round(delay / 1000) + "초 후 재연결", true);
@@ -716,6 +761,10 @@
   }
 
   $("back").addEventListener("click", function () { openList(); });
+
+  window.addEventListener("online", function () {
+    if (current && !ws && !exited && !$("term").hidden) { retry = 0; connect(); }
+  });
 
   document.addEventListener("visibilitychange", function () {
     // Back from sleep / another tab: reconnect at once instead of waiting out the backoff.

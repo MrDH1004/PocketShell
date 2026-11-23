@@ -64,7 +64,11 @@
     <input type="file" id="pick-image" accept="image/*" multiple hidden>
     <input type="file" id="pick-file" multiple hidden>
   </header>
-  <div id="term-box"></div>
+  <div id="term-wrap">
+    <div id="term-box"></div>
+    <p id="conn-banner" class="conn-banner" role="alert" hidden></p>
+    <button type="button" id="to-live" class="to-live" hidden>↓ 실시간</button>
+  </div>
   <div id="quickbar" class="quickbar" hidden></div>
   <div id="keybar" class="keybar" hidden>
     <button type="button" data-key="esc">Esc</button>
