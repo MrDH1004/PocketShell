@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -109,6 +110,8 @@ public sealed class HostServer : IDisposable
     private readonly Pkshell.Core.Native.SystemStats _stats = new();
     private DiscoveryResponder? _discovery;
     private X509Certificate2 _cert = null!;
+    /// <summary>Tailscale name certificate for browsers (SNI = that name); null when unavailable. See TailscaleCert.</summary>
+    private volatile TailscaleCert.Issued? _tsCert;
     private string _fp = "";
     private string _fpShort = "";
     private string _installDir = "";
@@ -166,6 +169,7 @@ public sealed class HostServer : IDisposable
         _ = Task.Run(() => WatchRecentAsync(_bgCts.Token));
         _ = Task.Run(() => WatchAgentsAsync(_bgCts.Token));
         _ = Task.Run(() => WatchGuestsAsync(_bgCts.Token));
+        _ = Task.Run(() => WatchTailscaleCertAsync(_bgCts.Token));
         var attachArgs = new List<string> { "--port", _port.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         if (!string.IsNullOrWhiteSpace(Pkshell.Core.Util.EnvVars.Get("HOME"))) { attachArgs.Add("--home"); attachArgs.Add(_home); }
         _wt = new WtTabLauncher(_exe, attachArgs);
@@ -396,6 +400,47 @@ public sealed class HostServer : IDisposable
         catch (OperationCanceledException) { /* shutting down */ }
     }
 
+    private X509Certificate2 SelectCert(string? sniName)
+    {
+        var ts = _tsCert;
+        return ts != null && sniName != null && string.Equals(sniName.TrimEnd('.'), ts.Domain, StringComparison.OrdinalIgnoreCase) ? ts.Cert : _cert;
+    }
+
+    /// <summary>Browser address with a trusted certificate (installable web app), or null.</summary>
+    private string? WebUrl() => _tsCert is { } ts ? $"https://{ts.Domain}:{_port}/" : null;
+
+    /// <summary>Gets the Tailscale certificate at start and checks it twice a day (tailscale renews it near expiry).</summary>
+    private async Task WatchTailscaleCertAsync(CancellationToken ct)
+    {
+        var tc = new TailscaleCert(_home);
+        string? lastWhy = null;
+        try
+        {
+            do
+            {
+                var issued = await tc.LoadAsync(w =>
+                {
+                    if (w != lastWhy) Log.Info($"web app certificate: {w}");
+                    lastWhy = w;
+                }, ct);
+                if (issued != null)
+                {
+                    var old = _tsCert;
+                    if (old == null || old.Cert.Thumbprint != issued.Cert.Thumbprint)
+                    {
+                        _tsCert = issued;
+                        lastWhy = null;
+                        Log.Info($"web app certificate: {issued.Domain} (Tailscale, until {issued.Cert.NotAfter:yyyy-MM-dd}) -> https://{issued.Domain}:{_port}/");
+                    }
+                    else issued.Cert.Dispose();
+                }
+                await Task.Delay(TimeSpan.FromHours(12), ct);
+            }
+            while (true);
+        }
+        catch (OperationCanceledException) { /* shutting down */ }
+    }
+
     /// <summary>A running host session, or a PC console that is still open.</summary>
     private bool SessionAlive(string id) =>
         TryExtPid(id, out var pid) ? _externals.Get(pid) != null : _sessions.Get(id)?.IsRunning == true;
@@ -473,7 +518,9 @@ public sealed class HostServer : IDisposable
                 k.Listen(ip, _port, lo =>
                 {
                     lo.Protocols = HttpProtocols.Http1;
-                    lo.UseHttps(_cert);
+                    // By IP (the phone app, which pins it): the PC's own certificate. By the Tailscale name (browser /
+                    // installed web app): the trusted Tailscale one.
+                    lo.UseHttps(new HttpsConnectionAdapterOptions { ServerCertificateSelector = (_, name) => SelectCert(name) });
                 });
         });
 
@@ -823,7 +870,7 @@ public sealed class HostServer : IDisposable
         {
             var auth = AuthOf(ctx);
             if (!auth.IsGuest)
-                return Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status, agents = AgentSummary() });
+                return Json(new { name = Environment.MachineName, version = Version, fp = _fp, port = _port, hosts = PublicHosts(), update = _update.Status, agents = AgentSummary(), webUrl = WebUrl() });
             // A guest sees the shared session only: no update state (it cannot apply one), agents of that session.
             var sid = auth.SharedSession!;
             var state = TryExtPid(sid, out var spid) ? _externals.Get(spid)?.AgentState : _sessions.Get(sid)?.Snapshot().AgentState;
@@ -1354,7 +1401,7 @@ public sealed class HostServer : IDisposable
             {
                 var (pin, pexp) = _pins.Start();
                 Log.Info($"pairing PIN issued (fp {_fpShort}), expires {Ids.IsoUtc(pexp)}");
-                return Json(new { pin, expiresAt = Ids.IsoUtc(pexp), fpShort = _fpShort, hosts = PublicHosts(), port = _port });
+                return Json(new { pin, expiresAt = Ids.IsoUtc(pexp), fpShort = _fpShort, hosts = PublicHosts(), port = _port, webUrl = WebUrl() });
             }
             // Code mode: no UI uses it any more (phones pair by PIN), but local tooling (QA E2E) mints device tokens with it.
             var (code, exp) = _pairing.Start();

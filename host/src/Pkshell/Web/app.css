@@ -155,3 +155,10 @@ dialog h2 { margin: 0 0 4px; font-size: 18px; }
 .steps { margin: 12px 0 0; padding-inline-start: 22px; display: grid; gap: 8px; }
 .steps b { font-weight: 600; }
 .small { font-size: 13px; margin-top: 12px; }
+
+a.btn {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 6px 12px;
+  border-radius: 8px; text-decoration: none; border: 1px solid var(--border);
+}
+a.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.steps code { font: 13px ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }

@@ -37,7 +37,7 @@
     </div>
     <div class="bar-actions">
       <button type="button" id="new-session" class="primary">새 세션</button>
-      <button type="button" id="install" hidden>홈 화면에 추가</button>
+      <button type="button" id="install" hidden>앱 설치</button>
       <button type="button" id="refresh" class="ghost" aria-label="새로 고침">↻</button>
       <button type="button" id="unpair" class="ghost">연결 해제</button>
     </div>
@@ -86,11 +86,14 @@
 </dialog>
 
 <dialog id="install-dialog" aria-labelledby="install-title">
-  <h2 id="install-title">홈 화면에 추가</h2>
+  <h2 id="install-title">앱 설치</h2>
   <p class="muted">앱처럼 아이콘으로 바로 열기. 주소창 없이 전체 화면으로 열림.</p>
   <ol id="install-steps" class="steps"></ol>
   <p id="install-note" class="muted small"></p>
-  <div class="row-end"><button type="button" class="primary" id="install-close">확인</button></div>
+  <div class="row-end">
+    <a id="install-open" class="btn primary" hidden>Tailscale 주소로 열기</a>
+    <button type="button" id="install-close">닫기</button>
+  </div>
 </dialog>
 
 <script src="vendor/xterm.js"></script>

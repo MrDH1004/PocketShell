@@ -104,6 +104,7 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 ## 5. WebSocket 스트림
 `wss://<host>:7380/ws/sessions/{id}?client=android|web|cli|qa&cols=N&rows=N[&openPcTab=0|1]`
 - `client=web`(0.2.112+): 브라우저 클라이언트. 브라우저 WebSocket은 헤더를 못 붙여 토큰은 `?token=`(`/ws`에서만 허용). 페이지 파일은 psh.exe 내장 리소스(`host/src/Pkshell/Web`, `Server/WebUi.cs`)로 `/`·`/app.js`·`/vendor/*` 등 GET/HEAD만 토큰 없이 서빙(ETag, CSP `script-src 'self'`, `connect-src wss://<Host>`, frame 금지). 그 밖의 경로는 404.
+- 웹 앱 설치(0.2.116+): `TailscaleCert`가 `tailscale status --json`의 `CertDomains[0]`으로 `tailscale cert`(관리자 불필요)를 받아 `<home>\tls\tailscale.{crt,key}`에 두고 12시간마다 다시 확인. Kestrel `ServerCertificateSelector`: SNI = 그 이름이면 Tailscale 인증서, 그 외(IP 접속, SNI 없음)는 기존 자체 서명 인증서(폰 앱 지문 핀닝 유지). `GET /api/info`·`POST /api/pair/start`에 `webUrl`(없으면 null). `sw.js`(페이지 파일 network-first, `/api`·`/ws` 제외)는 이름으로 열었을 때만 등록. `PKSHELL_TAILSCALE_CERT=0`이면 끔.
 - 서버→클라: **binary** = 원본 출력 바이트. **text** = JSON 제어: `{"type":"size","cols","rows"}`, `{"type":"exit","code"}`, `{"type":"hello","session":Session}`(연결 직후, 재생보다 먼저), `{"type":"replay-end"}`(재생 완료 표시).
 - 클라→서버: **binary** = 입력 바이트(UTF-8/VT 그대로 PTY에 write). **text** = `{"type":"resize","cols","rows"}`.
 - `cols`/`rows`(쿼리, resize 메시지, `POST /api/sessions` 본문)는 서버에서 1..1000으로 clamp. 쿼리의 0/누락은 "크기 미보고".

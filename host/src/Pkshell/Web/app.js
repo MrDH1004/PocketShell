@@ -583,7 +583,7 @@
         "이름 확인 후 <b>추가</b>",
       ];
     }
-    if (isAndroid) return ["브라우저 오른쪽 위 <b>⋮</b> 메뉴", "<b>홈 화면에 추가</b> (또는 <b>앱 설치</b>)", "<b>추가</b> 또는 <b>설치</b>"];
+    if (isAndroid) return ["Chrome 오른쪽 위 <b>⋮</b> 메뉴", "<b>앱 설치</b> (또는 <b>홈 화면에 추가</b> → <b>설치</b>)", "<b>설치</b> — 앱 서랍과 홈 화면에 아이콘 생김"];
     if (isSafari) return ["메뉴 막대 <b>파일</b> → <b>Dock에 추가…</b> (macOS Sonoma 이상)", "이름 확인 후 <b>추가</b> — Dock과 Launchpad에 앱으로 생김"];
     if (isEdge) return ["오른쪽 위 <b>⋯</b> 메뉴", "<b>앱</b> → <b>이 사이트를 앱으로 설치</b>", "<b>설치</b>"];
     if (isChrome) {
@@ -607,11 +607,35 @@
     }
     var ol = $("install-steps");
     ol.textContent = "";
-    installSteps().forEach(function (html) { var li = document.createElement("li"); li.innerHTML = html; ol.appendChild(li); });
-    $("install-note").textContent = isIOS || isAndroid || isSafari ? "" :
-      "PC 인증서가 자체 서명이라 브라우저가 설치 아이콘을 숨길 수 있음. 그때는 위 메뉴로 추가.";
+    var link = $("install-open");
+    var web = info && info.webUrl;
+    var onTrusted = web && new URL(web).origin === location.origin;
+    var steps;
+    if (web && !onTrusted) {
+      // Installing needs the PC's trusted address (Tailscale name + Let's Encrypt certificate), not this IP address.
+      steps = [
+        "폰·Mac에서 <b>Tailscale</b> 켜기 (이 PC와 같은 계정)",
+        "아래 <b>Tailscale 주소로 열기</b> → 같은 PIN으로 한 번 더 연결",
+        "그 주소에서 다시 <b>앱 설치</b> 버튼",
+      ];
+      link.href = web;
+      link.hidden = false;
+      $("install-note").textContent = web;
+    } else {
+      steps = installSteps();
+      link.hidden = true;
+      $("install-note").textContent = web || isIOS || isAndroid || isSafari ? "" :
+        "이 PC는 신뢰된 인증서 주소가 없어 Chrome·Edge 설치 버튼이 안 뜰 수 있음 (PC에서 Tailscale의 MagicDNS·HTTPS를 켜면 생김). 그때는 위 메뉴로 추가.";
+    }
+    steps.forEach(function (html) { var li = document.createElement("li"); li.innerHTML = html; ol.appendChild(li); });
     $("install-dialog").showModal();
   });
+
+  // The service worker makes the page installable in Chrome (needs a trusted certificate: fails on the IP address).
+  var byName = !/^[0-9.]+$/.test(location.hostname) && location.hostname.indexOf(":") < 0 && location.hostname.charAt(0) !== "[";
+  if ("serviceWorker" in navigator && window.isSecureContext && byName) {
+    navigator.serviceWorker.register("sw.js").catch(function () { /* untrusted certificate: no install, page still works */ });
+  }
   $("install-close").addEventListener("click", function () { $("install-dialog").close(); });
   updateInstallButton();
 

@@ -100,7 +100,9 @@ internal sealed class PinForm : Form
             var list = r.TryGetProperty("hosts", out var h) && h.ValueKind == JsonValueKind.Array
                 ? h.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : new List<string>();
             _hosts.Text = $"이 PC 주소   {string.Join(", ", list)}  (포트 {_port})"
-                + (list.Count > 0 ? $"\n브라우저   {BrowserUrl(list[0], _port)}" : "");
+                + (r.TryGetProperty("webUrl", out var wu) && wu.GetString() is { Length: > 0 } web
+                    ? $"\n브라우저·앱 설치   {web}"
+                    : list.Count > 0 ? $"\n브라우저   {BrowserUrl(list[0], _port)}" : "");
             _expiresAt = r.TryGetProperty("expiresAt", out var e) && DateTimeOffset.TryParse(e.GetString(), out var at)
                 ? at : DateTimeOffset.Now.AddMinutes(5);
             _countdown.Start();

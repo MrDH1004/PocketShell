@@ -81,7 +81,10 @@ Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·�
 - 세션 목록(실행 중 · PC에서 연 콘솔 · 최근, Claude/GPT 작업 중·입력 대기·끝남 표시), 새 세션(폴더 + AI CLI 선택), 종료, 다시 열기, 기록 삭제
 - 터미널: 24bit 색·한글 조합 입력·복사/붙여넣기(⌘C/⌘V), 창 크기에 맞춰 PC 세션 크기 조정, 끊기면 자동 재연결, 주소 끝 `#세션id`로 새로 고침해도 같은 세션
 - 터치 화면(iPhone·iPad)은 아래에 Esc · Tab · Ctrl · ^C · 방향키 · Enter 키 바
-- 목록 위 **홈 화면에 추가**: Chrome·Edge는 설치 창(인증서 때문에 안 뜨면 메뉴 안내), Mac Safari는 **파일 → Dock에 추가**, iPhone Safari는 **공유 → 홈 화면에 추가** 안내. 아이콘은 앱 아이콘에 작은 'WEB' 글씨
+- **앱 설치 (Android · iPhone · Mac)**: PC에서 Tailscale의 MagicDNS·HTTPS가 켜져 있으면 호스트가 `tailscale cert`로 정식(Let's Encrypt) 인증서를 받아 Tailscale 주소 `https://<PC이름>.<tailnet>.ts.net:7380/`를 경고 없이 서빙(12시간마다 확인·갱신, `%APPDATA%\PocketShell\tls`). 트레이 PIN 창에 **브라우저·앱 설치** 주소로 표시
+  - 폰·Mac에서 Tailscale을 켜고 그 주소를 열어 PIN 연결 → 목록 위 **앱 설치**: Android Chrome은 설치 창(또는 ⋮ → 앱 설치), iPhone Safari는 **공유 → 홈 화면에 추가**, Mac Safari는 **파일 → Dock에 추가**, Mac Chrome은 주소창 설치 아이콘
+  - IP 주소로 열면 자체 서명 인증서라 설치가 안 됨 → **앱 설치** 버튼이 Tailscale 주소로 안내. 끄기: 환경 변수 `PKSHELL_TAILSCALE_CERT=0`
+  - 아이콘은 앱 아이콘에 작은 'WEB' 글씨
 - PC 콘솔이 창보다 크면 글자를 줄여 전부 보이게 하고, 그래도 넘치면 아래쪽(입력창·상태 줄)을 우선 표시
 - 연결 해제: 목록 위 **연결 해제**(이 브라우저의 토큰 삭제). PC 쪽 기기 목록에서 지우려면 `psh revoke <id>`
 - 주소(LAN · Tailscale)마다 브라우저 저장소가 달라 주소를 바꾸면 PIN으로 다시 연결
@@ -224,5 +227,5 @@ powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releas
 - 페어링: 일회용 PIN(5분, 5회 실패 시 무효) + 인증서 지문 확인 → 기기 토큰(서버에는 SHA-256만 저장), PC에서 `psh revoke`로 취소.
 - 세션 공유: 공유 PIN(10분, 1회, 5회 실패 시 열린 PIN 모두 무효)으로 받은 토큰은 그 세션 하나에만 쓰이고(허용 목록 밖은 403), 정한 시간·세션 종료·공유 중지 때 끊김.
 - 클라이언트는 서버 자체서명 인증서를 SHA-256 지문으로 핀닝.
-- 브라우저 클라이언트: 페이지 파일(HTML·JS)만 토큰 없이 받음(데이터 없음), `/api`·`/ws`는 기기 토큰 필요. 스크립트는 PC에서만 받음(CSP, 외부 CDN 없음), 다른 사이트 안에 못 넣음(frame 금지). 인증서는 브라우저의 예외 승인으로 확인(지문 핀닝 없음 — 트레이 PIN 창의 인증서 지문 16자리 = 브라우저 인증서 정보의 SHA-256 지문 앞 16자리).
+- 브라우저 클라이언트: 페이지 파일(HTML·JS)만 토큰 없이 받음(데이터 없음), `/api`·`/ws`는 기기 토큰 필요. 스크립트는 PC에서만 받음(CSP, 외부 CDN 없음), 다른 사이트 안에 못 넣음(frame 금지). Tailscale 주소(SNI가 그 이름)는 Let's Encrypt 정식 인증서, IP 주소는 폰 앱이 핀닝한 기존 자체 서명 인증서(같은 포트, SNI로 선택). IP 주소에서는 인증서를 브라우저의 예외 승인으로 확인(지문 핀닝 없음 — 트레이 PIN 창의 인증서 지문 16자리 = 브라우저 인증서 정보의 SHA-256 지문 앞 16자리).
 - 데이터: `%APPDATA%\PocketShell` (인증서, 토큰, 세션 기록, 로그).
