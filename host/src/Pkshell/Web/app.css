@@ -162,3 +162,26 @@ a.btn {
 }
 a.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .steps code { font: 13px ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+
+/* Terminal tools (photo, file, fit, keyboard) */
+.term-tools { display: flex; gap: 2px; flex-shrink: 0; }
+button.icon { background: transparent; border-color: transparent; min-width: 40px; min-height: 40px; padding: 0; display: inline-grid; place-items: center; }
+button.icon:disabled { opacity: 0.35; }
+@media (max-width: 520px) {
+  .term-bar { gap: 6px; padding-left: 8px; padding-right: 4px; }
+  .term-bar .status { display: none; }
+  #back { padding: 6px 8px; }
+}
+
+/* Quick replies while the AI waits on a question */
+.quickbar { display: grid; gap: 6px; padding: 8px; background: var(--surface); border-top: 1px solid var(--border); max-height: 40vh; overflow-y: auto; overscroll-behavior: contain; }
+.quickbar .q { color: var(--waiting); font-size: 13px; margin: 0 4px; }
+.quickbar button { text-align: start; min-height: 44px; white-space: normal; }
+
+/* Toast */
+.toast {
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  max-width: calc(100% - 32px); background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; font-size: 14px; z-index: 10; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+}
+.toast.bad { color: var(--danger); }

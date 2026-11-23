@@ -15,11 +15,21 @@
 
   var token = storageGet(TOKEN_KEY);
 
+  // Android Chrome: the on-screen keyboard shrinks the page, so the key bar stays above it (Safari does not know the key).
+  if (/Android/.test(navigator.userAgent)) {
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute("content", vp.getAttribute("content") + ", interactive-widget=resizes-content");
+  }
+
   // ---------- views ----------
   function show(id) {
     ["pair", "list", "term"].forEach(function (v) { $(v).hidden = v !== id; });
     // The terminal has its own scrollbar (past output); the page itself never scrolls behind it.
     document.documentElement.classList.toggle("term-open", id === "term");
+    var t = $("term");
+    var vv = window.visualViewport;
+    t.style.height = id === "term" && vv ? Math.round(vv.height) + "px" : "";
+    t.style.transform = "";
   }
 
   // ---------- api ----------
@@ -299,7 +309,7 @@
   var retry = 0, retryTimer = null, closedByUs = false, exited = false;
   var resizeTimer = null, lastSent = "", serverSize = null;
   var BASE_FONT = 14, MIN_FONT = 7;
-  var ctrlArmed = false;
+  var ctrlArmed = false, altArmed = false;
 
   function status(text, bad) {
     var s = $("term-status");
@@ -328,7 +338,7 @@
     term.loadAddon(fit);
     if (window.WebLinksAddon) term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     term.open($("term-box"));
-    term.onData(function (d) { sendInput(applyCtrl(d)); });
+    term.onData(function (d) { sendInput(applyAlt(applyCtrl(d))); });
     term.onBinary(function (d) {
       var b = new Uint8Array(d.length);
       for (var i = 0; i < d.length; i++) b[i] = d.charCodeAt(i) & 0xff;
@@ -347,8 +357,96 @@
     return d;
   }
   function setCtrl(on) { ctrlArmed = on; $("ctrl-key").setAttribute("aria-pressed", on ? "true" : "false"); }
+  /** Alt (latched on the key bar): ESC before the next key, as terminals send Meta. */
+  function applyAlt(d) {
+    if (!altArmed) return d;
+    setAlt(false);
+    return "\x1b" + d;
+  }
+  function setAlt(on) { altArmed = on; $("alt-key").setAttribute("aria-pressed", on ? "true" : "false"); }
 
-  function sendInput(text) { send(enc.encode(text)); }
+  function sendInput(text) {
+    if (rf && rf.scroll > 0) { rf.scroll = 0; drawReflow(); } // typing returns to the live view
+    send(enc.encode(text));
+  }
+
+  // ---------- PC console re-flow (narrow screens), as the phone app ----------
+  // A PC console wider than this window at a readable font is not shrunk: its frames go into ConsoleHistory (lines
+  // that scrolled off are kept) and are laid out again at this width by Reflow; swipe / wheel scrolls back.
+  var rf = null; // { h: ConsoleHistory, cols: layout columns, scroll: lines back from live }
+  var REFLOW_MIN_FONT = 11;
+
+  /** Decides (from serverSize) whether to re-flow; sets the font and grid. True when re-flowing. */
+  function chooseReflow() {
+    if (!serverSize || !window.PsReflow) { rf = null; return false; }
+    setFont(BASE_FONT);
+    var p = fit.proposeDimensions();
+    if (!p || serverSize.cols <= p.cols) {
+      if (rf) { rf = null; term.options.scrollback = 10000; term.reset(); }
+      return false;
+    }
+    var target = window.PsReflow.Reflow.fitCols(serverSize.cols, p.cols);
+    var f = BASE_FONT;
+    while (f > REFLOW_MIN_FONT && p && p.cols < target) { f -= 0.5; setFont(f); p = fit.proposeDimensions(); }
+    if (term.element) term.element.style.transform = "";
+    try { fit.fit(); } catch (e) { /* hidden */ }
+    if (!rf) {
+      rf = { h: new window.PsReflow.ConsoleHistory(), cols: 0, scroll: 0 };
+      term.options.scrollback = 0; // the history is ours; every redraw places whole rows
+      term.reset();
+    }
+    rf.h.pcCols = serverSize.cols;
+    rf.cols = Math.min(target, term.cols);
+    rf.scroll = Math.min(rf.scroll, rf.h.maxScroll(term.rows, rf.cols));
+    drawReflow();
+    return true;
+  }
+
+  function drawReflow() {
+    if (!rf || !rf.h.hasFrame) return;
+    term.write(rf.h.render(term.rows, rf.scroll, rf.cols));
+    if (!exited) status(rf.scroll > 0 ? "기록 " + rf.scroll + "줄 위" : "연결됨");
+  }
+
+  function scrollReflow(linesUp) {
+    if (!rf || !rf.h.hasFrame) return false;
+    var next = Math.max(0, Math.min(rf.h.maxScroll(term.rows, rf.cols), rf.scroll + linesUp));
+    if (next !== rf.scroll) { rf.scroll = next; drawReflow(); }
+    return true;
+  }
+
+  function cellHeight() {
+    var r = document.querySelector("#term-box .xterm-rows > div");
+    return (r && r.getBoundingClientRect().height) || 16;
+  }
+
+  (function () {
+    var box = $("term-box"), wheelAcc = 0, touchY = null, touchAcc = 0;
+    box.addEventListener("wheel", function (e) {
+      if (!rf) return;
+      e.preventDefault();
+      e.stopPropagation();
+      wheelAcc += e.deltaMode === 1 ? e.deltaY * cellHeight() : e.deltaY;
+      var n = Math.trunc(wheelAcc / cellHeight());
+      if (n) { wheelAcc -= n * cellHeight(); scrollReflow(-n); }
+    }, { capture: true, passive: false });
+    box.addEventListener("touchstart", function (e) {
+      if (!rf || e.touches.length !== 1) return;
+      touchY = e.touches[0].clientY;
+      touchAcc = 0;
+    }, { capture: true, passive: true });
+    box.addEventListener("touchmove", function (e) {
+      if (!rf || touchY == null || e.touches.length !== 1) return;
+      var y = e.touches[0].clientY;
+      touchAcc += y - touchY;
+      touchY = y;
+      var n = Math.trunc(touchAcc / cellHeight());
+      if (n) { touchAcc -= n * cellHeight(); scrollReflow(n); }
+      e.preventDefault();
+      e.stopPropagation();
+    }, { capture: true, passive: false });
+    box.addEventListener("touchend", function () { touchY = null; }, { capture: true, passive: true });
+  })();
   function send(bytes) { if (ws && ws.readyState === 1 && !exited) ws.send(bytes); }
 
   function scheduleFit() {
@@ -358,7 +456,14 @@
   }
   function doFit() {
     if (!term) return;
-    if (current && current.kind === "external") { fitFont(); return; } // a PC console keeps its own size
+    if (current && current.kind === "external") {
+      // A PC console keeps its own size: re-flowed to this width, or drawn at the PC size (font fitted).
+      var was = !!rf;
+      if (chooseReflow()) return;
+      if (was) { connect(); return; } // back to the PC's own layout: fresh frames at the PC size
+      fitFont();
+      return;
+    }
     setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { return; }
     sendSize();
@@ -420,11 +525,16 @@
     ensureTerm();
     term.reset();
     serverSize = null;
+    if (rf) { rf = null; term.options.scrollback = 10000; }
     setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { /* hidden */ }
     retry = 0;
     exited = false;
     connect();
+    var guest = !!(info && info.share);
+    $("tool-file").hidden = guest; // someone else's PC: no files into it
+    $("tool-image").hidden = guest && info.share.readOnly;
+    startQuick();
     term.focus();
   }
 
@@ -452,7 +562,19 @@
     };
     sock.onmessage = function (ev) {
       if (ws !== sock) return;
-      if (typeof ev.data !== "string") { term.write(new Uint8Array(ev.data)); return; }
+      if (typeof ev.data !== "string") {
+        var bytes = new Uint8Array(ev.data);
+        if (rf) {
+          var shifted = rf.h.accept(bytes);
+          if (shifted >= 0) {
+            if (rf.scroll > 0) rf.scroll += rf.h.wrappedCount(shifted, rf.cols); // keep the lines being read in place
+            drawReflow();
+            return;
+          }
+        }
+        term.write(bytes);
+        return;
+      }
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
       switch (m.type) {
@@ -464,6 +586,7 @@
           }
           break;
         case "history":
+          if (rf) { rf.h.replaceHistory(m.lines || []); drawReflow(); break; }
           (m.lines || []).forEach(function (l) { term.write(l + "\r\n"); });
           break;
         case "size":
@@ -471,6 +594,7 @@
           // so lines wrap as they do there. This window's own size goes up in doFit.
           if (m.cols > 0 && m.rows > 0) {
             serverSize = { cols: m.cols, rows: m.rows };
+            if (current.kind === "external" && chooseReflow()) break;
             if (m.cols !== term.cols || m.rows !== term.rows) term.resize(m.cols, m.rows);
             fitFont();
           }
@@ -525,8 +649,10 @@
 
   function closeTerminal() {
     closeSocket();
+    stopQuick();
     current = null;
     setCtrl(false);
+    setAlt(false);
   }
 
   $("back").addEventListener("click", function () { openList(); });
@@ -537,19 +663,194 @@
   });
 
   // On-screen keys for touch screens (iPhone / iPad Safari have no Esc, Tab, Ctrl or arrows).
-  var KEYS = { esc: "\x1b", tab: "\t", ctrlc: "\x03", enter: "\r" };
-  var ARROWS = { up: "A", down: "B", right: "C", left: "D" };
-  if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) $("keybar").hidden = false;
+  // Same keys as the phone app's key bar. Ctrl and Alt latch for the next key (on-screen keyboard or key bar).
+  var KEYS = { esc: "\x1b", tab: "\t", ctrlc: "\x03", enter: "\r", pgup: "\x1b[5~", pgdn: "\x1b[6~" };
+  var CHARS = { slash: "/", pipe: "|", tilde: "~", minus: "-" };
+  var CURSOR = { up: "A", down: "B", right: "C", left: "D", home: "H", end: "F" };
+  var touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  if (touch) $("keybar").hidden = false;
+  // Keep the key bar from pressing the terminal's focus away (the on-screen keyboard would close).
+  $("keybar").addEventListener("pointerdown", function (e) { if (e.target.closest("button")) e.preventDefault(); });
   $("keybar").addEventListener("click", function (e) {
     var b = e.target.closest("button");
     if (!b || !term) return;
     var k = b.getAttribute("data-key");
     if (k === "ctrl") { setCtrl(!ctrlArmed); term.focus(); return; }
+    if (k === "alt") { setAlt(!altArmed); term.focus(); return; }
     var seq = KEYS[k];
-    if (ARROWS[k]) seq = (term.modes && term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + ARROWS[k];
-    if (seq) sendInput(seq);
+    if (CURSOR[k]) seq = (term.modes && term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + CURSOR[k];
+    if (CHARS[k]) seq = applyCtrl(CHARS[k]);
+    if (seq) sendInput(applyAlt(seq));
     term.focus();
   });
+
+  // The on-screen keyboard: the terminal fills only what is still visible, so the key bar sits right above it
+  // (Android Chrome resizes with interactive-widget=resizes-content; iOS Safari only shrinks the visual viewport).
+  if (window.visualViewport) {
+    var fitViewport = function () {
+      var vv = window.visualViewport;
+      var t = $("term");
+      if (t.hidden) return;
+      t.style.height = Math.round(vv.height) + "px";
+      t.style.transform = vv.offsetTop ? "translateY(" + Math.round(vv.offsetTop) + "px)" : "";
+      scheduleFit();
+    };
+    window.visualViewport.addEventListener("resize", fitViewport);
+    window.visualViewport.addEventListener("scroll", fitViewport);
+  }
+
+  // ---------- terminal tools: photo, file upload, fit, keyboard (the phone app's top bar) ----------
+  var toastTimer = null;
+  function toast(msg, bad) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.classList.toggle("bad", !!bad);
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, bad ? 6000 : 3000);
+  }
+
+  /** POST a raw body (image / file) with the device token; resolves to the JSON reply, rejects with ApiError. */
+  function rawPost(path, body, type) {
+    return fetch(path, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": type || "application/octet-stream" }, body: body })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          var j = null;
+          try { j = t ? JSON.parse(t) : null; } catch (e) { /* not json */ }
+          if (r.status === 401) return unpaired();
+          if (!r.ok) throw new ApiError(r.status, (j && j.error) || ("HTTP " + r.status));
+          return j;
+        });
+      });
+  }
+
+  function sleep(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+
+  var MAX_SIDE = 2560, MAX_PNG_BYTES = 2 * 1024 * 1024;
+
+  /** Any image the browser can decode (HEIC on iPhone included) → PNG, or JPEG when the PNG would be large. */
+  function encodeImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, MAX_SIDE / Math.max(w, h));
+        var c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(w * k));
+        c.height = Math.max(1, Math.round(h * k));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (png) {
+          if (png && png.size <= MAX_PNG_BYTES) return resolve({ blob: png, type: "image/png" });
+          c.toBlob(function (jpg) { jpg ? resolve({ blob: jpg, type: "image/jpeg" }) : reject(new Error("이미지 변환 실패")); }, "image/jpeg", 0.9);
+        }, "image/png");
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("이미지를 읽을 수 없음: " + file.name)); };
+      img.src = url;
+    });
+  }
+
+  /** Each image goes to the PC clipboard, then Alt+V pastes it into the AI CLI (Claude Code attaches it). */
+  function pasteImages(files) {
+    var list = Array.prototype.slice.call(files);
+    var i = 0;
+    $("tool-image").disabled = true;
+    function next() {
+      if (i >= list.length) return Promise.resolve();
+      var f = list[i++];
+      toast("이미지 보내는 중 " + i + "/" + list.length + "…");
+      return encodeImage(f).then(function (e) { return rawPost("/api/clipboard/image", e.blob, e.type).then(function () { return e; }); })
+        .then(function (e) {
+          sendInput("\x1bv");
+          toast("이미지 붙임 " + i + "/" + list.length + " (" + Math.round(e.blob.size / 1024) + " KB)");
+          return i < list.length ? sleep(1500).then(next) : null;
+        });
+    }
+    next().catch(function (err) { if (err.status !== 401) toast("이미지 보내기 실패: " + (err.message || err), true); })
+      .then(function () { $("tool-image").disabled = false; term && term.focus(); });
+  }
+
+  /** Files into the session's folder on the PC (asks before replacing one that exists). */
+  function uploadFiles(files) {
+    var dir = current && current.cwd;
+    if (!dir) { toast("세션 폴더를 모름: 올릴 수 없음", true); return; }
+    var list = Array.prototype.slice.call(files);
+    var done = [];
+    $("tool-file").disabled = true;
+    // The file is read once: a request the PC refused (409, file exists) leaves the picked File unreadable in Chrome,
+    // so the retry sends a copy of the bytes.
+    function put(f, overwrite, bytes) {
+      var path = "/api/files/upload?dir=" + encodeURIComponent(dir) + "&name=" + encodeURIComponent(f.name) + (overwrite ? "&overwrite=1" : "");
+      return rawPost(path, new Blob([bytes])).catch(function (err) {
+        if (err.status === 409 && !overwrite && confirm("'" + f.name + "' 파일이 이미 있음. 바꿀까?")) return put(f, true, bytes);
+        if (err.status === 409) return null;
+        throw err;
+      });
+    }
+    var chain = Promise.resolve();
+    list.forEach(function (f, n) {
+      chain = chain.then(function () {
+        toast("올리는 중 " + (n + 1) + "/" + list.length + ": " + f.name);
+        return f.arrayBuffer().then(function (bytes) { return put(f, false, bytes); }).then(function (r) { if (r) done.push(f.name); });
+      });
+    });
+    chain.then(function () {
+      toast(done.length ? "올림 " + done.length + "개 → " + dir : "올린 파일 없음");
+    }).catch(function (err) {
+      if (err.status !== 401) toast("파일 올리기 실패: " + (err.message || err), true);
+    }).then(function () { $("tool-file").disabled = false; });
+  }
+
+  $("tool-image").addEventListener("click", function () { $("pick-image").click(); });
+  $("tool-file").addEventListener("click", function () { $("pick-file").click(); });
+  $("pick-image").addEventListener("change", function (e) { if (e.target.files.length) pasteImages(e.target.files); e.target.value = ""; });
+  $("pick-file").addEventListener("change", function (e) { if (e.target.files.length) uploadFiles(e.target.files); e.target.value = ""; });
+  $("tool-fit").addEventListener("click", function () { lastSent = ""; doFit(); if (term) term.scrollToBottom(); });
+  $("tool-keyboard").addEventListener("click", function () {
+    if (!term) return;
+    var ta = term.textarea;
+    if (ta && document.activeElement === ta) ta.blur(); else term.focus();
+  });
+
+  // ---------- quick replies (the AI CLI waits on a numbered question) ----------
+  var quickTimer = null, quickKey = "";
+  function stopQuick() { clearInterval(quickTimer); quickTimer = null; showQuick(null); }
+  function startQuick() {
+    stopQuick();
+    if (info && info.share && info.share.readOnly) return;
+    quickTimer = setInterval(pollQuick, 2500);
+    pollQuick();
+  }
+  function pollQuick() {
+    if (!current || $("term").hidden || document.hidden) return;
+    var id = current.id;
+    api("GET", "/api/sessions/" + encodeURIComponent(id)).then(function (s) {
+      if (!current || current.id !== id) return;
+      showQuick(s && s.agentState === "waiting" && s.prompt && s.prompt.options && s.prompt.options.length ? s.prompt : null);
+    }).catch(function () { /* the terminal shows the connection state */ });
+  }
+  function showQuick(p) {
+    var key = p ? JSON.stringify(p) : "";
+    if (key === quickKey) return;
+    quickKey = key;
+    var bar = $("quickbar");
+    bar.textContent = "";
+    bar.hidden = !p;
+    if (!p) { scheduleFit(); return; }
+    if (p.question) bar.appendChild(el("p", "q", p.question));
+    p.options.forEach(function (o, i) {
+      if (!o.key && !o.enter) return;
+      bar.appendChild(button((i + 1) + ".  " + (o.label || o.key), null, function () {
+        if (o.key) sendInput(o.key);
+        // Enter goes a moment later: a TUI reading keys and Enter in one chunk may take it for a paste.
+        if (o.enter) setTimeout(function () { sendInput("\r"); }, o.key ? 120 : 0);
+        showQuick(null);
+        term.focus();
+      }));
+    });
+    bar.appendChild(button("취소 (Esc)", null, function () { sendInput("\x1b"); showQuick(null); term.focus(); }));
+    scheduleFit();
+  }
 
   // ---------- home screen (install) ----------
   // Chrome / Edge offer their own install prompt (beforeinstallprompt) when they consider the page installable; with

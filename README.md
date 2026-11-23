@@ -80,7 +80,10 @@ Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·�
 3. 같은 창의 6자리 PIN 입력 → 연결. 토큰은 그 브라우저에 저장돼 다음부터 바로 열림
 - 세션 목록(실행 중 · PC에서 연 콘솔 · 최근, Claude/GPT 작업 중·입력 대기·끝남 표시), 새 세션(폴더 + AI CLI 선택), 종료, 다시 열기, 기록 삭제
 - 터미널: 24bit 색·한글 조합 입력·복사/붙여넣기(⌘C/⌘V), 창 크기에 맞춰 PC 세션 크기 조정, 끊기면 자동 재연결, 주소 끝 `#세션id`로 새로 고침해도 같은 세션
-- 터치 화면(iPhone·iPad)은 아래에 Esc · Tab · Ctrl · ^C · 방향키 · Enter 키 바
+- 위 버튼: **사진 첨부**(고른 사진을 PC 클립보드에 넣고 Alt+V → Claude Code에 첨부), **파일 올리기**(세션 폴더로, 같은 이름이면 물어봄), **화면 맞춤**, **키보드** 열기·닫기
+- AI가 번호 선택지로 물으면 아래에 **빠른 응답** 버튼(번호 · 취소)
+- 좁은 화면(폰)에서 PC 콘솔은 폰 앱처럼 화면 폭에 맞춰 다시 배치(`Web/reflow.js` = 폰 앱 `Reflow`·`ConsoleHistory` 이식). 글자는 11px 아래로 줄이지 않고, 손가락으로 내리거나 휠로 지난 기록 보기, 입력하면 실시간으로
+- 터치 화면은 아래에 폰 앱과 같은 키 바: Esc · Tab · ↵ · Ctrl · Alt · ^C · 방향키 · / | ~ - · Home · End · PgUp · PgDn (Ctrl·Alt는 다음 키 하나에 적용). 화면 키보드가 열리면 터미널이 남은 영역에 맞춰져 키 바가 키보드 바로 위에 보임
 - **앱 설치 (Android · iPhone · Mac)**: PC에서 Tailscale의 MagicDNS·HTTPS가 켜져 있으면 호스트가 `tailscale cert`로 정식(Let's Encrypt) 인증서를 받아 Tailscale 주소 `https://<PC이름>.<tailnet>.ts.net:7380/`를 경고 없이 서빙(12시간마다 확인·갱신, `%APPDATA%\PocketShell\tls`). 트레이 PIN 창에 **브라우저·앱 설치** 주소로 표시
   - 폰·Mac에서 Tailscale을 켜고 그 주소를 열어 PIN 연결 → 목록 위 **앱 설치**: Android Chrome은 설치 창(또는 ⋮ → 앱 설치), iPhone Safari는 **공유 → 홈 화면에 추가**, Mac Safari는 **파일 → Dock에 추가**, Mac Chrome은 주소창 설치 아이콘
   - IP 주소로 열면 자체 서명 인증서라 설치가 안 됨 → **앱 설치** 버튼이 Tailscale 주소로 안내. 끄기: 환경 변수 `PKSHELL_TAILSCALE_CERT=0`
@@ -88,7 +91,7 @@ Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·�
 - PC 콘솔이 창보다 크면 글자를 줄여 전부 보이게 하고, 그래도 넘치면 아래쪽(입력창·상태 줄)을 우선 표시
 - 연결 해제: 목록 위 **연결 해제**(이 브라우저의 토큰 삭제). PC 쪽 기기 목록에서 지우려면 `psh revoke <id>`
 - 주소(LAN · Tailscale)마다 브라우저 저장소가 달라 주소를 바꾸면 PIN으로 다시 연결
-- 아직 없는 것: 파일 보기·업로드, Git 변경, 알림(폰 앱 전용)
+- 아직 없는 것(폰 앱 전용): 파일 탐색기, Git 변경, 알림·위젯, 자주 쓰는 문구, 음성 입력 버튼(폰 키보드의 마이크는 그대로 쓸 수 있음)
 
 ## 폰 앱 사용법
 

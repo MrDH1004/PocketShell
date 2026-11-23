@@ -54,18 +54,36 @@
       <span id="term-cwd" class="muted"></span>
     </div>
     <span id="term-status" class="status" role="status"></span>
+    <div class="term-tools">
+      <button type="button" class="icon" id="tool-image" aria-label="사진 첨부" title="사진 첨부 (PC 클립보드 → Alt+V)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg></button>
+      <button type="button" class="icon" id="tool-file" aria-label="파일 올리기" title="파일 올리기 (세션 폴더)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button>
+      <button type="button" class="icon" id="tool-fit" aria-label="화면 맞춤" title="화면 맞춤"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg></button>
+      <button type="button" class="icon" id="tool-keyboard" aria-label="키보드" title="키보드 열기·닫기"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+    </div>
+    <input type="file" id="pick-image" accept="image/*" multiple hidden>
+    <input type="file" id="pick-file" multiple hidden>
   </header>
   <div id="term-box"></div>
+  <div id="quickbar" class="quickbar" hidden></div>
   <div id="keybar" class="keybar" hidden>
     <button type="button" data-key="esc">Esc</button>
     <button type="button" data-key="tab">Tab</button>
+    <button type="button" data-key="enter" aria-label="Enter">↵</button>
     <button type="button" data-key="ctrl" id="ctrl-key" aria-pressed="false">Ctrl</button>
-    <button type="button" data-key="ctrlc">^C</button>
+    <button type="button" data-key="alt" id="alt-key" aria-pressed="false">Alt</button>
+    <button type="button" data-key="ctrlc" aria-label="Ctrl+C">^C</button>
+    <button type="button" data-key="left" aria-label="왼쪽">←</button>
     <button type="button" data-key="up" aria-label="위">↑</button>
     <button type="button" data-key="down" aria-label="아래">↓</button>
-    <button type="button" data-key="left" aria-label="왼쪽">←</button>
     <button type="button" data-key="right" aria-label="오른쪽">→</button>
-    <button type="button" data-key="enter">Enter</button>
+    <button type="button" data-key="slash">/</button>
+    <button type="button" data-key="pipe">|</button>
+    <button type="button" data-key="tilde">~</button>
+    <button type="button" data-key="minus">-</button>
+    <button type="button" data-key="home">Home</button>
+    <button type="button" data-key="end">End</button>
+    <button type="button" data-key="pgup">PgUp</button>
+    <button type="button" data-key="pgdn">PgDn</button>
   </div>
 </main>
 
@@ -96,9 +114,12 @@
   </div>
 </dialog>
 
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
 <script src="vendor/addon-web-links.js"></script>
+<script src="reflow.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

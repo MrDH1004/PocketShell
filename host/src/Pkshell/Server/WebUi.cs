@@ -74,7 +74,7 @@ public static class WebUi
         {
             // Scripts only from this PC (no inline script); xterm.js sets inline styles. connect: this origin's wss.
             var host = req.Host.Value ?? "";
-            h["Content-Security-Policy"] = $"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://{host}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+            h["Content-Security-Policy"] = $"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss://{host}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
             h["X-Frame-Options"] = "DENY";
         }
         if (req.Headers.IfNoneMatch.ToString() == a.ETag)
