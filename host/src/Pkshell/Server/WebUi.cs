@@ -77,8 +77,9 @@ public static class WebUi
         if (a.ContentType.StartsWith("text/html", StringComparison.Ordinal))
         {
             // Scripts only from this PC (no inline script); xterm.js sets inline styles. connect: this origin's wss.
+            // frame: the web view's forwarded dev servers (WebForward), other ports of this same host name.
             var host = req.Host.Value ?? "";
-            h["Content-Security-Policy"] = $"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss://{host}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+            h["Content-Security-Policy"] = $"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss://{host}; frame-src https://{req.Host.Host}:*; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
             h["X-Frame-Options"] = "DENY";
         }
         if (req.Headers.IfNoneMatch.ToString() == a.ETag)

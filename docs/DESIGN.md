@@ -71,6 +71,13 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
   - 루프백 포트는 다른 앱도 닿을 수 있어, 실행마다 임의 Basic 비밀번호를 요구(없으면 407). WebView는 `onReceivedHttpAuthRequest`(realm "PocketShell")에서 그 값으로 응답. 사이트 자체 로그인(Basic 등)은 입력 창, 인증서 오류는 경고 후 사용자가 계속/취소.
   - 주소창(스킴 없으면 http://), 뒤로·앞으로·새로고침, 즐겨찾기(⋮ > 추가, 목록에서 길게 눌러 삭제), 마지막 주소 기억. 다운로드는 미지원.
   - 한계: PC가 꺼져 있거나 호스트가 안 돌면 안 열림. 사내 보안 정책 확인은 사용자 몫.
+- 브라우저 웹 보기(0.2.132+, `Server/WebForward.cs`): 브라우저 페이지는 frame에 프록시를 걸 수 없어 PC의 localhost 개발 서버만 지원.
+  - `POST /api/web/open {port}` (기기 토큰): 그 포트용 HTTPS 리스너를 시작(재사용)하고 `{target, port}`. 포트 = 20000 + 대상 포트(쓰는 중이면 빈 포트). 주소·인증서는 호스트와 같음(SNI로 Tailscale/자체 서명 선택). HTTP/1.1·HTTP/2. 응답에 `pkshell_web` 쿠키(HttpOnly·Secure·SameSite=Lax, 기기별 임의 값, 호스트 실행 동안만). 쿠키는 포트와 무관해 같은 이름의 다른 포트(리스너)에도 감 → 쿠키 없거나 해지된 기기면 401 페이지.
+  - `GET /api/web/ports`: PC에서 대기 중이고 `/`가 웹 페이지인 포트(`WebServers.PagesOnly`).
+  - 요청은 `http://localhost:포트` + 원래 경로(RawTarget)로 HttpClient 중계(스트리밍, 리다이렉트·쿠키 처리 안 함). Host·Origin은 `localhost:포트`(개발 서버가 다른 Host를 막음), Referer는 localhost로, 우리 쿠키는 빼고 전달. 응답의 X-Frame-Options 제거, CSP의 frame-ancestors 제거, `Location`이 `http://localhost:포트/…`면 상대 경로로.
+  - WebSocket(HMR): 개발 서버 쪽 HTTP/1.1 업그레이드를 직접 쓰고 `WebSocket.CreateFromStream`으로 프레임 중계(서브프로토콜 전달). 응답 Accept가 보낸 키와 안 맞아도 101이면 계속(한 PC에서 Vite가 다른 키의 값으로 답한 사례, host.log에 한 번 기록).
+  - localhost 연결: 127.0.0.1 → ::1 순, 포트별로 마지막에 된 주소를 먼저(거부된 연결에 Windows가 약 2초 걸림).
+  - 웹 앱 CSP에 `frame-src https://<같은 호스트>:*`. 호스트가 멈출 때(업데이트 인계 포함) 리스너 모두 닫음.
   - 페어링된 기기는 이미 셸 전체 권한이 있으므로 경로 샌드박스는 두지 않고 입력만 검증(절대경로, 순수 파일 이름).
 - 셸 실행 명령:
   - cmd: `cmd.exe` + 환경변수 `PROMPT=$E]9;9;$P$E\$P$G` (OSC 9;9로 cwd 보고)

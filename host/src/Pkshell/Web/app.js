@@ -40,7 +40,8 @@
 
   // ---------- views ----------
   function show(id) {
-    ["pair", "list", "term", "files"].forEach(function (v) { $(v).hidden = v !== id; });
+    ["pair", "list", "term", "files", "web"].forEach(function (v) { $(v).hidden = v !== id; });
+    document.documentElement.classList.toggle("web-open", id === "web");
     // The terminal has its own scrollbar (past output); the page itself never scrolls behind it.
     document.documentElement.classList.toggle("term-open", id === "term");
     var t = $("term");
@@ -250,6 +251,15 @@
     }
     var actions = el("div", "actions");
     if (info && info.share) { li.appendChild(actions); return li; }
+    if (s.webPorts && s.webPorts.length && !isHistory(s)) {
+      var globe = withAct(button("", "icon ghost globe", function () {
+        stopPolling();
+        openWeb(s.webPorts[0], openList, s.webPorts);
+      }, "웹 보기: localhost:" + s.webPorts.join(", ")), "web");
+      globe.innerHTML = GLOBE_SVG;
+      globe.title = "웹 보기 (localhost:" + s.webPorts.join(", ") + ")";
+      li.appendChild(globe);
+    }
     if (isHistory(s)) {
       actions.appendChild(withAct(button("다시 열기", null, function () { openSession(s); }), "resume"));
       actions.appendChild(withAct(button("삭제", "danger", function () { removeSession(s); }, "삭제: " + displayTitle(s)), "delete"));
@@ -1204,7 +1214,7 @@
   // Phones: the app's layout — ⋮ menu in the bar, + button for a new session.
   $("fab").addEventListener("click", function () { $("new-session").click(); });
   $("list-menu").addEventListener("click", function () {
-    var items = [["새로 고침", function () { $("refresh").click(); }]];
+    var items = [["새로 고침", function () { $("refresh").click(); }], ["웹 보기 (PC localhost)", function () { stopPolling(); openWeb(0, openList); }]];
     if (!$("install").hidden) items.push(["앱 설치", function () { $("install").click(); }]);
     items.push(["연결 해제", function () { $("unpair").click(); }, "danger"]);
     window.PsFiles.sheet(info && info.name || "PocketShell", items);
@@ -1239,6 +1249,7 @@
     ];
     if (!$("keybar").hidden) items.push(["자주 쓰는 문구", showSnippets]);
     items.push(["글자 크기", showFontSizes]);
+    if (!(info && info.share)) items.push(["웹 보기 (PC localhost)", function () { openWebFromTerm(); }]);
     window.PsFiles.sheet(displayTitle(current), items);
   });
 
@@ -1350,6 +1361,98 @@
       if (done) ok(); else fail(new Error("copy"));
     });
   }
+
+  // ---------- 웹 보기: the PC's localhost dev servers, each through its own HTTPS port of the host (WebForward) ----------
+  var GLOBE_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>';
+  var WEB_KEY = "pocketshell.webRecent";
+  var web = { back: null, url: "", target: 0 };
+  function webRecent() { return (storageGet(WEB_KEY) || "").split(",").map(Number).filter(function (p) { return p > 0 && p < 65536; }); }
+  function openWebFromTerm() {
+    var ports = current && current.webPorts;
+    openWeb(0, function () { show("term"); scheduleFit(); refocusTerm(); }, ports);
+  }
+  /** Opens the web view; port 0 shows the list of the PC's web pages first. */
+  function openWeb(port, back, prefer) {
+    web.back = back;
+    $("web-back").textContent = back === openList ? "← 목록" : "← 터미널";
+    show("web");
+    if (port) webGo(port, "/"); else webPick(prefer);
+  }
+  function webPick(prefer) {
+    web.url = ""; web.target = 0;
+    var frame = $("web-frame");
+    frame.hidden = true;
+    frame.removeAttribute("src");
+    $("web-pick").hidden = false;
+    $("web-addr").value = "";
+    var box = $("web-ports");
+    var add = function (list, seen, label) {
+      list.forEach(function (p) {
+        if (seen[p]) return;
+        seen[p] = true;
+        box.appendChild(button("localhost:" + p + (label ? "  · " + label : ""), null, function () { webGo(p, "/"); }));
+      });
+    };
+    var draw = function (running) {
+      box.textContent = "";
+      var seen = {};
+      add(prefer || [], seen, "이 세션");
+      add(running, seen, "");
+      add(webRecent(), seen, "최근");
+      if (!box.children.length) box.appendChild(el("p", "muted", "실행 중인 웹 서버 없음"));
+    };
+    draw([]);
+    api("GET", "/api/web/ports").then(function (r) { if (!$("web").hidden && !web.target) draw((r && r.ports) || []); })
+      .catch(function (err) { if (err.status !== 401) toast("목록을 못 불러옴: " + err.message, true); });
+  }
+  /** "3000", "localhost:3000/x", "http://127.0.0.1:3000/x" → [3000, "/x"]; null when it names no localhost port. */
+  function parseWebAddr(text) {
+    var t = String(text || "").trim().replace(/^https?:\/\//i, "");
+    var m = /^(?:(?:localhost|127\.0\.0\.1|\[::1\]):)?(\d{1,5})(\/.*)?$/i.exec(t);
+    if (!m) return null;
+    var port = +m[1];
+    return port > 0 && port < 65536 ? [port, m[2] || "/"] : null;
+  }
+  function webGo(target, path) {
+    $("web-addr").value = "localhost:" + target + (path === "/" ? "" : path);
+    api("POST", "/api/web/open", { port: target }).then(function (r) {
+      if (!r || $("web").hidden) return;
+      web.target = target;
+      web.url = "https://" + location.hostname + ":" + r.port + path;
+      storageSet(WEB_KEY, [target].concat(webRecent().filter(function (p) { return p !== target; })).slice(0, 6).join(","));
+      $("web-pick").hidden = true;
+      var frame = $("web-frame");
+      frame.hidden = false;
+      frame.src = web.url;
+      // By IP the PC's own certificate is not trusted, and a frame cannot show the browser's warning.
+      if (/^[\d.]+$|:/.test(location.hostname)) toast("IP 주소 접속: 안 열리면 ↗ 새 탭에서 열기", false);
+    }).catch(function (err) { if (err.status !== 401) toast("웹 보기 실패: " + err.message, true); });
+  }
+  $("web-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var a = parseWebAddr($("web-addr").value);
+    if (!a) { toast("PC의 localhost 포트 번호 입력 (예: 3000, localhost:5173/admin)", true); return; }
+    $("web-addr").blur();
+    webGo(a[0], a[1]);
+  });
+  $("web-back").addEventListener("click", function () {
+    var f = $("web-frame");
+    f.hidden = true;
+    f.removeAttribute("src");
+    var back = web.back || openList;
+    web.back = null;
+    back();
+  });
+  $("web-reload").addEventListener("click", function () {
+    if (!web.url) { webPick(); return; }
+    var f = $("web-frame");
+    f.src = "about:blank";
+    setTimeout(function () { f.src = web.url; }, 0);
+  });
+  $("web-tab").addEventListener("click", function () {
+    if (web.url) window.open(web.url, "_blank", "noopener");
+    else toast("먼저 포트를 고르기", true);
+  });
 
   // ---------- 자주 쓰는 문구 (saved phrases, this browser): typed into the input line, sent with Enter by the user ----------
   var SNIP_KEY = "pocketshell.snippets", SNIP_MAX = 20, SNIP_LEN = 200;

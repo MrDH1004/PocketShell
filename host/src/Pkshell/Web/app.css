@@ -280,3 +280,15 @@ dialog.preview[open] { display: flex; flex-direction: column; }
 #text-view-pre mark { background: #6b5d1f; color: #fff; border-radius: 2px; }
 #text-view-pre mark.cur { background: #f5c518; color: #000; }
 .sheet-items button.info { text-align: start; white-space: normal; overflow-wrap: anywhere; font-weight: 400; }
+
+/* 웹 보기: address bar + the PC's localhost page in a frame */
+html.web-open, html.web-open body { overflow: hidden; overscroll-behavior: none; }
+#web:not([hidden]) { display: flex; flex-direction: column; height: 100dvh; min-height: 0; }
+.web-bar { gap: 6px; }
+.web-addr { flex: 1; min-width: 0; display: flex; }
+.web-addr input { flex: 1; min-width: 0; margin: 0; font-size: 16px; padding: 6px 10px; }
+#web-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; display: block; }
+#web-frame[hidden] { display: none; }
+.web-pick { padding: 16px; overflow: auto; }
+.web-pick h2 { font-size: 16px; margin: 0 0 8px; }
+.session .globe { flex: none; }

@@ -102,6 +102,7 @@ public sealed class HostServer : IDisposable
     private readonly AgentEventLog _events = new();
     private readonly CancellationTokenSource _bgCts = new();
     private TokenAuthenticator _auth = null!;
+    private WebForward? _web;
     private PairingManager _pairing = null!;
     private PinPairing _pins = null!;
     private ClaimRateLimiter _claimLimiter = null!;
@@ -159,6 +160,7 @@ public sealed class HostServer : IDisposable
         _fpShort = PinPairing.FpShort(fp);
         _localToken = TokenAuthenticator.LoadOrCreateLocalToken(_home);
         _auth = new TokenAuthenticator(_localToken, new DeviceStore(PkshellPaths.DevicesFile(_home)));
+        _web = new WebForward(() => _binds, SelectCert, id => id == "local" || _auth.Devices.IsActive(id), _port);
         _pairing = new PairingManager();
         _pins = new PinPairing();
         _claimLimiter = new ClaimRateLimiter();
@@ -243,6 +245,7 @@ public sealed class HostServer : IDisposable
                 Log.Info($"{Brand.Name} {Version} serving https/wss on port {_port}: {string.Join(", ", _binds)}");
                 await app.WaitForShutdownAsync();
                 StopDiscovery();
+                if (_web != null) await _web.StopAllAsync(); // free the web view ports (an update's new process takes them)
                 _app = null;
                 await app.DisposeAsync();
                 if (_stopRequested) break;
@@ -1162,6 +1165,35 @@ public sealed class HostServer : IDisposable
                 }
             }
             return Results.NoContent();
+        });
+
+        // Browser web view (WebForward): the PC's localhost web pages, and opening one through its own HTTPS port.
+        app.MapGet("/api/web/ports", () =>
+        {
+            var ports = WebServers.PagesOnly(WebServers.Listeners(_port).Select(l => l.Port).Distinct().OrderBy(p => p));
+            return Json(new { ports });
+        });
+        app.MapPost("/api/web/open", async (HttpContext ctx) =>
+        {
+            if (_web == null) return Error(503, "starting");
+            int target;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(ctx.Request.Body, cancellationToken: ctx.RequestAborted);
+                target = doc.RootElement.TryGetProperty("port", out var p) && p.TryGetInt32(out var v) ? v : 0;
+            }
+            catch (JsonException) { return Error(400, "bad json"); }
+            if (target is < 1 or > 65535 || target == _port) return Error(400, "port 1-65535");
+            int port;
+            try { port = await _web.OpenAsync(target); }
+            catch (IOException ex) { return Error(500, ex.Message); }
+            var secret = _web.SecretFor(AuthOf(ctx).DeviceId ?? "local");
+            ctx.Response.Cookies.Append(WebForward.CookieName, secret, new CookieOptions
+            {
+                Path = "/", Secure = true, HttpOnly = true, SameSite = SameSiteMode.Lax, IsEssential = true,
+            });
+            Log.Info($"web view localhost:{target} (port {port}) by {AuthOf(ctx).DeviceId ?? "local"}");
+            return Json(new { target, port });
         });
 
         // Phone → PC clipboard image; the phone then sends Alt+V (ESC v) on the session so Claude Code attaches it.

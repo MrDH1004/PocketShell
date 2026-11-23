@@ -130,6 +130,23 @@
   <p id="files-msg" class="empty files-msg"></p>
 </main>
 
+<main id="web" class="view" hidden>
+  <header class="bar web-bar">
+    <button type="button" id="web-back" class="ghost">← 목록</button>
+    <form id="web-form" class="web-addr" autocomplete="off">
+      <input id="web-addr" inputmode="url" placeholder="localhost:3000" aria-label="PC의 localhost 주소" enterkeyhint="go" spellcheck="false" autocapitalize="off">
+    </form>
+    <button type="button" class="icon" id="web-reload" aria-label="처음 주소 다시 열기" title="처음 주소 다시 열기">↻</button>
+    <button type="button" class="icon" id="web-tab" aria-label="새 탭에서 열기" title="새 탭에서 열기">↗</button>
+  </header>
+  <div id="web-pick" class="web-pick">
+    <h2>PC에서 실행 중인 웹</h2>
+    <div id="web-ports" class="sheet-items"></div>
+    <p class="muted small">PC의 localhost 개발 서버(Vite · Next · Django 등)를 이 화면에서 엶. 위 주소 칸에 포트 번호를 쳐도 됨.</p>
+  </div>
+  <iframe id="web-frame" title="웹 보기" hidden allow="clipboard-read; clipboard-write; fullscreen"></iframe>
+</main>
+
 <dialog id="files-sheet" aria-labelledby="files-sheet-title">
   <h2 id="files-sheet-title"></h2>
   <div id="files-sheet-items" class="sheet-items"></div>
