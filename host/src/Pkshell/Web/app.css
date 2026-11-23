@@ -124,7 +124,7 @@ label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
 .term-bar { position: static; }
 .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .status.bad { color: var(--danger); }
-#term-box { flex: 1; min-height: 0; background: #000; padding: 4px 0 0 6px; }
+#term-box { flex: 1; min-height: 0; background: #0c0c0c; padding: 4px 0 0 6px; }
 #term-box .xterm { height: 100%; }
 .keybar {
   display: flex; gap: 6px; overflow-x: auto; padding: 6px 8px;

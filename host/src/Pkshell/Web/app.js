@@ -113,6 +113,10 @@
   function isHistory(s) { return s.kind === "history" || s.kind === "recent" || (s.kind === "host" && s.state === "exited"); }
   function isRunningHost(s) { return s.kind === "host" && s.state === "running"; }
   function isPlainCmd(s) { return (s.kind === "external" || s.kind === "recent") && /\\system32\\cmd\.exe$/i.test((s.title || "").trim()); }
+  // A console sitting in C:\Windows\System32 (an administrator terminal): no project there. Same rule as the phone app.
+  function isSystem32Console(s) {
+    return !isRunningHost(s) && !(s.kind === "external" && s.agent) && /^[A-Za-z]:\\windows\\system32$/i.test((s.cwd || "").trim().replace(/[\\/]+$/, ""));
+  }
   function dirKey(cwd) { return (cwd || "").trim().replace(/[\\/]+$/, "").toLowerCase(); }
 
   var STATE_LABEL = { working: "작업 중", waiting: "입력 대기", done: "끝남" };
@@ -159,8 +163,14 @@
     });
   }
 
+  var lastRendered = null;
+
   function renderSessions(all) {
-    var list = all.filter(function (s) { return !isPlainCmd(s); });
+    // Redraw only when something changed: rebuilding the cards every 5 s could swallow a click in progress.
+    var key = JSON.stringify(all) + "|" + (info && info.share ? 1 : 0) + "|" + Math.floor(Date.now() / 60000);
+    if (key === lastRendered) return;
+    lastRendered = key;
+    var list = all.filter(function (s) { return !isPlainCmd(s) && !isSystem32Console(s); });
     var running = list.filter(isRunningHost).sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); });
     var external = list.filter(function (s) { return s.kind === "external"; }).sort(function (a, b) { return (a.pid || 1e9) - (b.pid || 1e9); });
     var seen = {};
@@ -303,7 +313,13 @@
       fontFamily: 'Menlo, "SF Mono", "D2Coding", Consolas, "Apple SD Gothic Neo", "Malgun Gothic", monospace',
       allowProposedApi: true,
       macOptionIsMeta: false,
-      theme: { background: "#000000" },
+      // Windows Terminal (Campbell) colors. black must equal the background: PC consoles mark cells with an explicit
+      // background 0, and xterm.js's own black (#2e3436) drew those as gray bars behind the text.
+      theme: {
+        background: "#0c0c0c", foreground: "#cccccc", cursor: "#ffffff", selectionBackground: "#3a3d41",
+        black: "#0c0c0c", red: "#c50f1f", green: "#13a10e", yellow: "#c19c00", blue: "#0037da", magenta: "#881798", cyan: "#3a96dd", white: "#cccccc",
+        brightBlack: "#767676", brightRed: "#e74856", brightGreen: "#16c60c", brightYellow: "#f9f1a5", brightBlue: "#3b78ff", brightMagenta: "#b4009e", brightCyan: "#61d6d6", brightWhite: "#f2f2f2",
+      },
     });
     fit = new window.FitAddon.FitAddon();
     term.loadAddon(fit);
