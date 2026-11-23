@@ -394,10 +394,11 @@
     var vpEl = term.element && term.element.querySelector(".xterm-viewport");
     if (vpEl) vpEl.addEventListener("scroll", liveCheck, { passive: true });
     term.onData(function (d) {
+      if (quietFocus && (d === "\x1b[I" || d === "\x1b[O")) return; // our own refocus, not the user's
       if (imeDrop !== null && d === imeDrop) { imeDrop = null; return; } // a re-opened word: sent by imeFix instead
       sendInput(applyAlt(applyCtrl(d)));
     });
-    imeFix(term.textarea);
+    if (touchScreen()) mobileIme(term.textarea); else imeFix(term.textarea);
     term.onBinary(function (d) {
       var b = new Uint8Array(d.length);
       for (var i = 0; i < d.length; i++) b[i] = d.charCodeAt(i) & 0xff;
@@ -405,6 +406,131 @@
     });
     window.addEventListener("resize", scheduleFit);
     if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleFit);
+  }
+
+  // ---------- phone keyboards: mirror the input line (as the phone app's TerminalView) ----------
+  // On touch screens xterm.js's own keyboard handling is bypassed. The hidden textarea holds the input line as the
+  // keyboard believes it is; after every keyboard edit the PC is brought to the same text (Backspace per removed
+  // character, then the new tail), so Korean shows while it is composed (ㅁ → 모 → 몸) and a word the keyboard
+  // re-opens is not typed twice. The keyboard's Backspace inside a syllable (한 → 하 → ㅎ) deletes the whole character
+  // instead, as on a PC. The mirror starts over at Enter and whenever keys are sent another way (key bar, phrases).
+  /**
+   * Gives the terminal's input back the keyboard. After a dialog closes, the textarea is focused again but the
+   * browser does not insert typed text into it until it is blurred and focused once more. The focus-out/in reports
+   * xterm.js would send for that (programs such as Claude Code turn them on) are dropped.
+   */
+  var quietFocus = false;
+  function refocusTerm() {
+    if (!term || !term.textarea || $("term").hidden) return;
+    quietFocus = true;
+    var ta = term.textarea, keep = ta.value; // the phone keyboard mirror's line: must survive the refocus
+    ta.blur();
+    ta.focus({ preventScroll: true });
+    if (ta.value !== keep) { ta.value = keep; ta.setSelectionRange(keep.length, keep.length); }
+    setTimeout(function () { quietFocus = false; }, 60);
+  }
+
+  function touchScreen() { return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
+
+  var HG_CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+  var HG_JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ";
+  var HG_JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+  var HG_COMPOUND = "ㅘㅗㅏㅙㅗㅐㅚㅗㅣㅝㅜㅓㅞㅜㅔㅟㅜㅣㅢㅡㅣ" + "ㄳㄱㅅㄵㄴㅈㄶㄴㅎㄺㄹㄱㄻㄹㅁㄼㄹㅂㄽㄹㅅㄾㄹㅌㄿㄹㅍㅀㄹㅎㅄㅂㅅ";
+  function hgJamo(j) {
+    for (var k = 0; k < HG_COMPOUND.length; k += 3) if (HG_COMPOUND[k] === j) return HG_COMPOUND[k + 1] + HG_COMPOUND[k + 2];
+    return j;
+  }
+  /** Hangul as the jamo keys that build it ("닭" → ㄷㅏㄹㄱ); other characters unchanged. */
+  function hgKeys(text) {
+    var out = "";
+    for (var i = 0; i < text.length; i++) {
+      var c = text.charCodeAt(i);
+      if (c >= 0xac00 && c <= 0xd7a3) {
+        var x = c - 0xac00;
+        out += HG_CHO[Math.floor(x / 588)] + hgJamo(HG_JUNG[Math.floor((x % 588) / 28)]);
+        if (x % 28) out += hgJamo(HG_JONG[x % 28]);
+      } else out += hgJamo(text[i]);
+    }
+    return out;
+  }
+  /** The keyboard changed Hangul `from` → `to` only by removing jamo (its Backspace inside a syllable). */
+  function hgBackspace(from, to) {
+    if (!from || to.length > from.length || !/[\uac00-\ud7a3\u3131-\u318e]/.test(from)) return false;
+    var a = hgKeys(from), b = hgKeys(to);
+    return b.length < a.length && a.indexOf(b) === 0;
+  }
+  function dropLast(t) { var c = Array.from(t); c.pop(); return c.join(""); }
+
+  var mirrorReset = function () {};
+  function mobileIme(ta) {
+    if (!ta) return;
+    var sent = "";       // what the PC has of the current input line
+    var before = "";     // textarea value before the current keyboard edit
+    ta.setAttribute("autocomplete", "off");
+    ta.setAttribute("autocorrect", "off");
+    ta.setAttribute("autocapitalize", "off");
+    ta.setAttribute("spellcheck", "false");
+
+    function syncTo(target) {
+      var a = Array.from(sent), b = Array.from(target), k = 0;
+      while (k < a.length && k < b.length && a[k] === b[k]) k++;
+      var out = new Array(a.length - k + 1).join("\x7f") + b.slice(k).join("").replace(/\n/g, "\r");
+      sent = target;
+      if (out) { stopTouchFling(); if (rf && rf.scroll > 0) { rf.scroll = 0; drawReflow(); } send(enc.encode(applyAlt(applyCtrl(out)))); }
+    }
+    function reset() { sent = ""; before = ""; ta.value = ""; }
+    mirrorReset = reset;
+
+    var box = $("term-box");
+    // Capture on the parent: these never reach xterm.js's own listeners on the textarea.
+    ["compositionstart", "compositionupdate", "compositionend", "keypress"].forEach(function (t) {
+      box.addEventListener(t, function (e) { if (e.target === ta) e.stopPropagation(); }, true);
+    });
+    box.addEventListener("beforeinput", function (e) {
+      if (e.target !== ta) return;
+      e.stopPropagation();
+      before = ta.value;
+      if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+        e.preventDefault();
+        syncTo(ta.value);
+        send(enc.encode("\r"));
+        reset();
+      }
+    }, true);
+    box.addEventListener("input", function (e) {
+      if (e.target !== ta) return;
+      e.stopPropagation();
+      if (e.inputType === "insertCompositionText" && hgBackspace(before, ta.value) && ta.value.length <= before.length) {
+        // Backspace inside a syllable: delete the whole character, end the composition.
+        var kept = dropLast(before);
+        ta.value = kept;
+        ta.setSelectionRange(kept.length, kept.length);
+        syncTo(kept);
+        refocusTerm(); // ends the keyboard's composition so it does not bring the old syllable back
+        return;
+      }
+      syncTo(ta.value);
+    }, true);
+    box.addEventListener("keydown", function (e) {
+      if (e.target !== ta) return;
+      if (e.isComposing || e.keyCode === 229 || e.key === "Unidentified" || e.key === "Process") { e.stopPropagation(); return; }
+      if (e.key === "Enter") {
+        e.stopPropagation(); e.preventDefault();
+        syncTo(ta.value);
+        send(enc.encode("\r"));
+        reset();
+        return;
+      }
+      if (e.key === "Backspace") {
+        e.stopPropagation();
+        if (!ta.value) { e.preventDefault(); stopTouchFling(); send(enc.encode("\x7f")); }
+        return; // with text: the textarea deletes, the input event syncs
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { e.stopPropagation(); return; } // comes as input
+      // Other keys (arrows, Tab, Esc, Ctrl+…, hardware keyboard): xterm.js sends them; the line may change, start over.
+      reset();
+    }, true);
+    ta.addEventListener("blur", function () { before = ta.value; });
   }
 
   // ---------- phone keyboards re-opening a committed word (Samsung Keyboard: 한/영 right after Korean) ----------
@@ -473,6 +599,7 @@
   function setAlt(on) { altArmed = on; $("alt-key").setAttribute("aria-pressed", on ? "true" : "false"); }
 
   function sendInput(text) {
+    mirrorReset();
     stopTouchFling();
     if (rf && rf.scroll > 0) { rf.scroll = 0; drawReflow(); } // typing returns to the live view
     send(enc.encode(text));
@@ -998,7 +1125,7 @@
       back: function () {
         show("term");
         scheduleFit();
-        if (term) term.focus();
+        refocusTerm();
       },
     });
   }
@@ -1037,19 +1164,19 @@
       box.appendChild(button(t, null, function () {
         $("snip-dialog").close();
         sendInput(t);
-        if (term) term.focus();
+        refocusTerm();
       }));
     });
     $("snip-dialog").showModal();
   }
-  $("snip-close").addEventListener("click", function () { $("snip-dialog").close(); if (term) term.focus(); });
+  $("snip-close").addEventListener("click", function () { $("snip-dialog").close(); refocusTerm(); });
   $("snip-edit").addEventListener("click", function () {
     $("snip-dialog").close();
     $("snip-text").value = snippets().join("\n");
     $("snip-edit-dialog").showModal();
     $("snip-text").focus();
   });
-  $("snip-edit-cancel").addEventListener("click", function () { $("snip-edit-dialog").close(); });
+  $("snip-edit-cancel").addEventListener("click", function () { $("snip-edit-dialog").close(); refocusTerm(); });
   $("snip-edit-form").addEventListener("submit", function (e) {
     e.preventDefault();
     var list = parseSnippets($("snip-text").value);
