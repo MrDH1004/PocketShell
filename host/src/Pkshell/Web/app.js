@@ -15,6 +15,23 @@
 
   var token = storageGet(TOKEN_KEY);
 
+  // The host build this page came from (filled in by the host when serving app.js). An installed web app is resumed,
+  // not reloaded, so after a host update it would keep running the old page: compare and reload once.
+  var PAGE_VERSION = "__PKSHELL_VERSION__";
+  function checkVersion(hostVersion) {
+    if (!hostVersion || PAGE_VERSION.indexOf("__") === 0 || hostVersion === PAGE_VERSION) return;
+    var key = "pocketshell.reloadedFor", done = null;
+    try { done = sessionStorage.getItem(key); } catch (e) { /* private mode */ }
+    if (done === hostVersion) return; // already tried for this version: do not loop
+    try { sessionStorage.setItem(key, hostVersion); } catch (e) { /* private mode */ }
+    location.reload();
+  }
+  function checkHostVersion() {
+    if (!token) return;
+    api("GET", "/api/info").then(function (i) { if (i) { info = info ? Object.assign(info, { version: i.version, webUrl: i.webUrl }) : i; checkVersion(i.version); } })
+      .catch(function () { /* offline: the terminal shows it */ });
+  }
+
   // Android Chrome: the on-screen keyboard shrinks the page, so the key bar stays above it (Safari does not know the key).
   if (/Android/.test(navigator.userAgent)) {
     var vp = document.querySelector('meta[name="viewport"]');
@@ -162,6 +179,7 @@
     var pInfo = info ? Promise.resolve(info) : api("GET", "/api/info").then(function (i) { info = i; return i; });
     return Promise.all([pInfo, api("GET", "/api/sessions")]).then(function (res) {
       var i = res[0];
+      checkVersion(i.version);
       $("pc-name").textContent = i.name || "PC";
       $("pc-meta").textContent = "PocketShell " + (i.version || "") + (i.share ? " · 공유받은 세션" : "");
       $("new-session").hidden = !!i.share;
@@ -375,7 +393,11 @@
     term.onScroll(liveCheck);
     var vpEl = term.element && term.element.querySelector(".xterm-viewport");
     if (vpEl) vpEl.addEventListener("scroll", liveCheck, { passive: true });
-    term.onData(function (d) { sendInput(applyAlt(applyCtrl(d))); });
+    term.onData(function (d) {
+      if (imeDrop !== null && d === imeDrop) { imeDrop = null; return; } // a re-opened word: sent by imeFix instead
+      sendInput(applyAlt(applyCtrl(d)));
+    });
+    imeFix(term.textarea);
     term.onBinary(function (d) {
       var b = new Uint8Array(d.length);
       for (var i = 0; i < d.length; i++) b[i] = d.charCodeAt(i) & 0xff;
@@ -383,6 +405,54 @@
     });
     window.addEventListener("resize", scheduleFit);
     if (window.visualViewport) window.visualViewport.addEventListener("resize", scheduleFit);
+  }
+
+  // ---------- phone keyboards re-opening a committed word (Samsung Keyboard: 한/영 right after Korean) ----------
+  // Switching language commits "한" (sent), then the keyboard re-opens that same word as a new composition and goes on
+  // with "한a". xterm.js then (1) drew the whole re-opened word again next to the sent one ("한한as"), and (2) lost a
+  // Backspace that deleted part of it (the PC kept "한"). Here: the composition box shows only the unsent part, and when
+  // such a composition ends the page sends the difference itself (Backspaces for removed sent chars, then the rest).
+  var imeDrop = null;
+  function cps(t) { return Array.from(t); }
+  function imeFix(ta) {
+    if (!ta) return;
+    var start = 0, lastEnd = 0, reopened = null, first = true;
+    var view = function () { return term.element && term.element.querySelector(".composition-view"); };
+    var fixView = function () {
+      var v = view();
+      if (!v || !v.classList.contains("active")) return;
+      var t = ta.value.substring(start);
+      if (v.textContent !== t) v.textContent = t;
+    };
+    ta.addEventListener("compositionstart", function (e) {
+      start = ta.value.length;
+      reopened = null;
+      first = true;
+      imeDrop = null;
+      // Within a moment of the last commit: possibly the keyboard re-opening the word before the cursor.
+      ta.__ps_soon = e.timeStamp - lastEnd < 400;
+    });
+    ta.addEventListener("compositionupdate", function (e) {
+      if (first) {
+        first = false;
+        var d = e.data || "";
+        if (ta.__ps_soon && d && ta.value.length >= d.length && ta.value.slice(ta.value.length - d.length) === d) reopened = d;
+      }
+      setTimeout(fixView, 0);
+    });
+    ta.addEventListener("input", function (e) { if (e.inputType === "insertCompositionText") fixView(); });
+    ta.addEventListener("compositionend", function (e) {
+      lastEnd = e.timeStamp;
+      if (reopened == null) return;
+      var P = cps(reopened), F = cps(e.data || ""), k = 0;
+      while (k < P.length && k < F.length && P[k] === F[k]) k++;
+      var out = new Array(P.length - k + 1).join("\x7f") + F.slice(k).join("");
+      // xterm will send value.substring(start) after this event: drop that one, send the real difference.
+      var xtermWill = ta.value.substring(start);
+      imeDrop = xtermWill ? xtermWill : null;
+      if (out) sendInput(out);
+      reopened = null;
+    });
   }
 
   function applyCtrl(d) {
@@ -659,6 +729,7 @@
     ws = sock;
     sock.onopen = function () {
       if (ws !== sock) return;
+      checkHostVersion();
       retry = 0;
       term.reset();
       status("연결됨");
@@ -766,6 +837,7 @@
     if (current && !ws && !exited && !$("term").hidden) { retry = 0; connect(); }
   });
 
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkHostVersion(); });
   document.addEventListener("visibilitychange", function () {
     // Back from sleep / another tab: reconnect at once instead of waiting out the backoff.
     if (!document.hidden && current && !ws && !exited && !$("term").hidden) { retry = 0; connect(); }

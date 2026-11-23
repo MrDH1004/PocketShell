@@ -87,7 +87,7 @@ Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·�
 - 연결이 끊기면 터미널 위에 알림(Tailscale 주소면 'Tailscale 켜짐 확인', 아니면 '같은 Wi-Fi 확인')과 제목 아래 '끊김', 네트워크가 돌아오면 바로 다시 연결. 지난 기록으로 올라가 있으면 **↓ 실시간** 버튼
 - 터치 스크롤은 손가락을 따라 움직이고 튕기면 관성으로 계속. 글자 크기는 창 폭에 맞춰 자동(폰 13 · 태블릿 14 · 노트북 15 · 큰 모니터 16px), 창 크기·화면 회전 때 다시 맞춤
 - 좁은 화면(폰)에서 PC 콘솔은 폰 앱처럼 화면 폭에 맞춰 다시 배치(`Web/reflow.js` = 폰 앱 `Reflow`·`ConsoleHistory` 이식). 글자는 11px 아래로 줄이지 않고, 손가락으로 내리거나 휠로 지난 기록 보기, 입력하면 실시간으로
-- 터치 화면은 아래에 폰 앱과 같은 키 바: Esc · Tab · ↵ · Ctrl · Alt · ^C · 방향키 · / | ~ - · Home · End · PgUp · PgDn (Ctrl·Alt는 다음 키 하나에 적용). 화면 키보드가 열리면 터미널이 남은 영역에 맞춰져 키 바가 키보드 바로 위에 보임
+- 터치 화면은 아래에 폰 앱과 같은 키 바: Esc · Tab · ↵ · 문구 · Ctrl · Alt · 방향키 · / | ~ - · Home · End · PgUp · PgDn (Ctrl·Alt는 다음 키 하나에 적용). 화면 키보드가 열리면 터미널이 남은 영역에 맞춰져 키 바가 키보드 바로 위에 보임
 - **앱 설치 (Android · iPhone · Mac)**: PC에서 Tailscale의 MagicDNS·HTTPS가 켜져 있으면 호스트가 `tailscale cert`로 정식(Let's Encrypt) 인증서를 받아 Tailscale 주소 `https://<PC이름>.<tailnet>.ts.net:7380/`를 경고 없이 서빙(12시간마다 확인·갱신, `%APPDATA%\PocketShell\tls`). 트레이 PIN 창에 **브라우저·앱 설치** 주소로 표시
   - 폰·Mac에서 Tailscale을 켜고 그 주소를 열어 PIN 연결 → 목록 위 **앱 설치**: Android Chrome은 설치 창(또는 ⋮ → 앱 설치), iPhone Safari는 **공유 → 홈 화면에 추가**, Mac Safari는 **파일 → Dock에 추가**, Mac Chrome은 주소창 설치 아이콘
   - IP 주소로 열면 자체 서명 인증서라 설치가 안 됨 → **앱 설치** 버튼이 Tailscale 주소로 안내. 끄기: 환경 변수 `PKSHELL_TAILSCALE_CERT=0`

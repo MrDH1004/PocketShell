@@ -52,6 +52,9 @@ public static class WebUi
             using var ms = new MemoryStream();
             s.CopyTo(ms);
             var body = ms.ToArray();
+            // The page knows which host build it came from, so an open (installed) page can reload itself after an update.
+            if (rel == "app.js")
+                body = System.Text.Encoding.UTF8.GetBytes(System.Text.Encoding.UTF8.GetString(body).Replace("__PKSHELL_VERSION__", HostServer.Version, StringComparison.Ordinal));
             var etag = "\"" + Convert.ToHexString(SHA256.HashData(body), 0, 8).ToLowerInvariant() + "\"";
             map[rel] = new Asset(body, type, etag);
         }
