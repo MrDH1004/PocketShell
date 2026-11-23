@@ -258,6 +258,7 @@ dialog.preview[open] { display: flex; flex-direction: column; }
   #list .bar-actions button { padding: 6px 10px; }
   #new-session, #refresh, #unpair, #install { display: none !important; }
   #list-menu, #fab { display: inline-grid !important; }
+  #sections { padding-bottom: calc(92px + env(safe-area-inset-bottom)); } /* the last row scrolls clear of the + button */
   #list .bar-actions .icon { font-size: 20px; }
 }
 #list-menu, #fab { display: none; }
@@ -267,3 +268,15 @@ dialog.preview[open] { display: flex; flex-direction: column; }
   font-size: 30px; line-height: 1; background: var(--accent); border-color: var(--accent); color: var(--accent-text);
   box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
 }
+/* Phones and tablets: no upload button in the terminal bar (upload from the file explorer) */
+@media (pointer: coarse) { #tool-file { display: none !important; } }
+
+/* ⋮ terminal menu: touch screens (wide screens keep their own text selection and browser find) */
+#tool-more { display: none; }
+@media (pointer: coarse) { #tool-more { display: inline-flex; } }
+.text-search { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.text-search input { flex: 1; min-width: 0; margin: 0; font-size: 16px; }
+.selectable { user-select: text; -webkit-user-select: text; }
+#text-view-pre mark { background: #6b5d1f; color: #fff; border-radius: 2px; }
+#text-view-pre mark.cur { background: #f5c518; color: #000; }
+.sheet-items button.info { text-align: start; white-space: normal; overflow-wrap: anywhere; font-weight: 400; }

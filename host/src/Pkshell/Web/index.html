@@ -64,6 +64,7 @@
       <button type="button" class="icon" id="tool-files" aria-label="파일 탐색기" title="파일 탐색기 (세션 폴더)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
       <button type="button" class="icon" id="tool-fit" aria-label="화면 맞춤" title="화면 맞춤"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg></button>
       <button type="button" class="icon" id="tool-keyboard" aria-label="키보드" title="키보드 열기·닫기"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+      <button type="button" class="icon" id="tool-more" aria-label="터미널 메뉴" title="터미널 메뉴"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg></button>
     </div>
     <input type="file" id="pick-image" accept="image/*" multiple hidden>
     <input type="file" id="pick-file" multiple hidden>
@@ -153,6 +154,20 @@
     <button type="button" id="files-preview-close" class="primary">닫기</button>
   </div>
   <div id="files-preview-body" class="preview-body"></div>
+</dialog>
+
+<dialog id="text-view" class="preview" aria-labelledby="text-view-title">
+  <div class="preview-head">
+    <div class="bar-title"><b id="text-view-title">텍스트</b><span id="text-view-sub" class="muted"></span></div>
+    <button type="button" id="text-view-copy">모두 복사</button>
+    <button type="button" id="text-view-close" class="primary">닫기</button>
+  </div>
+  <form id="text-search" class="text-search" role="search">
+    <input type="search" id="text-search-input" placeholder="검색" aria-label="검색어" enterkeyhint="search" autocomplete="off">
+    <button type="button" class="icon" id="text-search-prev" aria-label="이전 찾기">↑</button>
+    <button type="submit" class="icon" id="text-search-next" aria-label="다음 찾기">↓</button>
+  </form>
+  <div id="text-view-body" class="preview-body"><pre id="text-view-pre" class="ftextview selectable"></pre></div>
 </dialog>
 
 <dialog id="snip-dialog" aria-labelledby="snip-title">

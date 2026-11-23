@@ -342,7 +342,10 @@
    * Font size for this screen: phones 13px, tablets / small windows 14px, laptops 15px, large monitors 16px.
    * Re-read on every fit, so rotating the phone or resizing the window adjusts it.
    */
+  var FONT_KEY = "pocketshell.fontSize";
   function autoFont() {
+    var chosen = parseFloat(storageGet(FONT_KEY));
+    if (chosen >= 10 && chosen <= 24) return chosen;
     var w = window.innerWidth || 1024;
     return w < 480 ? 13 : w < 1024 ? 14 : w < 1600 ? 15 : 16;
   }
@@ -1225,6 +1228,128 @@
       else toast("세션 폴더를 모름: " + err.message, true);
     });
   });
+
+  // ---------- ⋮ terminal menu (the phone app's options, the ones a browser can do) ----------
+  $("tool-more").addEventListener("click", function () {
+    if (!current) return;
+    var items = [
+      ["정보", showTermInfo],
+      ["텍스트 선택·복사", function () { openTextView(false); }],
+      ["검색", function () { openTextView(true); }],
+    ];
+    if (!$("keybar").hidden) items.push(["자주 쓰는 문구", showSnippets]);
+    items.push(["글자 크기", showFontSizes]);
+    window.PsFiles.sheet(displayTitle(current), items);
+  });
+
+  function showTermInfo() {
+    var lines = [current.title || displayTitle(current)];
+    if (current.cwd) lines.push(current.cwd);
+    lines.push($("term-status").textContent || "연결 안 됨");
+    if (serverSize) lines.push("PC 크기 " + serverSize.cols + "×" + serverSize.rows);
+    if (term) lines.push("이 화면 " + term.cols + "×" + term.rows + " · 글자 " + term.options.fontSize + "px");
+    if (rf) lines.push("폰 폭으로 다시 배치 중");
+    window.PsFiles.sheet("정보", lines.map(function (l) { return [l, refocusTerm, "info"]; }));
+  }
+
+  function showFontSizes() {
+    var now = storageGet(FONT_KEY);
+    var pick = function (v) {
+      return function () { storageSet(FONT_KEY, v); lastSent = ""; doFit(); if (term && !rf) term.scrollToBottom(); refocusTerm(); };
+    };
+    var items = [[(now ? "" : "✓ ") + "자동 (화면 크기에 맞춤)", pick(null)]];
+    [11, 12, 13, 14, 15, 16, 18, 20].forEach(function (px) {
+      items.push([(now === String(px) ? "✓ " : "") + px + "px", pick(String(px))]);
+    });
+    window.PsFiles.sheet("글자 크기", items);
+  }
+
+  /** The terminal's text (scrollback + screen) as plain lines; wrapped rows are joined back. */
+  function terminalText() {
+    if (rf) return rf.h.plainText();
+    if (!term) return "";
+    var b = term.buffer.active, out = [];
+    for (var i = 0; i < b.length; i++) {
+      var line = b.getLine(i);
+      if (!line) continue;
+      var t = line.translateToString(true);
+      if (line.isWrapped && out.length) out[out.length - 1] += t; else out.push(t);
+    }
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+    return out.join("\n");
+  }
+
+  var textView = { text: "", marks: [], at: -1, q: null };
+  function openTextView(search) {
+    textView.text = terminalText();
+    textView.marks = [];
+    textView.at = -1;
+    textView.q = null;
+    $("text-view-title").textContent = search ? "검색" : "텍스트 선택·복사";
+    $("text-view-sub").textContent = textView.text ? textView.text.split("\n").length + "줄 · 길게 눌러 선택" : "";
+    $("text-search-input").value = "";
+    renderTextView("");
+    $("text-view").showModal();
+    var body = $("text-view-body");
+    body.scrollTop = body.scrollHeight; // the newest lines, as on the terminal
+    if (search) $("text-search-input").focus(); else $("text-view-close").focus();
+  }
+  function renderTextView(q) {
+    var pre = $("text-view-pre");
+    pre.textContent = "";
+    textView.marks = [];
+    var text = textView.text;
+    if (!text) { pre.textContent = "(내용 없음)"; return; }
+    if (!q) { pre.textContent = text; return; }
+    var low = text.toLowerCase(), ql = q.toLowerCase(), from = 0, i;
+    while ((i = low.indexOf(ql, from)) >= 0 && textView.marks.length < 1000) {
+      if (i > from) pre.appendChild(document.createTextNode(text.slice(from, i)));
+      var m = el("mark", null, text.slice(i, i + q.length));
+      pre.appendChild(m);
+      textView.marks.push(m);
+      from = i + q.length;
+    }
+    pre.appendChild(document.createTextNode(text.slice(from)));
+  }
+  function findIn(step) {
+    var q = $("text-search-input").value;
+    if (q !== textView.q) { textView.q = q; renderTextView(q); textView.at = step > 0 ? -1 : textView.marks.length; }
+    var n = textView.marks.length;
+    if (!q) { $("text-view-sub").textContent = ""; return; }
+    if (!n) { $("text-view-sub").textContent = "찾는 글자 없음"; return; }
+    if (textView.marks[textView.at]) textView.marks[textView.at].classList.remove("cur");
+    // from the end backwards by default (newest first), as the phone app's search
+    textView.at = step > 0 ? (textView.at + 1) % n : (textView.at - 1 + n) % n;
+    var m = textView.marks[textView.at];
+    m.classList.add("cur");
+    m.scrollIntoView({ block: "center" });
+    $("text-view-sub").textContent = (textView.at + 1) + " / " + n + (n >= 1000 ? "+" : "");
+  }
+  $("text-search").addEventListener("submit", function (e) { e.preventDefault(); findIn(-1); });
+  $("text-search-next").addEventListener("click", function (e) { e.preventDefault(); findIn(-1); });
+  $("text-search-prev").addEventListener("click", function () { findIn(1); });
+  $("text-search-input").addEventListener("input", function () { textView.q = null; findIn(-1); });
+  $("text-view-copy").addEventListener("click", function () {
+    var sel = window.getSelection && String(window.getSelection());
+    var t = sel && $("text-view-pre").contains(window.getSelection().anchorNode) ? sel : textView.text;
+    copyText(t).then(function () { toast(t === textView.text ? "전체 복사됨" : "선택한 글자 복사됨"); },
+      function () { toast("복사 못 함: 길게 눌러 선택한 뒤 복사", true); });
+  });
+  $("text-view-close").addEventListener("click", function () { $("text-view").close(); });
+  $("text-view").addEventListener("close", function () { textView.text = ""; $("text-view-pre").textContent = ""; refocusTerm(); });
+  function copyText(t) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t);
+    return new Promise(function (ok, fail) {
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      $("text-view").appendChild(ta);
+      ta.select();
+      var done = false;
+      try { done = document.execCommand("copy"); } catch (e) { done = false; }
+      ta.remove();
+      if (done) ok(); else fail(new Error("copy"));
+    });
+  }
 
   // ---------- 자주 쓰는 문구 (saved phrases, this browser): typed into the input line, sent with Enter by the user ----------
   var SNIP_KEY = "pocketshell.snippets", SNIP_MAX = 20, SNIP_LEN = 200;
