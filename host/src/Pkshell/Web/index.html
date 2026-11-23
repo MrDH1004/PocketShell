@@ -57,6 +57,7 @@
     <div class="term-tools">
       <button type="button" class="icon" id="tool-image" aria-label="사진 첨부" title="사진 첨부 (PC 클립보드 → Alt+V)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg></button>
       <button type="button" class="icon" id="tool-file" aria-label="파일 올리기" title="파일 올리기 (세션 폴더)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button>
+      <button type="button" class="icon" id="tool-files" aria-label="파일 탐색기" title="파일 탐색기 (세션 폴더)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
       <button type="button" class="icon" id="tool-fit" aria-label="화면 맞춤" title="화면 맞춤"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg></button>
       <button type="button" class="icon" id="tool-keyboard" aria-label="키보드" title="키보드 열기·닫기"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
     </div>
@@ -69,6 +70,7 @@
     <button type="button" data-key="esc">Esc</button>
     <button type="button" data-key="tab">Tab</button>
     <button type="button" data-key="enter" aria-label="Enter">↵</button>
+    <button type="button" data-key="snippets">문구</button>
     <button type="button" data-key="ctrl" id="ctrl-key" aria-pressed="false">Ctrl</button>
     <button type="button" data-key="alt" id="alt-key" aria-pressed="false">Alt</button>
     <button type="button" data-key="ctrlc" aria-label="Ctrl+C">^C</button>
@@ -86,6 +88,87 @@
     <button type="button" data-key="pgdn">PgDn</button>
   </div>
 </main>
+
+<main id="files" class="view" hidden>
+  <header class="bar files-bar">
+    <button type="button" id="files-back" class="ghost" aria-label="터미널로">← 터미널</button>
+    <div class="bar-title">
+      <b>파일</b>
+      <span id="files-path" class="muted"></span>
+    </div>
+    <button type="button" class="icon" id="files-up" aria-label="상위 폴더" title="상위 폴더"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+    <button type="button" class="icon" id="files-places" aria-label="PC 위치" title="PC 위치 (드라이브·폴더)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+  </header>
+  <div class="files-tools">
+    <input id="files-search" type="search" placeholder="이 폴더에서 찾기" aria-label="이 폴더에서 찾기" spellcheck="false">
+    <button type="button" id="files-sort">정렬</button>
+    <button type="button" id="files-upload">올리기</button>
+    <button type="button" id="files-newfolder">새 폴더</button>
+    <button type="button" id="files-newfile">새 파일</button>
+    <button type="button" id="files-paste" hidden>붙여넣기</button>
+    <button type="button" id="files-refresh" class="ghost" aria-label="새로 고침">↻</button>
+    <input type="file" id="files-pick" multiple hidden>
+  </div>
+  <div id="files-selbar" class="files-selbar" hidden>
+    <span id="files-selcount"></span>
+    <button type="button" id="files-sel-copy">복사</button>
+    <button type="button" id="files-sel-cut">잘라내기</button>
+    <button type="button" id="files-sel-delete" class="danger">삭제</button>
+    <button type="button" id="files-sel-all" class="ghost">모두</button>
+    <button type="button" id="files-sel-clear" class="ghost">해제</button>
+  </div>
+  <p id="files-summary" class="muted files-summary"></p>
+  <ul id="files-list" class="files-list"></ul>
+  <p id="files-msg" class="empty files-msg"></p>
+</main>
+
+<dialog id="files-sheet" aria-labelledby="files-sheet-title">
+  <h2 id="files-sheet-title"></h2>
+  <div id="files-sheet-items" class="sheet-items"></div>
+  <div class="row-end"><button type="button" id="files-sheet-cancel">닫기</button></div>
+</dialog>
+
+<dialog id="files-ask" aria-labelledby="files-ask-title">
+  <form id="files-ask-form">
+    <h2 id="files-ask-title"></h2>
+    <input id="files-ask-input" spellcheck="false" aria-labelledby="files-ask-title">
+    <div class="row-end">
+      <button type="button" id="files-ask-cancel">취소</button>
+      <button type="submit" class="primary" id="files-ask-ok">확인</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="files-preview" class="preview" aria-labelledby="files-preview-title">
+  <div class="preview-head">
+    <div class="bar-title"><b id="files-preview-title"></b><span id="files-preview-sub" class="muted"></span></div>
+    <button type="button" id="files-preview-download">다운로드</button>
+    <button type="button" id="files-preview-close" class="primary">닫기</button>
+  </div>
+  <div id="files-preview-body" class="preview-body"></div>
+</dialog>
+
+<dialog id="snip-dialog" aria-labelledby="snip-title">
+  <h2 id="snip-title">자주 쓰는 문구</h2>
+  <p class="muted small">누르면 입력줄에 넣고 기다림. 고치거나 Enter로 보내기.</p>
+  <div id="snip-items" class="sheet-items"></div>
+  <div class="row-end">
+    <button type="button" id="snip-edit">문구 편집…</button>
+    <button type="button" class="primary" id="snip-close">닫기</button>
+  </div>
+</dialog>
+
+<dialog id="snip-edit-dialog" aria-labelledby="snip-edit-title">
+  <form id="snip-edit-form">
+    <h2 id="snip-edit-title">문구 편집</h2>
+    <p class="muted small">한 줄에 하나씩 (최대 20개, 한 줄 200자). 이 브라우저에 저장됨.</p>
+    <textarea id="snip-text" rows="8" spellcheck="false" aria-labelledby="snip-edit-title"></textarea>
+    <div class="row-end">
+      <button type="button" id="snip-edit-cancel">취소</button>
+      <button type="submit" class="primary">저장</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="new-dialog">
   <form method="dialog" id="new-form">
@@ -120,6 +203,7 @@
 <script src="vendor/addon-fit.js"></script>
 <script src="vendor/addon-web-links.js"></script>
 <script src="reflow.js"></script>
+<script src="files.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

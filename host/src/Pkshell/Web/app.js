@@ -23,7 +23,7 @@
 
   // ---------- views ----------
   function show(id) {
-    ["pair", "list", "term"].forEach(function (v) { $(v).hidden = v !== id; });
+    ["pair", "list", "term", "files"].forEach(function (v) { $(v).hidden = v !== id; });
     // The terminal has its own scrollbar (past output); the page itself never scrolls behind it.
     document.documentElement.classList.toggle("term-open", id === "term");
     var t = $("term");
@@ -309,6 +309,14 @@
   var retry = 0, retryTimer = null, closedByUs = false, exited = false;
   var resizeTimer = null, lastSent = "", serverSize = null;
   var BASE_FONT = 14, MIN_FONT = 7;
+  /**
+   * Font size for this screen: phones 13px, tablets / small windows 14px, laptops 15px, large monitors 16px.
+   * Re-read on every fit, so rotating the phone or resizing the window adjusts it.
+   */
+  function autoFont() {
+    var w = window.innerWidth || 1024;
+    return w < 480 ? 13 : w < 1024 ? 14 : w < 1600 ? 15 : 16;
+  }
   var ctrlArmed = false, altArmed = false;
 
   function status(text, bad) {
@@ -366,6 +374,7 @@
   function setAlt(on) { altArmed = on; $("alt-key").setAttribute("aria-pressed", on ? "true" : "false"); }
 
   function sendInput(text) {
+    stopTouchFling();
     if (rf && rf.scroll > 0) { rf.scroll = 0; drawReflow(); } // typing returns to the live view
     send(enc.encode(text));
   }
@@ -379,6 +388,7 @@
   /** Decides (from serverSize) whether to re-flow; sets the font and grid. True when re-flowing. */
   function chooseReflow() {
     if (!serverSize || !window.PsReflow) { rf = null; return false; }
+    BASE_FONT = autoFont();
     setFont(BASE_FONT);
     var p = fit.proposeDimensions();
     if (!p || serverSize.cols <= p.cols) {
@@ -420,9 +430,32 @@
     return (r && r.getBoundingClientRect().height) || 16;
   }
 
+  // Touch scrolling, for every session: the text follows the finger (1 px = 1 px) and keeps going after a flick.
+  // xterm.js's own touch scrolling on phones moved about a line per swipe. A re-flowed PC console scrolls its history.
+  var stopTouchFling = function () {};
+
+  function scrollLinesBy(fingerDownLines) {
+    if (rf) return scrollReflow(fingerDownLines);
+    if (term) term.scrollLines(-fingerDownLines);
+    return true;
+  }
+
   (function () {
-    var box = $("term-box"), wheelAcc = 0, touchY = null, touchAcc = 0;
+    var box = $("term-box"), wheelAcc = 0;
+    var lastY = null, startY = 0, moved = false, acc = 0, v = 0, lastT = 0, fling = 0;
+    var TAP_SLOP = 8, MIN_FLING = 0.35, FRICTION = 0.95;
+
+    function applyDy(dy) {
+      var ch = cellHeight();
+      acc += dy;
+      var n = Math.trunc(acc / ch);
+      if (n) { acc -= n * ch; scrollLinesBy(n); }
+    }
+    function stopFling() { if (fling) { cancelAnimationFrame(fling); fling = 0; } }
+    stopTouchFling = stopFling;
+
     box.addEventListener("wheel", function (e) {
+      stopFling();
       if (!rf) return;
       e.preventDefault();
       e.stopPropagation();
@@ -430,22 +463,47 @@
       var n = Math.trunc(wheelAcc / cellHeight());
       if (n) { wheelAcc -= n * cellHeight(); scrollReflow(-n); }
     }, { capture: true, passive: false });
+
     box.addEventListener("touchstart", function (e) {
-      if (!rf || e.touches.length !== 1) return;
-      touchY = e.touches[0].clientY;
-      touchAcc = 0;
+      stopFling();
+      if (e.touches.length !== 1) { lastY = null; return; }
+      lastY = startY = e.touches[0].clientY;
+      lastT = e.timeStamp;
+      moved = false;
+      acc = 0;
+      v = 0;
     }, { capture: true, passive: true });
+
     box.addEventListener("touchmove", function (e) {
-      if (!rf || touchY == null || e.touches.length !== 1) return;
+      if (lastY == null || e.touches.length !== 1) return;
       var y = e.touches[0].clientY;
-      touchAcc += y - touchY;
-      touchY = y;
-      var n = Math.trunc(touchAcc / cellHeight());
-      if (n) { touchAcc -= n * cellHeight(); scrollReflow(n); }
+      if (!moved && Math.abs(y - startY) < TAP_SLOP) return; // still a tap
+      moved = true;
+      var dy = y - lastY, dt = Math.max(1, e.timeStamp - lastT);
+      v = 0.8 * (dy / dt) + 0.2 * v; // px per ms, smoothed
+      lastY = y;
+      lastT = e.timeStamp;
+      applyDy(dy);
       e.preventDefault();
       e.stopPropagation();
     }, { capture: true, passive: false });
-    box.addEventListener("touchend", function () { touchY = null; }, { capture: true, passive: true });
+
+    box.addEventListener("touchend", function (e) {
+      if (lastY == null) return;
+      lastY = null;
+      if (!moved) return;
+      e.stopPropagation();
+      if (e.timeStamp - lastT > 80 || Math.abs(v) < MIN_FLING) return; // the finger stopped before lifting
+      var prev = performance.now();
+      var step = function (now) {
+        var dt = Math.min(64, now - prev);
+        prev = now;
+        applyDy(v * dt);
+        v *= Math.pow(FRICTION, dt / 16);
+        fling = Math.abs(v) > 0.05 ? requestAnimationFrame(step) : 0;
+      };
+      fling = requestAnimationFrame(step);
+    }, { capture: true, passive: false });
   })();
   function send(bytes) { if (ws && ws.readyState === 1 && !exited) ws.send(bytes); }
 
@@ -464,6 +522,7 @@
       fitFont();
       return;
     }
+    BASE_FONT = autoFont();
     setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { return; }
     sendSize();
@@ -526,6 +585,7 @@
     term.reset();
     serverSize = null;
     if (rf) { rf = null; term.options.scrollback = 10000; }
+    BASE_FONT = autoFont();
     setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { /* hidden */ }
     retry = 0;
@@ -677,6 +737,7 @@
     var k = b.getAttribute("data-key");
     if (k === "ctrl") { setCtrl(!ctrlArmed); term.focus(); return; }
     if (k === "alt") { setAlt(!altArmed); term.focus(); return; }
+    if (k === "snippets") { showSnippets(); return; }
     var seq = KEYS[k];
     if (CURSOR[k]) seq = (term.modes && term.modes.applicationCursorKeysMode ? "\x1bO" : "\x1b[") + CURSOR[k];
     if (CHARS[k]) seq = applyCtrl(CHARS[k]);
@@ -806,6 +867,76 @@
   $("pick-image").addEventListener("change", function (e) { if (e.target.files.length) pasteImages(e.target.files); e.target.value = ""; });
   $("pick-file").addEventListener("change", function (e) { if (e.target.files.length) uploadFiles(e.target.files); e.target.value = ""; });
   $("tool-fit").addEventListener("click", function () { lastSent = ""; doFit(); if (term) term.scrollToBottom(); });
+
+  // File explorer at the session's current folder (asked fresh: the shell may have cd'd since the list was read).
+  if (window.PsFiles) {
+    window.PsFiles.init({
+      api: api, rawPost: rawPost, toast: toast, el: el, button: button, ApiError: ApiError,
+      token: function () { return token; },
+      show: show,
+      back: function () {
+        show("term");
+        scheduleFit();
+        if (term) term.focus();
+      },
+    });
+  }
+  $("tool-files").addEventListener("click", function () {
+    if (!current) return;
+    var id = current.id;
+    api("GET", "/api/sessions/" + encodeURIComponent(id)).then(function (s) {
+      var cwd = (s && s.cwd) || (current && current.cwd);
+      if (!cwd) { toast("세션 폴더를 모름", true); return; }
+      window.PsFiles.open(cwd, displayTitle(current));
+    }).catch(function (err) {
+      if (err.status === 401) return;
+      if (current && current.cwd) window.PsFiles.open(current.cwd, displayTitle(current));
+      else toast("세션 폴더를 모름: " + err.message, true);
+    });
+  });
+
+  // ---------- 자주 쓰는 문구 (saved phrases, this browser): typed into the input line, sent with Enter by the user ----------
+  var SNIP_KEY = "pocketshell.snippets", SNIP_MAX = 20, SNIP_LEN = 200;
+  var SNIP_DEFAULTS = ["계속해", "테스트 돌려줘", "커밋해"];
+  function parseSnippets(text) {
+    var seen = {};
+    return text.split(/\r?\n/).map(function (l) { return l.trim().slice(0, SNIP_LEN); })
+      .filter(function (l) { if (!l || seen[l]) return false; seen[l] = true; return true; }).slice(0, SNIP_MAX);
+  }
+  function snippets() {
+    var t = storageGet(SNIP_KEY);
+    return t == null ? SNIP_DEFAULTS.slice() : parseSnippets(t);
+  }
+  function showSnippets() {
+    var box = $("snip-items");
+    box.textContent = "";
+    var list = snippets();
+    if (!list.length) box.appendChild(el("p", "muted", "저장된 문구 없음"));
+    list.forEach(function (t) {
+      box.appendChild(button(t, null, function () {
+        $("snip-dialog").close();
+        sendInput(t);
+        if (term) term.focus();
+      }));
+    });
+    $("snip-dialog").showModal();
+  }
+  $("snip-close").addEventListener("click", function () { $("snip-dialog").close(); if (term) term.focus(); });
+  $("snip-edit").addEventListener("click", function () {
+    $("snip-dialog").close();
+    $("snip-text").value = snippets().join("\n");
+    $("snip-edit-dialog").showModal();
+    $("snip-text").focus();
+  });
+  $("snip-edit-cancel").addEventListener("click", function () { $("snip-edit-dialog").close(); });
+  $("snip-edit-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var list = parseSnippets($("snip-text").value);
+    storageSet(SNIP_KEY, list.join("\n"));
+    $("snip-edit-dialog").close();
+    toast("문구 " + list.length + "개 저장");
+    showSnippets();
+  });
   $("tool-keyboard").addEventListener("click", function () {
     if (!term) return;
     var ta = term.textarea;
