@@ -1198,16 +1198,30 @@
       },
     });
   }
+  // Phones: the app's layout — ⋮ menu in the bar, + button for a new session.
+  $("fab").addEventListener("click", function () { $("new-session").click(); });
+  $("list-menu").addEventListener("click", function () {
+    var items = [["새로 고침", function () { $("refresh").click(); }]];
+    if (!$("install").hidden) items.push(["앱 설치", function () { $("install").click(); }]);
+    items.push(["연결 해제", function () { $("unpair").click(); }, "danger"]);
+    window.PsFiles.sheet(info && info.name || "PocketShell", items);
+  });
+
+  // Session list (first screen): the PC's drives and folders.
+  $("list-files").addEventListener("click", function () {
+    stopPolling();
+    window.PsFiles.open("", "PC", function () { openList(); });
+  });
   $("tool-files").addEventListener("click", function () {
     if (!current) return;
     var id = current.id;
     api("GET", "/api/sessions/" + encodeURIComponent(id)).then(function (s) {
       var cwd = (s && s.cwd) || (current && current.cwd);
       if (!cwd) { toast("세션 폴더를 모름", true); return; }
-      window.PsFiles.open(cwd, displayTitle(current));
+      window.PsFiles.open(cwd, displayTitle(current), null);
     }).catch(function (err) {
       if (err.status === 401) return;
-      if (current && current.cwd) window.PsFiles.open(current.cwd, displayTitle(current));
+      if (current && current.cwd) window.PsFiles.open(current.cwd, displayTitle(current), null);
       else toast("세션 폴더를 모름: " + err.message, true);
     });
   });

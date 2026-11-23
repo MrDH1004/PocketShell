@@ -98,7 +98,11 @@
   }
 
   // ---------- loading and rendering ----------
-  function open(path, title) {
+  var onBack = null;
+  /** path "" = the PC's places (all drives and known folders). back: where '←' returns (default: the terminal). */
+  function open(path, title, back) {
+    if (back !== undefined) onBack = back;
+    $("files-back").textContent = onBack ? "← 목록" : "← 터미널";
     state.path = path;
     if (title != null) state.title = title;
     state.selected = {};
@@ -110,10 +114,19 @@
 
   function load() {
     var path = state.path;
-    $("files-path").textContent = path;
+    $("files-path").textContent = path || "PC (드라이브 · 폴더)";
     $("files-list").textContent = "";
     $("files-msg").textContent = "불러오는 중…";
-    $("files-up").disabled = !parent(path);
+    $("files-up").disabled = !path;
+    document.getElementById("files").classList.toggle("places", !path);
+    if (!path) {
+      d.api("GET", "/api/drives").then(function (r) {
+        if (state.path !== "") return;
+        state.entries = ((r && r.places) || []).map(function (p) { return { name: p.name, dir: true, size: 0, modified: "", place: p.path }; });
+        render();
+      }).catch(function (err) { if (err.status !== 401) { state.entries = []; render(); $("files-msg").textContent = "위치를 못 불러옴: " + (err.message || err); } });
+      return;
+    }
     d.api("GET", "/api/files?path=" + encodeURIComponent(path)).then(function (r) {
       if (state.path !== path) return;
       state.entries = (r && r.entries) || [];
@@ -132,7 +145,7 @@
   function render() {
     var q = state.query.trim().toLowerCase();
     var all = state.entries;
-    var shown = sorted(q ? all.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0; }) : all);
+    var shown = (state.path ? sorted : function (x) { return x; })(q ? all.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0; }) : all);
     var dirs = all.filter(function (e) { return e.dir; }).length;
     $("files-summary").textContent = q ? "찾음 " + shown.length + " / " + all.length : "폴더 " + dirs + " · 파일 " + (all.length - dirs);
     $("files-msg").textContent = shown.length ? "" : (all.length ? "맞는 항목 없음" : "빈 폴더");
@@ -165,11 +178,11 @@
     main.appendChild(ic);
     var txt = d.el("span", "ftext");
     txt.appendChild(d.el("span", "fname", e.name));
-    txt.appendChild(d.el("span", "fsub", (e.dir ? "폴더" : sizeText(e.size)) + " · " + timeText(e.modified)));
+    txt.appendChild(d.el("span", "fsub", e.place ? e.place : (e.dir ? "폴더" : sizeText(e.size)) + " · " + timeText(e.modified)));
     main.appendChild(txt);
     main.addEventListener("click", function () {
       if (selecting()) { toggle(e); return; }
-      if (e.dir) open(join(state.path, e.name)); else preview(e);
+      if (e.place) open(e.place); else if (e.dir) open(join(state.path, e.name)); else preview(e);
     });
     li.appendChild(main);
     li.appendChild(d.button("⋯", "ghost fmore", function () { actions(e); }, "메뉴: " + e.name));
@@ -408,8 +421,8 @@
   // ---------- wiring ----------
   function init(deps) {
     d = deps;
-    $("files-back").addEventListener("click", function () { d.back(); });
-    $("files-up").addEventListener("click", function () { var p = parent(state.path); if (p) open(p); });
+    $("files-back").addEventListener("click", function () { if (onBack) onBack(); else d.back(); });
+    $("files-up").addEventListener("click", function () { if (state.path) open(parent(state.path) || ""); }); // a drive's top → PC places
     $("files-places").addEventListener("click", places);
     $("files-sort").addEventListener("click", chooseSort);
     $("files-refresh").addEventListener("click", load);

@@ -247,3 +247,23 @@ dialog.preview[open] { display: flex; flex-direction: column; }
 
 /* Enter on the key bar: the phone app's drawn return icon (Material keyboard_return), not the font's tiny glyph */
 .keybar .key-icon { display: block; margin: 0 auto; width: 24px; height: 24px; }
+
+/* PC places (drives): no selection or item menu */
+#files.places .fcheck, #files.places .fmore, #files.places #files-newfolder, #files.places #files-newfile,
+#files.places #files-upload, #files.places #files-sort, #files.places #files-paste, #files.places #files-places { display: none !important; }
+/* Session list bar on phones: icon buttons so the PC name keeps its room */
+@media (max-width: 600px) {
+  #list .bar { gap: 6px; padding-left: 12px; padding-right: 8px; }
+  #list .bar-actions { gap: 4px; flex-wrap: nowrap; }
+  #list .bar-actions button { padding: 6px 10px; }
+  #new-session, #refresh, #unpair, #install { display: none !important; }
+  #list-menu, #fab { display: inline-grid !important; }
+  #list .bar-actions .icon { font-size: 20px; }
+}
+#list-menu, #fab { display: none; }
+.fab {
+  position: fixed; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 4;
+  width: 56px; height: 56px; border-radius: 16px; place-items: center; padding: 0;
+  font-size: 30px; line-height: 1; background: var(--accent); border-color: var(--accent); color: var(--accent-text);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}

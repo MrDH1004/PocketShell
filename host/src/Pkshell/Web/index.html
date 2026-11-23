@@ -37,14 +37,17 @@
       <span id="pc-meta" class="muted"></span>
     </div>
     <div class="bar-actions">
+      <button type="button" id="list-files" class="icon" aria-label="PC 폴더" title="PC 폴더 (드라이브 전체)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
       <button type="button" id="new-session" class="primary">새 세션</button>
       <button type="button" id="install" hidden>앱 설치</button>
       <button type="button" id="refresh" class="ghost" aria-label="새로 고침">↻</button>
       <button type="button" id="unpair" class="ghost">연결 해제</button>
+      <button type="button" id="list-menu" class="icon" aria-label="메뉴" title="메뉴">⋮</button>
     </div>
   </header>
   <p id="list-error" class="error banner" role="alert" hidden></p>
   <div id="sections" class="sections"></div>
+  <button type="button" id="fab" class="fab" aria-label="새 세션" title="새 세션">+</button>
 </main>
 
 <main id="term" class="view" hidden>
