@@ -295,7 +295,8 @@
   // ---------- terminal ----------
   var term = null, fit = null, ws = null, current = null;
   var retry = 0, retryTimer = null, closedByUs = false, exited = false;
-  var resizeTimer = null, lastSent = "";
+  var resizeTimer = null, lastSent = "", serverSize = null;
+  var BASE_FONT = 14, MIN_FONT = 7;
   var ctrlArmed = false;
 
   function status(text, bad) {
@@ -309,7 +310,7 @@
     term = new window.Terminal({
       cursorBlink: true,
       scrollback: 10000,
-      fontSize: 14,
+      fontSize: BASE_FONT,
       fontFamily: 'Menlo, "SF Mono", "D2Coding", Consolas, "Apple SD Gothic Neo", "Malgun Gothic", monospace',
       allowProposedApi: true,
       macOptionIsMeta: false,
@@ -355,8 +356,48 @@
   }
   function doFit() {
     if (!term) return;
+    if (current && current.kind === "external") { fitFont(); return; } // a PC console keeps its own size
+    setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { return; }
     sendSize();
+    fitFont();
+  }
+
+  function setFont(px) { if (term.options.fontSize !== px) term.options.fontSize = px; }
+
+  /**
+   * The PC session's size can be larger than this window (a PC console, or a PC tab typed in last): shrink the font
+   * until all of its rows and columns fit, so the bottom rows (Claude Code's input box and status line) stay visible.
+   */
+  function fitFont() {
+    shrinkFont();
+    alignBottom();
+  }
+
+  /** Still taller than the window at the smallest font: show the bottom rows (where the input is), cut the top ones. */
+  function alignBottom() {
+    var el = term.element;
+    if (!el) return;
+    el.style.transform = "";
+    var screen = el.querySelector(".xterm-screen");
+    if (!screen) return;
+    var over = screen.getBoundingClientRect().bottom - $("term-box").getBoundingClientRect().bottom;
+    if (over > 0.5) el.style.transform = "translateY(" + (-Math.ceil(over)) + "px)";
+  }
+
+  function shrinkFont() {
+    if (!serverSize) return;
+    setFont(BASE_FONT);
+    var p = fit.proposeDimensions();
+    if (!p || (p.cols >= serverSize.cols && p.rows >= serverSize.rows)) return;
+    var f = Math.max(MIN_FONT, Math.floor(BASE_FONT * Math.min(p.cols / serverSize.cols, p.rows / serverSize.rows) * 2) / 2);
+    setFont(f);
+    p = fit.proposeDimensions();
+    while (p && f > MIN_FONT && (p.cols < serverSize.cols || p.rows < serverSize.rows)) {
+      f -= 0.5;
+      setFont(f);
+      p = fit.proposeDimensions();
+    }
   }
   function sendSize() {
     if (!ws || ws.readyState !== 1 || !current || current.kind === "external") return;
@@ -376,6 +417,8 @@
     history.replaceState(null, "", "#" + encodeURIComponent(s.id));
     ensureTerm();
     term.reset();
+    serverSize = null;
+    setFont(BASE_FONT);
     try { fit.fit(); } catch (e) { /* hidden */ }
     retry = 0;
     exited = false;
@@ -424,7 +467,11 @@
         case "size":
           // The PC session's size (several windows share it; it follows the one typed in last): draw at that size
           // so lines wrap as they do there. This window's own size goes up in doFit.
-          if (m.cols > 0 && m.rows > 0 && (m.cols !== term.cols || m.rows !== term.rows)) term.resize(m.cols, m.rows);
+          if (m.cols > 0 && m.rows > 0) {
+            serverSize = { cols: m.cols, rows: m.rows };
+            if (m.cols !== term.cols || m.rows !== term.rows) term.resize(m.cols, m.rows);
+            fitFont();
+          }
           break;
         case "replay-end":
           term.scrollToBottom();
@@ -501,6 +548,70 @@
     if (seq) sendInput(seq);
     term.focus();
   });
+
+  // ---------- home screen (install) ----------
+  // Chrome / Edge offer their own install prompt (beforeinstallprompt) when they consider the page installable; with
+  // the PC's self-signed certificate they usually do not, and Safari never does. Then the button shows the menu steps.
+  var installPrompt = null;
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/.test(ua);
+  var isEdge = /Edg\//.test(ua);
+  var isChrome = /Chrome\/|CriOS\//.test(ua) && !isEdge;
+  var isSafari = /Safari\//.test(ua) && !/Chrome\/|CriOS\/|Edg|Firefox|FxiOS/.test(ua);
+  var isFirefox = /Firefox\/|FxiOS\//.test(ua);
+
+  function standalone() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+  }
+  function updateInstallButton() { $("install").hidden = standalone(); }
+
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    installPrompt = e;
+    updateInstallButton();
+  });
+  window.addEventListener("appinstalled", function () { installPrompt = null; $("install").hidden = true; });
+
+  function installSteps() {
+    if (isIOS) {
+      return [
+        isSafari ? "Safari 아래(또는 위) <b>공유</b> 버튼(□↑) 누르기" : "주소창의 <b>공유</b> 버튼(□↑) 누르기",
+        "목록을 내려 <b>홈 화면에 추가</b> 선택",
+        "이름 확인 후 <b>추가</b>",
+      ];
+    }
+    if (isAndroid) return ["브라우저 오른쪽 위 <b>⋮</b> 메뉴", "<b>홈 화면에 추가</b> (또는 <b>앱 설치</b>)", "<b>추가</b> 또는 <b>설치</b>"];
+    if (isSafari) return ["메뉴 막대 <b>파일</b> → <b>Dock에 추가…</b> (macOS Sonoma 이상)", "이름 확인 후 <b>추가</b> — Dock과 Launchpad에 앱으로 생김"];
+    if (isEdge) return ["오른쪽 위 <b>⋯</b> 메뉴", "<b>앱</b> → <b>이 사이트를 앱으로 설치</b>", "<b>설치</b>"];
+    if (isChrome) {
+      return [
+        "주소창 오른쪽 <b>설치</b> 아이콘(⊕)이 있으면 누르기",
+        "없으면 오른쪽 위 <b>⋮</b> → <b>전송, 저장, 공유</b> → <b>페이지를 앱으로 설치…</b> (또는 <b>바로가기 만들기…</b> → <b>창으로 열기</b> 체크)",
+        "<b>설치</b> 또는 <b>만들기</b> — 바탕화면·Dock·시작 메뉴에 아이콘 생김",
+      ];
+    }
+    if (isFirefox) return ["Firefox는 홈 화면 앱을 지원하지 않음", "Mac은 Safari나 Chrome으로 열어 추가"];
+    return ["브라우저 메뉴의 <b>홈 화면에 추가</b> 또는 <b>앱 설치</b>"];
+  }
+
+  $("install").addEventListener("click", function () {
+    if (installPrompt) {
+      var p = installPrompt;
+      installPrompt = null;
+      p.prompt();
+      p.userChoice.then(function (c) { if (c.outcome !== "accepted") installPrompt = p; }).catch(function () { /* dismissed */ });
+      return;
+    }
+    var ol = $("install-steps");
+    ol.textContent = "";
+    installSteps().forEach(function (html) { var li = document.createElement("li"); li.innerHTML = html; ol.appendChild(li); });
+    $("install-note").textContent = isIOS || isAndroid || isSafari ? "" :
+      "PC 인증서가 자체 서명이라 브라우저가 설치 아이콘을 숨길 수 있음. 그때는 위 메뉴로 추가.";
+    $("install-dialog").showModal();
+  });
+  $("install-close").addEventListener("click", function () { $("install-dialog").close(); });
+  updateInstallButton();
 
   // ---------- start ----------
   function start() {

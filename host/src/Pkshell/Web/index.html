@@ -8,7 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="PocketShell">
 <title>PocketShell</title>
 <link rel="icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0f1115">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="app.css">
@@ -16,7 +17,7 @@
 <body>
 <main id="pair" class="view" hidden>
   <form id="pair-form" class="card pair-card" autocomplete="off">
-    <img src="icon.png" alt="" class="logo" width="56" height="56">
+    <img src="icon-192.png" alt="" class="logo" width="56" height="56">
     <h1>PocketShell 연결</h1>
     <p class="muted">PC 트레이 메뉴 → <b>휴대폰 연결 (PIN)</b>에 표시된 6자리 PIN 입력.</p>
     <label for="pin">PIN</label>
@@ -36,6 +37,7 @@
     </div>
     <div class="bar-actions">
       <button type="button" id="new-session" class="primary">새 세션</button>
+      <button type="button" id="install" hidden>홈 화면에 추가</button>
       <button type="button" id="refresh" class="ghost" aria-label="새로 고침">↻</button>
       <button type="button" id="unpair" class="ghost">연결 해제</button>
     </div>
@@ -81,6 +83,14 @@
       <button type="submit" class="primary" id="new-ok">세션 시작</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="install-dialog" aria-labelledby="install-title">
+  <h2 id="install-title">홈 화면에 추가</h2>
+  <p class="muted">앱처럼 아이콘으로 바로 열기. 주소창 없이 전체 화면으로 열림.</p>
+  <ol id="install-steps" class="steps"></ol>
+  <p id="install-note" class="muted small"></p>
+  <div class="row-end"><button type="button" class="primary" id="install-close">확인</button></div>
 </dialog>
 
 <script src="vendor/xterm.js"></script>

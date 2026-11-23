@@ -4,11 +4,14 @@ Writes assets/pocketshell.ico (app), assets/tray-running.ico / tray-stopped.ico 
 assets/pocketshell-1024.png (preview). The Android adaptive icon (res/drawable/ic_launcher_*.xml) uses the
 same geometry, scaled from this 1024 canvas to 72dp at offset 18dp.
 
+Browser client icons (host/src/Pkshell/Web): the same icon with a small "WEB" label under the prompt, so the home
+screen / Dock shortcut is told apart from the phone app.
+
 Usage: py -3.14 scripts/make_icons.py
 """
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets"
@@ -75,6 +78,49 @@ def render(running=True):
     return out
 
 
+def with_web_label(img, full_bleed=False):
+    """Adds "WEB" in small white letters at the bottom (squircle icon, or a full square for iOS / maskable)."""
+    img = img.copy()
+    if full_bleed:
+        sq = vgradient((S, S), BG_TOP, BG_BOTTOM).convert("RGBA")
+        sq.alpha_composite(img)
+        img = sq
+    d = ImageDraw.Draw(img)
+    font = ImageFont.truetype(r"C:\Windows\Fonts\segoeuib.ttf", int(150 * K))
+    text = "WEB"
+    spacing = int(26 * K)
+    widths = [d.textlength(c, font=font) for c in text]
+    total = sum(widths) + spacing * (len(text) - 1)
+    x = (S - total) / 2
+    y = 800 * K
+    for c, w in zip(text, widths):
+        d.text((x, y), c, font=font, fill=(236, 240, 248, 255))
+        x += w + spacing
+    return img
+
+
+def safe_zone(img, scale=0.8):
+    """Maskable icon: content within the central 80 % circle, background to the edges."""
+    out = vgradient((S, S), BG_TOP, BG_BOTTOM).convert("RGBA")
+    small = img.resize((int(S * scale), int(S * scale)), Image.LANCZOS)
+    out.alpha_composite(small, (int(S * (1 - scale) / 2), int(S * (1 - scale) / 2)))
+    return out
+
+
+def web_icons():
+    web = ROOT / "host" / "src" / "Pkshell" / "Web"
+    plain = render(True)
+    rounded = with_web_label(plain)
+    square = with_web_label(plain, full_bleed=True)
+    rounded.resize((192, 192), Image.LANCZOS).save(web / "icon-192.png")
+    rounded.resize((512, 512), Image.LANCZOS).save(web / "icon-512.png")
+    safe_zone(square).resize((512, 512), Image.LANCZOS).save(web / "icon-maskable-512.png")
+    square.convert("RGB").resize((180, 180), Image.LANCZOS).save(web / "apple-touch-icon.png")
+    rounded.resize((256, 256), Image.LANCZOS).save(web / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+    for name in ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon.ico"):
+        print("web/" + name, (web / name).stat().st_size)
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     app = render(True)
@@ -86,6 +132,7 @@ def main():
     render(False).resize((64, 64), Image.LANCZOS).save(OUT / "tray-stopped.ico", sizes=tray_sizes)
     for name in ("pocketshell.ico", "tray-running.ico", "tray-stopped.ico", "pocketshell-1024.png"):
         print(name, (OUT / name).stat().st_size)
+    web_icons()
 
 
 if __name__ == "__main__":

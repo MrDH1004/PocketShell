@@ -124,7 +124,8 @@ label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
 .term-bar { position: static; }
 .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .status.bad { color: var(--danger); }
-#term-box { flex: 1; min-height: 0; background: #0c0c0c; padding: 4px 0 0 6px; }
+#term-box { flex: 1; min-height: 0; background: #0c0c0c; overflow: hidden; }
+#term-box .xterm { padding: 4px 0 0 6px; }
 #term-box .xterm { height: 100%; }
 .keybar {
   display: flex; gap: 6px; overflow-x: auto; padding: 6px 8px;
@@ -148,3 +149,8 @@ dialog h2 { margin: 0 0 4px; font-size: 18px; }
   .session { flex-wrap: wrap; }
   .session .actions { width: 100%; justify-content: flex-end; }
 }
+
+/* Install (home screen) guide */
+.steps { margin: 12px 0 0; padding-inline-start: 22px; display: grid; gap: 8px; }
+.steps b { font-weight: 600; }
+.small { font-size: 13px; margin-top: 12px; }
