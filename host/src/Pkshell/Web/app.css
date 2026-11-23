@@ -233,3 +233,6 @@ dialog.preview[open] { display: flex; flex-direction: column; }
   border-radius: 999px; background: var(--accent); border-color: var(--accent); color: var(--accent-text);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
 }
+
+/* Enter on the key bar: the phone app's drawn return icon (Material keyboard_return), not the font's tiny glyph */
+.keybar .key-icon { display: block; margin: 0 auto; width: 24px; height: 24px; }
