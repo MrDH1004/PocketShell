@@ -164,6 +164,15 @@ class SessionListActivity : AppCompatActivity() {
         }
         adapter.guest = guest != null
         list.adapter = adapter
+        // Scrolling down to the end of 최근 (or pulling up while already there) loads its next 20.
+        list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (dy > 0 && !rv.canScrollVertically(1)) adapter.onReachedEnd(rv)
+            }
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING && !rv.canScrollVertically(1)) adapter.onReachedEnd(rv)
+            }
+        })
         findViewById<FloatingActionButton>(R.id.fab).apply {
             setOnClickListener { showNewChooser() }
             visibility = if (guest != null) View.GONE else View.VISIBLE
@@ -831,8 +840,11 @@ private class SessionAdapter(
 
     private var last: (() -> Unit)? = null
 
-    /** 최근 shows this many rows; reaching its end (or 더보기) adds as many again. */
+    /** 최근 shows this many rows; scrolling down to the 더보기 line (or tapping it) adds as many again. */
     private var recentShown = RECENT_PAGE
+
+    /** The 더보기 line reads 불러오는 중 for a moment before the next page comes in, so the line is seen. */
+    private var loadingMore = false
 
     fun submit(s: SessionSections, running: String, external: String, favorites: String, recent: String) {
         last = { submit(s, running, external, favorites, recent) }
@@ -862,22 +874,33 @@ private class SessionAdapter(
     }
 
     private fun showMore() {
+        loadingMore = false
         recentShown += RECENT_PAGE
         last?.invoke()
+    }
+
+    /** The user scrolled down to the end of the list: if it ends with 더보기, load the next page after a short pause. */
+    fun onReachedEnd(list: RecyclerView) {
+        if (loadingMore || rows.lastOrNull() !is Row.More) return
+        loadingMore = true
+        notifyItemChanged(rows.size - 1)
+        list.postDelayed({ if (loadingMore) showMore() }, MORE_DELAY_MS)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         if (viewType == 2) {
             val d = parent.resources.displayMetrics.density
-            val b = com.google.android.material.button.MaterialButton(parent.context, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
-                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also {
-                    it.setMargins((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (8 * d).toInt())
-                }
+            // Plain text line, not a button: "아래로 내려 더보기 (n개 더)".
+            val t = TextView(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                gravity = android.view.Gravity.CENTER
                 minHeight = (48 * d).toInt()
+                setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+                textSize = 13f
                 setTextColor(androidx.core.content.ContextCompat.getColor(parent.context, R.color.text_muted))
             }
-            return object : RecyclerView.ViewHolder(b) {}
+            return object : RecyclerView.ViewHolder(t) {}
         }
         val layout = if (viewType == 0) R.layout.item_section else R.layout.item_session
         val view = inflater.inflate(layout, parent, false)
@@ -898,10 +921,8 @@ private class SessionAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
             is Row.More -> (holder.itemView as TextView).apply {
-                text = context.getString(R.string.recent_more, row.left)
+                text = if (loadingMore) context.getString(R.string.recent_loading) else context.getString(R.string.recent_more, row.left)
                 setOnClickListener { showMore() }
-                // Scrolled down to the end of 최근: the next page comes in by itself (after this layout pass).
-                post { if (rows.lastOrNull() == row) showMore() }
             }
             is Row.Header -> (holder.itemView as TextView).apply {
                 text = row.title
@@ -986,6 +1007,7 @@ private class SessionAdapter(
 
 /** 최근 rows per page in the session list. */
 private const val RECENT_PAGE = 20
+private const val MORE_DELAY_MS = 400L
 
 /** Sessions listed in the update confirmation before "and n more". */
 private const val UPDATE_SESSION_LINES = 8
