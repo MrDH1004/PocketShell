@@ -140,7 +140,7 @@ object ViewSettingsDialog {
             .setPositiveButton(R.string.confirm, null)
             .setNeutralButton(R.string.view_reset) { _, _ ->
                 prefs.fontSizeSp = UiPrefs.DEFAULT_FONT_SP
-                prefs.fontId = TerminalFont.SYSTEM.id
+                prefs.fontId = UiPrefs.DEFAULT_FONT_ID
                 prefs.scrollPercent = UiPrefs.DEFAULT_SCROLL_PERCENT
                 onChanged()
             }

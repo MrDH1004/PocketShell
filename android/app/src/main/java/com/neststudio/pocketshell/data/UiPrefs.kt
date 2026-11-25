@@ -55,9 +55,9 @@ class UiPrefs(context: Context) {
         get() = prefs.getString(K_WEB_LAST, null).orEmpty()
         set(value) = prefs.edit().putString(K_WEB_LAST, value).apply()
 
-    /** Terminal font id, see TerminalFonts. */
+    /** Terminal font id, see TerminalFont. Unset (fresh install) = D2Coding. */
     var fontId: String
-        get() = prefs.getString(K_FONT, null).orEmpty()
+        get() = prefs.getString(K_FONT, null) ?: DEFAULT_FONT_ID
         set(value) = prefs.edit().putString(K_FONT, value).apply()
 
     /** File browser sort order id, see FileSort. */
@@ -178,6 +178,7 @@ class UiPrefs(context: Context) {
         const val SCROLL_STEP = 10
 
         const val DEFAULT_FONT_SP = 12f
+        const val DEFAULT_FONT_ID = "d2coding"
         const val MIN_FONT_SP = 6f
         const val MAX_FONT_SP = 32f
     }
