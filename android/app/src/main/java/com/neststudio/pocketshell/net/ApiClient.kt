@@ -185,6 +185,16 @@ class ApiClient(
 
     suspend fun sessions(): List<SessionInfo> = SessionInfo.listFromJson(request("GET", "/api/sessions"))
 
+    /** Sessions plus the starred folders (host ≥ 0.2.133; older hosts: no favorites). */
+    suspend fun sessionList(): Pair<List<SessionInfo>, List<String>> {
+        val text = request("GET", "/api/sessions")
+        return SessionInfo.listFromJson(text) to SessionInfo.favoritesFromJson(text)
+    }
+
+    /** Stars ([on]) or unstars a project folder; returns the starred folders after the change. */
+    suspend fun setFavorite(cwd: String, on: Boolean): List<String> =
+        SessionInfo.favoritesFromJson(request("POST", "/api/favorites", JSONObject().put("cwd", cwd).put("on", on)))
+
     /** `GET /api/drives`: where the PC browser starts (host ≥ 0.2.73; older hosts answer 404). */
     /**
      * `POST /api/files/op` (host ≥ 0.2.76): [op] "copy" | "move" | "delete" | "rename" | "mkdir" on [paths], into

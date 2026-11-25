@@ -153,7 +153,7 @@ class SessionListActivity : AppCompatActivity() {
         val columns = WideScreen.columns(this)
         list.layoutManager = GridLayoutManager(this, columns).apply {
             spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                override fun getSpanSize(position: Int) = if (adapter.getItemViewType(position) == 0) columns else 1
+                override fun getSpanSize(position: Int) = if (adapter.getItemViewType(position) != 1) columns else 1
             }
         }
         if (columns > 1) {
@@ -261,8 +261,9 @@ class SessionListActivity : AppCompatActivity() {
             try {
                 if (silent) {
                     try {
-                        val sections = SessionSections.of(api.sessions(), UiPrefs(this@SessionListActivity).recentLimit)
-                        adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
+                        val (list, favs) = api.sessionList()
+                        favorites = favs
+                        submit(SessionSections.of(list, UiPrefs(this@SessionListActivity).recentLimit, favs))
                     } catch (e: IOException) {
                         // keep showing what we have
                     } catch (e: org.json.JSONException) {
@@ -270,9 +271,9 @@ class SessionListActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                val all = api.sessions()
-                val sections = SessionSections.of(all, UiPrefs(this@SessionListActivity).recentLimit)
-                adapter.submit(sections, getString(R.string.section_running), getString(R.string.section_external), getString(R.string.section_recent))
+                val (all, favs) = api.sessionList()
+                favorites = favs
+                submit(SessionSections.of(all, UiPrefs(this@SessionListActivity).recentLimit, favs))
                 val empty = if (guest != null) R.string.guest_session_closed else R.string.sessions_empty
                 showMessage(if (adapter.itemCount == 0) getString(empty) else null)
                 // Shared session: open it right away the first time (the list only has it).
@@ -293,6 +294,22 @@ class SessionListActivity : AppCompatActivity() {
                 loading = false
                 swipe.isRefreshing = false
             }
+        }
+    }
+
+    /** Starred folders from the last list (host favorites.json). */
+    private var favorites: List<String> = emptyList()
+
+    private fun submit(sections: SessionSections) = adapter.submit(
+        sections, getString(R.string.section_running), getString(R.string.section_external),
+        getString(R.string.section_favorites), getString(R.string.section_recent),
+    )
+
+    private fun toggleFavorite(s: SessionInfo) {
+        val on = !SessionSections.isFavorite(favorites, s.cwd)
+        runSessionAction(R.string.err_favorite) { api ->
+            favorites = api.setFavorite(s.cwd, on)
+            android.widget.Toast.makeText(this, if (on) R.string.favorite_added else R.string.favorite_removed, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -401,6 +418,20 @@ class SessionListActivity : AppCompatActivity() {
     }
 
     private fun openSession(s: SessionInfo) {
+        if (s.isFavoriteStub) {
+            // A starred folder with nothing left in it: a new session there.
+            val api = (application as PkshellApp).api() ?: return
+            lifecycleScope.launch {
+                try {
+                    openSession(api.createSession(null, null, null, null, cwd = s.cwd))
+                } catch (e: IOException) {
+                    showMessage(ErrorText.of(this@SessionListActivity, R.string.err_new_terminal, e))
+                } catch (e: org.json.JSONException) {
+                    showMessage(ErrorText.of(this@SessionListActivity, R.string.err_new_terminal, e))
+                }
+            }
+            return
+        }
         startActivity(TerminalActivity.intent(this, s))
         // The app icon's long-press list: the folders opened last (not for a session shared by someone else).
         val pc = (application as PkshellApp).pairing()
@@ -613,6 +644,8 @@ class SessionListActivity : AppCompatActivity() {
                 SessionAction.GIT -> R.drawable.ic_git to R.string.git_menu
                 SessionAction.END -> R.drawable.ic_stop to R.string.session_end
                 SessionAction.NEW_TERMINAL -> R.drawable.ic_new_terminal_here to R.string.new_terminal_here
+                SessionAction.FAVORITE -> if (SessionSections.isFavorite(favorites, s.cwd)) R.drawable.ic_star to R.string.favorite_remove
+                    else R.drawable.ic_star_border to R.string.favorite_add
                 SessionAction.DELETE -> R.drawable.ic_delete to (if (s.isRunningHost) R.string.session_delete else R.string.session_delete_record)
                 SessionAction.DELETE_WITH_FOLDER -> R.drawable.ic_folder_delete to R.string.session_delete_folder
             }
@@ -625,6 +658,7 @@ class SessionListActivity : AppCompatActivity() {
                     SessionAction.GIT -> startActivity(GitChangesActivity.intent(this, s.cwd, nameOf(s)))
                     SessionAction.END -> confirmEnd(s)
                     SessionAction.NEW_TERMINAL -> newTerminalHere(s)
+                    SessionAction.FAVORITE -> toggleFavorite(s)
                     SessionAction.DELETE -> confirmDelete(s)
                     SessionAction.DELETE_WITH_FOLDER -> confirmDeleteWithFolder(s)
                 }
@@ -770,6 +804,8 @@ class SessionListActivity : AppCompatActivity() {
 private sealed class Row {
     data class Header(val title: String) : Row()
     data class Item(val session: SessionInfo) : Row()
+    /** End of a paged 최근: the rest of it ([left] more). Reaching it loads the next page by itself. */
+    data class More(val left: Int) : Row()
 }
 
 private class SessionAdapter(
@@ -793,16 +829,24 @@ private class SessionAdapter(
             if (rows.isNotEmpty()) notifyItemChanged(0)
         }
 
-    fun submit(s: SessionSections, running: String, external: String, recent: String) {
+    private var last: (() -> Unit)? = null
+
+    /** 최근 shows this many rows; reaching its end (or 더보기) adds as many again. */
+    private var recentShown = RECENT_PAGE
+
+    fun submit(s: SessionSections, running: String, external: String, favorites: String, recent: String) {
+        last = { submit(s, running, external, favorites, recent) }
         val out = ArrayList<Row>()
-        fun section(title: String, items: List<SessionInfo>) {
+        fun section(title: String, items: List<SessionInfo>, total: Int = items.size) {
             if (items.isEmpty()) return
-            out.add(Row.Header(title))
+            out.add(Row.Header(if (total > items.size) "$title $total" else title))
             items.forEach { out.add(Row.Item(it)) }
         }
         section(running, s.running)
         section(external, s.external)
-        section(recent, s.recent)
+        section(favorites, s.favorites)
+        section(recent, s.recent.take(recentShown), s.recent.size)
+        if (s.recent.size > recentShown) out.add(Row.More(s.recent.size - recentShown))
         if (out == rows) return // periodic refresh with nothing new: leave the list (and any press in progress) alone
         rows = out
         @Suppress("NotifyDataSetChanged")
@@ -811,10 +855,30 @@ private class SessionAdapter(
 
     override fun getItemCount() = rows.size
 
-    override fun getItemViewType(position: Int) = if (rows[position] is Row.Header) 0 else 1
+    override fun getItemViewType(position: Int) = when (rows[position]) {
+        is Row.Header -> 0
+        is Row.Item -> 1
+        is Row.More -> 2
+    }
+
+    private fun showMore() {
+        recentShown += RECENT_PAGE
+        last?.invoke()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
+        if (viewType == 2) {
+            val d = parent.resources.displayMetrics.density
+            val b = com.google.android.material.button.MaterialButton(parent.context, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).also {
+                    it.setMargins((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (8 * d).toInt())
+                }
+                minHeight = (48 * d).toInt()
+                setTextColor(androidx.core.content.ContextCompat.getColor(parent.context, R.color.text_muted))
+            }
+            return object : RecyclerView.ViewHolder(b) {}
+        }
         val layout = if (viewType == 0) R.layout.item_section else R.layout.item_session
         val view = inflater.inflate(layout, parent, false)
         if (compact) {
@@ -833,6 +897,12 @@ private class SessionAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (val row = rows[position]) {
+            is Row.More -> (holder.itemView as TextView).apply {
+                text = context.getString(R.string.recent_more, row.left)
+                setOnClickListener { showMore() }
+                // Scrolled down to the end of 최근: the next page comes in by itself (after this layout pass).
+                post { if (rows.lastOrNull() == row) showMore() }
+            }
             is Row.Header -> (holder.itemView as TextView).apply {
                 text = row.title
                 val d = resources.displayMetrics.density
@@ -856,7 +926,8 @@ private class SessionAdapter(
                 mark.visibility = if (markRes == 0) View.GONE else View.VISIBLE
                 if (markRes != 0) mark.setImageResource(markRes)
                 val detail = v.findViewById<TextView>(R.id.detail)
-                detail.text = s.cwd.ifBlank { if (s.isExternal) "" else s.shell }
+                detail.text = if (s.isFavoriteStub) s.cwd + " · " + v.context.getString(R.string.favorite_no_record)
+                    else s.cwd.ifBlank { if (s.isExternal) "" else s.shell }
                 detail.contentDescription = listOfNotNull(
                     when (s.agent) { "claude" -> "Claude"; "gpt" -> "GPT"; else -> null }, detail.text.toString().ifBlank { null },
                 ).joinToString(", ")
@@ -912,6 +983,9 @@ private class SessionAdapter(
         }
     }
 }
+
+/** 최근 rows per page in the session list. */
+private const val RECENT_PAGE = 20
 
 /** Sessions listed in the update confirmation before "and n more". */
 private const val UPDATE_SESSION_LINES = 8

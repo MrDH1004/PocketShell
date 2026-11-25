@@ -962,7 +962,18 @@ public sealed class HostServer : IDisposable
             }
             foreach (var s in list)
                 if (s.State == "running" || s.Kind == "external") s.Shares = ShareCount(s.Id);
-            return Json(new { sessions = list });
+            return Json(new { sessions = list, favorites = Favorites.Load(_home) });
+        });
+
+        // Starred project folders: shown above 최근 on the phone app and the web app.
+        app.MapPost("/api/favorites", async (HttpContext ctx) =>
+        {
+            var req = await ReadBody<FavoriteRequest>(ctx);
+            var cwd = req?.Cwd?.Trim() ?? "";
+            if (cwd.Length == 0 || cwd.Length > 1024) return Error(400, "cwd required");
+            var list = Favorites.Set(_home, cwd, req?.On != false);
+            Log.Info($"favorite {(req?.On != false ? "added" : "removed")}: {cwd} by {AuthOf(ctx).DeviceId ?? "local"}");
+            return Json(new { favorites = list });
         });
 
         app.MapGet("/api/sessions/{id}", (string id) =>
@@ -1545,6 +1556,13 @@ public sealed class HostServer : IDisposable
     {
         public string? Text { get; set; }
         public bool Enter { get; set; }
+    }
+
+    private sealed class FavoriteRequest
+    {
+        public string? Cwd { get; set; }
+        /// <summary>false unstars; omitted stars.</summary>
+        public bool? On { get; set; }
     }
 
     private static async Task<T?> ReadBody<T>(HttpContext ctx) where T : class

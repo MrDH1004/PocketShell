@@ -2,6 +2,8 @@ package com.neststudio.pocketshell
 
 import com.neststudio.pocketshell.core.ClientProtocol
 import com.neststudio.pocketshell.core.ServerMessage
+import com.neststudio.pocketshell.core.SessionAction
+import com.neststudio.pocketshell.core.SessionActions
 import com.neststudio.pocketshell.core.SessionInfo
 import com.neststudio.pocketshell.core.SessionSections
 import org.json.JSONObject
@@ -64,6 +66,27 @@ class ProtocolTest {
         assertEquals(listOf("rec-111111111111", "bbbbbbbbbbbb"), SessionSections.of(all, 2).recent.map { it.id })
         assertTrue(SessionSections.of(all, 0).recent.isEmpty())
         assertEquals("claude", all[1].agent)
+    }
+
+    @Test
+    fun favoritesSitAboveRecentOncePerFolder() {
+        val text = """{"sessions":[
+            {"id":"rec-a","kind":"recent","title":"a","shell":"cmd","cwd":"E:\\a","state":"exited","lastActivity":"2026-11-14T01:00:00.000Z"},
+            {"id":"rec-b","kind":"recent","title":"b","shell":"cmd","cwd":"E:\\b","state":"exited","lastActivity":"2026-11-14T02:00:00.000Z"},
+            {"id":"hhhhhhhhhhhh","kind":"history","title":"c","shell":"cmd","cwd":"E:\\c","state":"exited","lastActivity":"2026-11-14T03:00:00.000Z"},
+            {"id":"live-c","kind":"host","title":"c","shell":"cmd","cwd":"e:\\C\\","state":"running","lastActivity":"2026-11-14T04:00:00.000Z"}
+        ],"favorites":["E:\\c","e:\\B\\","E:\\gone"]}"""
+        val favs = SessionInfo.favoritesFromJson(text)
+        val s = SessionSections.of(SessionInfo.listFromJson(text), favorites = favs)
+        // starred order; a live session first, else the newest record, else a stub that starts one
+        assertEquals(listOf("live-c", "rec-b", "fav:e:\\gone"), s.favorites.map { it.id })
+        assertTrue(s.favorites[2].isFavoriteStub)
+        assertEquals(listOf(SessionAction.FAVORITE), SessionActions.of(s.favorites[2]))
+        // starred folders leave 최근
+        assertEquals(listOf("rec-a"), s.recent.map { it.id })
+        assertTrue(SessionSections.isFavorite(favs, "E:\\B"))
+        assertTrue(SessionActions.of(s.recent[0]).contains(SessionAction.FAVORITE))
+        assertTrue(SessionInfo.favoritesFromJson("""{"sessions":[]}""").isEmpty()) // older host
     }
 
     @Test
@@ -139,17 +162,18 @@ class ProtocolTest {
         val term = com.neststudio.pocketshell.core.SessionAction.NEW_TERMINAL
         val delete = com.neststudio.pocketshell.core.SessionAction.DELETE
         val folder = com.neststudio.pocketshell.core.SessionAction.DELETE_WITH_FOLDER
+        val fav = com.neststudio.pocketshell.core.SessionAction.FAVORITE
         val of = com.neststudio.pocketshell.core.SessionActions::of
         // Running: end first (the record stays), then the folder's git changes, or delete; the folder only when
         // the PC allows it. Sharing is not offered (removed in 0.2.108), also when an older app shared it.
-        assertEquals(listOf(end, git, delete), of(session("host", "running", false)))
-        assertEquals(listOf(end, git, delete, folder), of(session("host", "running", true)))
-        assertEquals(listOf(end, git, delete), of(session("host", "running", false, shares = 2)))
+        assertEquals(listOf(end, git, fav, delete), of(session("host", "running", false)))
+        assertEquals(listOf(end, git, fav, delete, folder), of(session("host", "running", true)))
+        assertEquals(listOf(end, git, fav, delete), of(session("host", "running", false, shares = 2)))
         // A record cannot be ended any more.
-        assertEquals(listOf(git, delete, folder), of(session("history", "exited", true)))
-        assertEquals(listOf(git, delete), of(session("recent", "exited", false)))
+        assertEquals(listOf(git, fav, delete, folder), of(session("history", "exited", true)))
+        assertEquals(listOf(git, fav, delete), of(session("recent", "exited", false)))
         // A console opened on the PC: ended, a new terminal in its folder; never deleted (and never its folder).
-        assertEquals(listOf(end, term, git), of(session("external", "running", true)))
+        assertEquals(listOf(end, term, git, fav), of(session("external", "running", true)))
         // No folder: nothing to look at.
         assertEquals(listOf(end, term), of(SessionInfo.fromJson(JSONObject(sessionJson).put("kind", "external").put("cwd", ""))))
         // An older PC does not send the fields.

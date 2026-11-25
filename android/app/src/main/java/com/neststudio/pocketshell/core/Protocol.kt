@@ -44,6 +44,8 @@ data class SessionInfo(
     /** Shown under 최근; opening it POSTs resume (host history, or a closed PC console reopened in its folder). */
     val isHistory: Boolean get() = kind == KIND_HISTORY || kind == KIND_RECENT || (kind == KIND_HOST && state == STATE_EXITED)
     val isRunningHost: Boolean get() = kind == KIND_HOST && state == STATE_RUNNING
+    /** A starred folder with no session or record left: opening it starts a new session there. */
+    val isFavoriteStub: Boolean get() = kind == KIND_FAVORITE
 
     companion object {
         const val KIND_HOST = "host"
@@ -51,6 +53,8 @@ data class SessionInfo(
         const val KIND_HISTORY = "history"
         /** A PC console that was closed (host ≥ 0.2.13). */
         const val KIND_RECENT = "recent"
+        /** Made by the app (not the host): a starred folder without any session ([isFavoriteStub]). */
+        const val KIND_FAVORITE = "favorite"
         const val STATE_RUNNING = "running"
         const val STATE_EXITED = "exited"
 
@@ -79,6 +83,17 @@ data class SessionInfo(
             shares = o.optInt("shares", 0).coerceAtLeast(0),
         )
 
+        /** Starred folders in `GET /api/sessions` (host ≥ 0.2.133; older hosts: none). */
+        fun favoritesFromJson(text: String): List<String> {
+            val arr = JSONObject(text).optJSONArray("favorites") ?: return emptyList()
+            return (0 until arr.length()).map { arr.optString(it, "") }.filter { it.isNotBlank() }
+        }
+
+        /** A starred folder that has no session: [isFavoriteStub]. */
+        fun favoriteStub(cwd: String): SessionInfo =
+            SessionInfo(id = "fav:" + SessionSections.dirKey(cwd), kind = KIND_FAVORITE, title = "", shell = "", cwd = cwd,
+                state = "", createdAt = "", lastActivity = "", cols = 0, rows = 0, pid = null, resumedFrom = null)
+
         /** Parses `GET /api/sessions` → `{sessions:[...]}`. */
         fun listFromJson(text: String): List<SessionInfo> {
             val arr: JSONArray = JSONObject(text).optJSONArray("sessions") ?: return emptyList()
@@ -88,7 +103,7 @@ data class SessionInfo(
 }
 
 /** What a long press on a session row offers. */
-enum class SessionAction { GIT, END, NEW_TERMINAL, DELETE, DELETE_WITH_FOLDER }
+enum class SessionAction { GIT, END, NEW_TERMINAL, FAVORITE, DELETE, DELETE_WITH_FOLDER }
 
 object SessionActions {
     /**
@@ -97,12 +112,14 @@ object SessionActions {
      * that project's git changes.
      */
     fun of(s: SessionInfo): List<SessionAction> = buildList {
+        if (s.isFavoriteStub) { add(SessionAction.FAVORITE); return@buildList }
         // 세션 종료 comes first: it is what a long press on a live session is most often for.
         if (s.isExternal || s.isRunningHost) {
             add(SessionAction.END)
             if (s.isExternal) add(SessionAction.NEW_TERMINAL) // a new PocketShell terminal in that console's folder
         }
         if (s.cwd.isNotBlank()) add(SessionAction.GIT)
+        if (s.cwd.isNotBlank()) add(SessionAction.FAVORITE) // 즐겨찾기 추가 / 해제
         addAll(manage(s))
     }
 
@@ -115,11 +132,13 @@ object SessionActions {
     }
 }
 
-/** Session list split into the three UI sections (실행 중 / 외부 / 최근). */
+/** Session list split into the UI sections (실행 중 / 외부 / 즐겨찾기 / 최근). */
 data class SessionSections(
     val running: List<SessionInfo>,
     val external: List<SessionInfo>,
     val recent: List<SessionInfo>,
+    /** One row per starred folder, in the order starred: shown right above 최근. */
+    val favorites: List<SessionInfo> = emptyList(),
 ) {
     companion object {
         /** 최근 shows every past session the PC remembers. */
@@ -130,13 +149,27 @@ data class SessionSections(
          * [recentLimit]: newest N entries under 최근 ([RECENT_ALL] = all, 0 hides the section). Every folder worked in
          * is listed once (its newest record), newest first, also when that folder is open above.
          */
-        fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT): SessionSections {
+        fun of(all: List<SessionInfo>, recentLimit: Int = DEFAULT_RECENT_LIMIT, favorites: List<String> = emptyList()): SessionSections {
             val sessions = all.filterNot { isPlainCmd(it) || isSystem32Console(it) }
             val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
-            val recent = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }
-                .distinctBy(::folderKey).take(recentLimit.coerceAtLeast(0))
-            return SessionSections(running, external, recent)
+            val history = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }.distinctBy(::folderKey)
+            // 즐겨찾기: per starred folder its live session, else its newest record, else a stub that starts one there.
+            val starred = favorites.map(::dirKey).filter { it.isNotEmpty() }.distinct()
+            val favs = favorites.filter { dirKey(it).isNotEmpty() }.distinctBy(::dirKey).map { f ->
+                val key = dirKey(f)
+                sessions.filter { (it.isRunningHost || it.isExternal) && dirKey(it.cwd) == key }.maxByOrNull { it.lastActivity }
+                    ?: history.firstOrNull { dirKey(it.cwd) == key }
+                    ?: SessionInfo.favoriteStub(f)
+            }
+            val recent = history.filterNot { dirKey(it.cwd) in starred }.take(recentLimit.coerceAtLeast(0))
+            return SessionSections(running, external, recent, favs)
+        }
+
+        /** [cwd] is one of the starred [favorites] (folder compared the Windows way). */
+        fun isFavorite(favorites: List<String>, cwd: String): Boolean {
+            val key = dirKey(cwd)
+            return key.isNotEmpty() && favorites.any { dirKey(it) == key }
         }
 
         /**

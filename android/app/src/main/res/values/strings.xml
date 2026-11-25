@@ -8,6 +8,14 @@
     <string name="section_running">실행 중</string>
     <string name="section_external">외부</string>
     <string name="section_recent">최근</string>
+    <string name="section_favorites">즐겨찾기</string>
+    <string name="favorite_add">즐겨찾기 추가</string>
+    <string name="favorite_remove">즐겨찾기 해제</string>
+    <string name="favorite_added">즐겨찾기에 추가했습니다</string>
+    <string name="favorite_removed">즐겨찾기에서 뺐습니다</string>
+    <string name="err_favorite">즐겨찾기를 바꾸지 못했습니다</string>
+    <string name="favorite_no_record">기록 없음 · 누르면 새 세션</string>
+    <string name="recent_more">더보기 (%1$d개 더)</string>
     <string name="sessions_empty">세션이 없습니다. 오른쪽 아래 + 로 새 세션을 만드세요.</string>
     <string name="new_session">새 세션</string>
     <string name="new_session_title_hint">제목 (선택)</string>

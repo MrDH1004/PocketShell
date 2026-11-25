@@ -185,6 +185,7 @@
       $("pc-meta").textContent = "PocketShell " + (i.version || "") + (i.share ? " · 공유받은 세션" : "");
       $("new-session").hidden = !!i.share;
       $("list-error").hidden = true;
+      favorites = res[1].favorites || [];
       renderSessions(res[1].sessions || []);
     }).catch(function (err) {
       if (err.status === 401) return;
@@ -194,11 +195,21 @@
     });
   }
 
-  var lastRendered = null;
+  var lastRendered = null, lastAll = [];
+  var favorites = [];          // starred folders (host favorites.json), shown above 최근
+  var RECENT_PAGE = 20;        // 최근 shows this many, then 더보기 (also on scrolling to the end) adds as many again
+  var recentShown = RECENT_PAGE;
+  var recentObserver = null;
+
+  function isFavorite(cwd) {
+    var k = dirKey(cwd);
+    return !!k && favorites.some(function (f) { return dirKey(f) === k; });
+  }
 
   function renderSessions(all) {
+    lastAll = all;
     // Redraw only when something changed: rebuilding the cards every 5 s could swallow a click in progress.
-    var key = JSON.stringify(all) + "|" + (info && info.share ? 1 : 0) + "|" + Math.floor(Date.now() / 60000);
+    var key = JSON.stringify(all) + "|" + JSON.stringify(favorites) + "|" + recentShown + "|" + (info && info.share ? 1 : 0) + "|" + Math.floor(Date.now() / 60000);
     if (key === lastRendered) return;
     lastRendered = key;
     var list = all.filter(function (s) { return !isPlainCmd(s) && !isSystem32Console(s); });
@@ -207,18 +218,42 @@
     var seen = {};
     var recent = list.filter(isHistory).sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); })
       .filter(function (s) { var k = dirKey(s.cwd) || ("id:" + s.id); if (seen[k]) return false; seen[k] = true; return true; });
+    // 즐겨찾기: each starred folder once, in the order starred — its live session, else its newest record, else a
+    // card that starts a new session there. Those folders leave 최근.
+    var favs = (info && info.share) ? [] : favorites.map(function (f) {
+      var k = dirKey(f);
+      var here = list.filter(function (s) { return dirKey(s.cwd) === k; });
+      var live = here.filter(function (s) { return isRunningHost(s) || s.kind === "external"; })
+        .sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); })[0];
+      return live || recent.filter(function (s) { return dirKey(s.cwd) === k; })[0] || { id: "fav:" + k, kind: "favorite", cwd: f, title: "" };
+    });
+    recent = recent.filter(function (s) { return !isFavorite(s.cwd); });
 
     var box = $("sections");
     var focusedId = document.activeElement && document.activeElement.closest && document.activeElement.closest("[data-id]");
     focusedId = focusedId ? focusedId.getAttribute("data-id") + "|" + (document.activeElement.getAttribute("data-act") || "") : null;
     box.textContent = "";
-    if (!running.length && !external.length && !recent.length) {
+    if (!running.length && !external.length && !recent.length && !favs.length) {
       box.appendChild(el("p", "empty", "세션 없음. '새 세션'으로 시작."));
       return;
     }
     section(box, "실행 중", running);
     section(box, "PC에서 연 콘솔", external);
-    section(box, "최근", recent);
+    section(box, "즐겨찾기", favs);
+    section(box, "최근", recent.slice(0, recentShown), recent.length);
+    if (recent.length > recentShown) {
+      var more = button("더보기 (" + (recent.length - recentShown) + "개 더)", "ghost recent-more", showMoreRecent);
+      more.id = "recent-more";
+      box.appendChild(more);
+      // Scrolling down to the end of the list loads the next page by itself.
+      if (recentObserver) recentObserver.disconnect();
+      if ("IntersectionObserver" in window) {
+        recentObserver = new IntersectionObserver(function (entries) {
+          if (entries.some(function (e) { return e.isIntersecting; })) showMoreRecent();
+        }, { rootMargin: "0px 0px 120px 0px" });
+        recentObserver.observe(more);
+      }
+    } else if (recentObserver) { recentObserver.disconnect(); recentObserver = null; }
     if (focusedId) {
       var parts = focusedId.split("|");
       var again = box.querySelector('[data-id="' + CSS.escape(parts[0]) + '"] [data-act="' + parts[1] + '"]');
@@ -226,9 +261,24 @@
     }
   }
 
-  function section(box, title, items) {
+  function showMoreRecent() {
+    if (recentObserver) { recentObserver.disconnect(); recentObserver = null; }
+    recentShown += RECENT_PAGE;
+    renderSessions(lastAll);
+  }
+
+  function toggleFavorite(s) {
+    var on = !isFavorite(s.cwd);
+    api("POST", "/api/favorites", { cwd: s.cwd, on: on }).then(function (r) {
+      favorites = r.favorites || [];
+      renderSessions(lastAll);
+      toast(on ? "즐겨찾기에 추가함" : "즐겨찾기에서 뺌");
+    }).catch(function (err) { if (err.status !== 401) alert("즐겨찾기 실패: " + err.message); });
+  }
+
+  function section(box, title, items, total) {
     if (!items.length) return;
-    box.appendChild(el("h2", null, title + " " + items.length));
+    box.appendChild(el("h2", null, title + " " + (total || items.length)));
     var ul = el("ul", "sessions");
     items.forEach(function (s) { ul.appendChild(card(s)); });
     box.appendChild(ul);
@@ -242,7 +292,7 @@
     open.setAttribute("data-act", "open");
     var name = el("span", "name", displayTitle(s));
     open.appendChild(name);
-    var subText = [s.cwd, isHistory(s) ? timeAgo(s.lastActivity) : null].filter(Boolean).join(" · ");
+    var subText = [s.cwd, isHistory(s) ? timeAgo(s.lastActivity) : null, s.kind === "favorite" ? "기록 없음 · 새 세션" : null].filter(Boolean).join(" · ");
     open.appendChild(el("span", "sub", subText || s.shell || ""));
     open.addEventListener("click", function () { openSession(s); });
     li.appendChild(open);
@@ -260,7 +310,17 @@
       globe.title = "웹 보기 (localhost:" + s.webPorts.join(", ") + ")";
       li.appendChild(globe);
     }
-    if (isHistory(s)) {
+    var canStar = !!dirKey(s.cwd);
+    if (canStar) {
+      var fav = isFavorite(s.cwd);
+      var star = withAct(button(fav ? "★" : "☆", "ghost star" + (fav ? " on" : ""), function () { toggleFavorite(s); },
+        (fav ? "즐겨찾기 해제: " : "즐겨찾기 추가: ") + displayTitle(s)), "star");
+      star.setAttribute("aria-pressed", fav ? "true" : "false");
+      actions.appendChild(star);
+    }
+    if (s.kind === "favorite") {
+      actions.appendChild(withAct(button("새 세션", null, function () { openSession(s); }), "resume"));
+    } else if (isHistory(s)) {
       actions.appendChild(withAct(button("다시 열기", null, function () { openSession(s); }), "resume"));
       actions.appendChild(withAct(button("삭제", "danger", function () { removeSession(s); }, "삭제: " + displayTitle(s)), "delete"));
     } else {
@@ -269,9 +329,12 @@
     li.appendChild(actions);
     // Phones: one compact row like the app; the actions are behind ⋯ (or a long press on the row).
     var menu = function () {
-      var items = isHistory(s)
+      var items = s.kind === "favorite"
+        ? [["새 세션 열기", function () { openSession(s); }]]
+        : isHistory(s)
         ? [["다시 열기", function () { openSession(s); }], ["삭제", function () { removeSession(s); }, "danger"]]
         : [["열기", function () { openSession(s); }], ["세션 종료", function () { endSession(s); }, "danger"]];
+      if (canStar) items.splice(1, 0, [isFavorite(s.cwd) ? "즐겨찾기 해제" : "즐겨찾기 추가", function () { toggleFavorite(s); }]);
       if (window.PsFiles && window.PsFiles.sheet) window.PsFiles.sheet(displayTitle(s), items);
     };
     li.appendChild(withAct(button("⋯", "ghost more", menu, "메뉴: " + displayTitle(s)), "more"));
@@ -294,7 +357,10 @@
   }
 
   function openSession(s) {
-    if (isHistory(s)) {
+    if (s.kind === "favorite") {
+      api("POST", "/api/sessions", { cwd: s.cwd }).then(function (n) { openTerminal(n); })
+        .catch(function (err) { if (err.status !== 401) alert("새 세션 실패: " + err.message); });
+    } else if (isHistory(s)) {
       api("POST", "/api/sessions/" + encodeURIComponent(s.id) + "/resume").then(function (n) { openTerminal(n); })
         .catch(function (err) { if (err.status !== 401) alert("다시 열기 실패: " + err.message); });
     } else {

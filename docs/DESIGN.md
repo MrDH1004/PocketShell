@@ -94,7 +94,8 @@ Session { id: string(12 hex), kind: "host"|"external"|"history"|"recent",
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/api/info` | `{name, version, fp, port, hosts}` |
-| GET | `/api/sessions` | `{sessions:[Session...]}` — host(running) + external + history 모두 |
+| GET | `/api/sessions` | `{sessions:[Session...], favorites:[폴더...]}` — host(running) + external + history 모두. `favorites`(0.2.133+, 공유 게스트에는 없음) = 즐겨찾기한 폴더, 추가 순 |
+| POST | `/api/favorites` | body `{cwd, on?}` (0.2.133+) → `{favorites:[...]}`. `on:false`면 해제, 생략·true면 추가. 폴더 비교는 대소문자·끝 구분자 무시. `<home>\favorites.json`. 폰·웹 목록은 '최근' 바로 위 '즐겨찾기'에 폴더당 하나(열린 세션 → 최신 기록 → 없으면 새 세션 카드), 그 폴더는 '최근'에서 뺌. '최근'은 20개씩 표시, 끝에 닿으면 다음 20개 |
 | GET | `/api/sessions/{id}` | Session |
 | POST | `/api/sessions` | body `{shell?, cwd?, title?, cols?, rows?, agent?}` → Session (기본 shell=pwsh 있으면 pwsh 아니면 powershell, cwd=사용자 홈). 없는 Windows cwd는 400. `agent`("claude"/"codex", 0.2.73+)면 셸에 그 명령을 입력, PC에 없으면 400. 0.2.77+: 명령은 창 크기가 정해진 뒤 입력(`HostSession.WriteWhenSized`: 클라이언트 접속·크기 변경 후 0.7초 조용하면, 아무도 안 붙으면 4초 뒤). 120칸으로 시작한 직후 폰(예: 63칸)·PC 탭으로 줄어들면 Claude Code가 입력창·들여쓰기를 옛 폭으로 그려 깨지기 때문. 폰은 마지막 터미널 크기(`UiPrefs.lastGrid`)를 cols/rows로 보냄(`/api/projects`도) |
 | POST | `/api/sessions/{id}/resume` | history → 새 Session |

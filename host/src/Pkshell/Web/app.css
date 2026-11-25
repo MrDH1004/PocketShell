@@ -118,6 +118,9 @@ label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
 .badge.waiting { color: var(--waiting); }
 .badge.done { color: var(--done); }
 .empty { color: var(--muted); padding: 24px 0; }
+.session .actions .star { min-width: 32px; padding: 4px 6px; font-size: 16px; line-height: 1; border-color: transparent; color: var(--muted); }
+.session .actions .star.on { color: var(--waiting); }
+.recent-more { display: block; width: 100%; margin-top: 8px; min-height: 44px; color: var(--muted); }
 
 /* Terminal */
 #term { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; }
