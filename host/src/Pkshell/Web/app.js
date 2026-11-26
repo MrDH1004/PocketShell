@@ -236,8 +236,8 @@
       box.appendChild(el("p", "empty", "세션 없음. '새 세션'으로 시작."));
       return;
     }
-    section(box, "포켓쉘 세션", running);
-    section(box, "PC 콘솔", external);
+    // 실행 중: PocketShell's sessions and consoles opened on the PC together, newest first (the latter marked PC).
+    section(box, "실행 중", running.concat(external).sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); }));
     section(box, "즐겨찾기", favs);
     section(box, "최근", recent.slice(0, recentShown), recent.length);
     if (recent.length > recentShown) {
@@ -295,6 +295,7 @@
     open.appendChild(el("span", "sub", subText || s.shell || ""));
     open.addEventListener("click", function () { openSession(s); });
     li.appendChild(open);
+    if (s.kind === "external") li.appendChild(el("span", "badge pc", "PC"));
     if (s.agentState && STATE_LABEL[s.agentState] && !isHistory(s)) {
       li.appendChild(el("span", "badge " + s.agentState, STATE_LABEL[s.agentState]));
     }

@@ -310,7 +310,7 @@ class SessionListActivity : AppCompatActivity() {
     private var favorites: List<String> = emptyList()
 
     private fun submit(sections: SessionSections) = adapter.submit(
-        sections, getString(R.string.section_running), getString(R.string.section_external),
+        sections, getString(R.string.section_running),
         getString(R.string.section_favorites), getString(R.string.section_recent),
     )
 
@@ -849,16 +849,16 @@ private class SessionAdapter(
     /** The 더보기 line reads 불러오는 중 for a moment before the next page comes in, so the line is seen. */
     private var loadingMore = false
 
-    fun submit(s: SessionSections, running: String, external: String, favorites: String, recent: String) {
-        last = { submit(s, running, external, favorites, recent) }
+    fun submit(s: SessionSections, running: String, favorites: String, recent: String) {
+        last = { submit(s, running, favorites, recent) }
         val out = ArrayList<Row>()
         fun section(title: String, items: List<SessionInfo>, total: Int = items.size) {
             if (items.isEmpty()) return
             out.add(Row.Header(if (total > items.size) "$title $total" else title))
             items.forEach { out.add(Row.Item(it)) }
         }
-        section(running, s.running)
-        section(external, s.external)
+        // 실행 중: PocketShell's sessions and consoles opened on the PC together, newest first (the latter marked PC).
+        section(running, (s.running + s.external).sortedByDescending { it.lastActivity })
         section(favorites, s.favorites)
         section(recent, s.recent.take(recentShown), s.recent.size)
         if (s.recent.size > recentShown) out.add(Row.More(s.recent.size - recentShown))
@@ -936,6 +936,7 @@ private class SessionAdapter(
                 val s = row.session
                 val v = holder.itemView
                 v.findViewById<TextView>(R.id.title).text = s.displayTitle
+                v.findViewById<View>(R.id.pcBadge).visibility = if (s.isExternal) View.VISIBLE else View.GONE
                 val live = s.isExternal || s.isRunningHost
                 v.findViewById<View>(R.id.stateDot).backgroundTintList = android.content.res.ColorStateList.valueOf(
                     androidx.core.content.ContextCompat.getColor(v.context, if (live) R.color.live else R.color.text_muted),

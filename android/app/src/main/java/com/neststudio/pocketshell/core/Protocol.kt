@@ -158,7 +158,7 @@ data class SessionSections(
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
             val history = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }.distinctBy(::folderKey)
             // 즐겨찾기: per starred folder its newest record, else a stub that starts one there. A folder with a live
-            // session is left out: that session is already listed above (포켓쉘 세션 / PC 콘솔).
+            // session is left out: that session is already listed above under 실행 중.
             val starred = favorites.map(::dirKey).filter { it.isNotEmpty() }.distinct()
             val open = (running + external).map { dirKey(it.cwd) }.toSet()
             val favs = favorites.filter { dirKey(it).isNotEmpty() }.distinctBy(::dirKey).filterNot { dirKey(it) in open }.map { f ->

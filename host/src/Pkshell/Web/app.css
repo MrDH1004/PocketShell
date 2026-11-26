@@ -117,6 +117,7 @@ label { display: block; margin: 14px 0 4px; font-weight: 600; font-size: 14px; }
 .badge.working { color: var(--working); }
 .badge.waiting { color: var(--waiting); }
 .badge.done { color: var(--done); }
+.badge.pc { color: var(--muted); font-weight: 500; font-size: 11px; padding: 0 6px; }
 .empty { color: var(--muted); padding: 24px 0; }
 .session .actions .star { min-width: 32px; padding: 4px 6px; font-size: 16px; line-height: 1; border-color: transparent; color: var(--muted); }
 .session .actions .star.on { color: var(--waiting); }

@@ -46,6 +46,22 @@
                 android:textColor="@color/text_primary"
                 android:textSize="16sp" />
 
+            <!-- A console opened on the PC itself (not started by PocketShell) -->
+            <TextView
+                android:id="@+id/pcBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_badge"
+                android:paddingStart="6dp"
+                android:paddingTop="1dp"
+                android:paddingEnd="6dp"
+                android:paddingBottom="1dp"
+                android:text="@string/badge_pc"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
             <!-- What the AI CLI is doing: 작업 중 / 입력 대기 / 끝남 -->
             <TextView
                 android:id="@+id/agentState"
