@@ -1280,11 +1280,53 @@
   // Phones: the app's layout — ⋮ menu in the bar, + button for a new session.
   $("fab").addEventListener("click", function () { $("new-session").click(); });
   $("list-menu").addEventListener("click", function () {
-    var items = [["새로 고침", function () { $("refresh").click(); }], ["웹 보기 (PC localhost)", function () { stopPolling(); openWeb(0, openList); }]];
-    if (!$("install").hidden) items.push(["앱 설치", function () { $("install").click(); }]);
-    items.push(["연결 해제", function () { $("unpair").click(); }, "danger"]);
-    window.PsFiles.sheet(info && info.name || "PocketShell", items);
+    groupSheet(info && info.name || "PocketShell", info && info.version ? "PocketShell " + info.version : null, [
+      { title: "보기", rows: [
+        { label: "새로 고침", run: function () { $("refresh").click(); } },
+        { label: "웹 보기", value: "PC localhost", run: function () { stopPolling(); openWeb(0, openList); } },
+      ] },
+      { title: "이 기기", rows: [
+        $("install").hidden ? null : { label: "앱 설치", run: function () { $("install").click(); } },
+        { label: "연결 해제", danger: true, run: function () { $("unpair").click(); } },
+      ] },
+    ]);
   });
+
+  /**
+   * ⋮ menus as grouped cards (the phone app's 설정 look): a title and a muted line under it, then sections whose rows
+   * show a value and › on the right (or ✓ for the current choice). groups: [{ title, rows: [{ label, value, check,
+   * danger, run }] }]; null rows are skipped, empty groups dropped.
+   */
+  function groupSheet(title, sub, groups) {
+    var dlg = $("files-sheet");
+    $("files-sheet-title").textContent = title;
+    var box = $("files-sheet-items");
+    box.textContent = "";
+    box.classList.add("grouped");
+    // "close" fires a task later: a sheet opened from a row (글자 크기) is already open again by then.
+    dlg.addEventListener("close", function () { if (!dlg.open) box.classList.remove("grouped"); }, { once: true });
+    if (sub) box.appendChild(el("p", "sheet-sub", sub));
+    groups.forEach(function (g) {
+      var rows = g.rows.filter(Boolean);
+      if (!rows.length) return;
+      if (g.title) box.appendChild(el("h3", "sheet-group", g.title));
+      var card = el("div", "sheet-card");
+      rows.forEach(function (r) {
+        var b = el("button", "sheet-row" + (r.danger ? " danger" : ""));
+        b.type = "button";
+        b.appendChild(el("span", "label", r.label));
+        if (r.value != null) b.appendChild(el("span", "value", r.value));
+        var mark = el("span", r.check ? "check" : "chev", r.check ? "✓" : "›");
+        mark.setAttribute("aria-hidden", "true");
+        if (r.check || !r.noChevron) b.appendChild(mark);
+        if (r.check) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", function () { dlg.close(); r.run(); });
+        card.appendChild(b);
+      });
+      box.appendChild(card);
+    });
+    dlg.showModal();
+  }
 
   // Session list (first screen): the PC's drives and folders.
   $("list-files").addEventListener("click", function () {
@@ -1308,25 +1350,29 @@
   // ---------- ⋮ terminal menu (the phone app's options, the ones a browser can do) ----------
   $("tool-more").addEventListener("click", function () {
     if (!current) return;
-    var items = [
-      ["정보", showTermInfo],
-      ["텍스트 선택·복사", function () { openTextView(false); }],
-      ["검색", function () { openTextView(true); }],
-    ];
-    if (!$("keybar").hidden) items.push(["자주 쓰는 문구", showSnippets]);
-    items.push(["글자 크기", showFontSizes]);
-    if (!(info && info.share)) items.push(["웹 보기 (PC localhost)", function () { openWebFromTerm(); }]);
-    window.PsFiles.sheet(displayTitle(current), items);
+    // Top: what the bar truncates (folder, connection, sizes) — it was the 정보 entry.
+    var sub = [current.cwd, termInfoLine()].filter(Boolean).join("\n");
+    var font = storageGet(FONT_KEY);
+    groupSheet(displayTitle(current), sub, [
+      { title: "도구", rows: [
+        { label: "텍스트 선택·복사", run: function () { openTextView(false); } },
+        { label: "검색", run: function () { openTextView(true); } },
+        $("keybar").hidden ? null : { label: "자주 쓰는 문구", run: showSnippets },
+        (info && info.share) ? null : { label: "웹 보기", value: "PC localhost", run: function () { openWebFromTerm(); } },
+      ] },
+      { title: "화면", rows: [
+        { label: "글자 크기", value: font ? font + "px" : "자동", run: showFontSizes },
+      ] },
+    ]);
   });
 
-  function showTermInfo() {
-    var lines = [current.title || displayTitle(current)];
-    if (current.cwd) lines.push(current.cwd);
-    lines.push($("term-status").textContent || "연결 안 됨");
-    if (serverSize) lines.push("PC 크기 " + serverSize.cols + "×" + serverSize.rows);
-    if (term) lines.push("이 화면 " + term.cols + "×" + term.rows + " · 글자 " + term.options.fontSize + "px");
-    if (rf) lines.push("폰 폭으로 다시 배치 중");
-    window.PsFiles.sheet("정보", lines.map(function (l) { return [l, refocusTerm, "info"]; }));
+  /** Connection and sizes in one line: "연결됨 · PC 91×70 · 이 화면 56×44 · 14px". */
+  function termInfoLine() {
+    var parts = [$("term-status").textContent || "연결 안 됨"];
+    if (serverSize) parts.push("PC " + serverSize.cols + "×" + serverSize.rows);
+    if (term) parts.push("이 화면 " + term.cols + "×" + term.rows + " · " + term.options.fontSize + "px");
+    if (rf) parts.push("폰 폭으로 다시 배치");
+    return parts.join(" · ");
   }
 
   function showFontSizes() {
@@ -1334,11 +1380,11 @@
     var pick = function (v) {
       return function () { storageSet(FONT_KEY, v); lastSent = ""; doFit(); if (term && !rf) term.scrollToBottom(); refocusTerm(); };
     };
-    var items = [[(now ? "" : "✓ ") + "자동 (화면 크기에 맞춤)", pick(null)]];
+    var rows = [{ label: "자동", value: "화면 크기에 맞춤", check: !now, noChevron: true, run: pick(null) }];
     [11, 12, 13, 14, 15, 16, 18, 20].forEach(function (px) {
-      items.push([(now === String(px) ? "✓ " : "") + px + "px", pick(String(px))]);
+      rows.push({ label: px + "px", check: now === String(px), noChevron: true, run: pick(String(px)) });
     });
-    window.PsFiles.sheet("글자 크기", items);
+    groupSheet("글자 크기", "이 브라우저에 기억", [{ title: null, rows: rows }]);
   }
 
   /** The terminal's text (scrollback + screen) as plain lines; wrapped rows are joined back. */

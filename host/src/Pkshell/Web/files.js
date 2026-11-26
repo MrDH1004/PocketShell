@@ -218,6 +218,7 @@
     $("files-sheet-title").textContent = title;
     var box = $("files-sheet-items");
     box.textContent = "";
+    box.classList.remove("grouped"); // plain list (app.js groupSheet styles the same dialog as cards)
     items.forEach(function (it) {
       box.appendChild(d.button(it[0], it[2] || "", function () { dlg.close(); it[1](); }));
     });
