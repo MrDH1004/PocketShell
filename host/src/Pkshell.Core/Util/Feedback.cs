@@ -9,7 +9,7 @@ public sealed class FeedbackRequest
     /// <summary>One of <see cref="Feedback.Categories"/>.</summary>
     public string? Category { get; set; }
     public string? Message { get; set; }
-    /// <summary>"android" | "pc".</summary>
+    /// <summary>"android" | "pc" | "web" (the browser client, 0.2.145+).</summary>
     public string? Source { get; set; }
     /// <summary>Phone app version (the phone sends it).</summary>
     public string? AppVersion { get; set; }
@@ -93,7 +93,7 @@ public static class Feedback
             category,
             categoryLabel = Categories.TryGetValue(category, out var label) ? label : category,
             message = req.Message?.Trim() ?? "",
-            source = req.Source == "pc" ? "pc" : "android",
+            source = req.Source is "pc" or "web" ? req.Source : "android",
             appVersion = req.AppVersion,
             device = req.Device,
             deviceId,

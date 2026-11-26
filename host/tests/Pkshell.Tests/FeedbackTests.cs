@@ -61,4 +61,19 @@ public class FeedbackTests : IDisposable
         Assert.Equal("내 폰", r.GetProperty("deviceName").GetString());
         Assert.Equal("2026-11-21T09:30:05+09:00", r.GetProperty("time").GetString());
     }
+
+    [Theory]
+    [InlineData("android", "android")]
+    [InlineData("pc", "pc")]
+    [InlineData("web", "web")]
+    [InlineData(null, "android")]
+    [InlineData("other", "android")]
+    public void SourceKeepsKnownClients(string? sent, string saved)
+    {
+        var req = new FeedbackRequest { Category = "opinion", Message = "x", Source = sent };
+        var (path, _) = Feedback.Save(Path.Combine(_root, "home"), req, "0.2.145", null, null,
+            new DateTimeOffset(2026, 11, 27, 9, 0, 0, TimeSpan.FromHours(9)), Path.Combine(_root, "shared-" + (sent ?? "null")));
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(saved, doc.RootElement.GetProperty("source").GetString());
+    }
 }

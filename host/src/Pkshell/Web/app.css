@@ -300,6 +300,22 @@ dialog.preview[open] { display: flex; flex-direction: column; }
 .sheet-row .chev { color: var(--muted); font-size: 20px; line-height: 1; }
 .sheet-row .check { color: var(--accent); font-weight: 700; }
 .sheet-row.danger .label { color: var(--danger); }
+/* 설정 view: same cards as the ⋮ sheets, on the page */
+.settings-body { max-width: 640px; margin: 0 auto; padding: 4px 16px 32px; }
+.settings-group { margin: 18px 4px 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.settings-body .sheet-card { background: var(--surface); }
+.settings-body .sheet-card .sheet-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 10px 14px;
+  background: transparent; border: 0; border-radius: 0; text-align: start; font-weight: 400; color: var(--text);
+}
+.settings-body .sheet-card .sheet-row:active:not(.static) { background: var(--surface-2); }
+.settings-body .sheet-card .sheet-row + .sheet-row { border-top: 1px solid var(--border); }
+.sheet-row .row-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+.font-preview { margin: 16px 0 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  font-family: "D2Coding", ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; }
+.settings-note { margin: 8px 4px 0; }
+.fb-text { width: 100%; font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); resize: vertical; }
+.fb-send { margin-top: 12px; width: 100%; min-height: 46px; }
 
 /* 웹 보기: address bar + the PC's localhost page in a frame */
 html.web-open, html.web-open body { overflow: hidden; overscroll-behavior: none; }

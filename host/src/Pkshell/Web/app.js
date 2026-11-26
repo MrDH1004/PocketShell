@@ -40,7 +40,7 @@
 
   // ---------- views ----------
   function show(id) {
-    ["pair", "list", "term", "files", "web"].forEach(function (v) { $(v).hidden = v !== id; });
+    ["pair", "list", "term", "files", "web", "settings"].forEach(function (v) { $(v).hidden = v !== id; });
     document.documentElement.classList.toggle("web-open", id === "web");
     // The terminal has its own scrollbar (past output); the page itself never scrolls behind it.
     document.documentElement.classList.toggle("term-open", id === "term");
@@ -1281,13 +1281,10 @@
   $("fab").addEventListener("click", function () { $("new-session").click(); });
   $("list-menu").addEventListener("click", function () {
     groupSheet(info && info.name || "PocketShell", info && info.version ? "PocketShell " + info.version : null, [
-      { title: "보기", rows: [
+      { title: null, rows: [
         { label: "새로 고침", run: function () { $("refresh").click(); } },
         { label: "웹 보기", value: "PC localhost", run: function () { stopPolling(); openWeb(0, openList); } },
-      ] },
-      { title: "이 기기", rows: [
-        $("install").hidden ? null : { label: "앱 설치", run: function () { $("install").click(); } },
-        { label: "연결 해제", danger: true, run: function () { $("unpair").click(); } },
+        { label: "설정", run: function () { stopPolling(); openSettings("main", openList); } },
       ] },
     ]);
   });
@@ -1352,7 +1349,6 @@
     if (!current) return;
     // Top: what the bar truncates (folder, connection, sizes) — it was the 정보 entry.
     var sub = [current.cwd, termInfoLine()].filter(Boolean).join("\n");
-    var font = storageGet(FONT_KEY);
     groupSheet(displayTitle(current), sub, [
       { title: "도구", rows: [
         { label: "텍스트 선택·복사", run: function () { openTextView(false); } },
@@ -1361,10 +1357,158 @@
         (info && info.share) ? null : { label: "웹 보기", value: "PC localhost", run: function () { openWebFromTerm(); } },
       ] },
       { title: "화면", rows: [
-        { label: "글자 크기", value: font ? font + "px" : "자동", run: showFontSizes },
+        { label: "폰트·크기", value: fontSummary(), run: function () { openSettings("font", backToTerm); } },
       ] },
     ]);
   });
+
+  // ---------- 설정 (the phone app's 설정 screen: cards with values; sub pages for 폰트·크기 and 의견 보내기) ----------
+  var settingsPage = "main", settingsBack = null, settingsStack = [];
+  var REPO = "https://github.com/MrDH1004/PocketShell";
+
+  /** "D2Coding · 자동" / "D2Coding · 14px" (the web has one font: D2Coding). */
+  function fontSummary() {
+    var f = storageGet(FONT_KEY);
+    return "D2Coding · " + (f ? f + "px" : "자동");
+  }
+
+  /** Opens 설정 at [page] ("main" | "font" | "feedback"); [back] runs when leaving it (list or terminal). */
+  function openSettings(page, back) {
+    settingsBack = back || openList;
+    settingsStack = [];
+    settingsPage = page || "main";
+    show("settings");
+    renderSettings();
+  }
+  function settingsGo(page) { settingsStack.push(settingsPage); settingsPage = page; renderSettings(); window.scrollTo(0, 0); }
+  $("settings-back").addEventListener("click", function () {
+    if (settingsStack.length) { settingsPage = settingsStack.pop(); renderSettings(); return; }
+    var back = settingsBack; settingsBack = null;
+    (back || openList)();
+  });
+  function backToTerm() {
+    show("term");
+    lastSent = ""; doFit(); if (term && !rf) term.scrollToBottom();
+    refocusTerm();
+  }
+
+  /** Section title + card of rows into [box]; rows like groupSheet's ({ label, value, sub, check, danger, run }). */
+  function settingsCard(box, title, rows) {
+    rows = rows.filter(Boolean);
+    if (!rows.length) return null;
+    if (title) box.appendChild(el("h3", "settings-group", title));
+    var card = el("div", "sheet-card");
+    rows.forEach(function (r) {
+      var row;
+      if (r.node) { row = el("div", "sheet-row static"); row.appendChild(r.node); card.appendChild(row); return; }
+      row = el(r.run ? "button" : "div", "sheet-row" + (r.danger ? " danger" : "") + (r.run ? "" : " static"));
+      if (r.run) row.type = "button";
+      var lab = el("span", "label", r.label);
+      if (r.sub) { lab.appendChild(el("small", "row-sub", r.sub)); }
+      row.appendChild(lab);
+      if (r.value != null) row.appendChild(el("span", "value", r.value));
+      if (r.check) { var c = el("span", "check", "✓"); c.setAttribute("aria-hidden", "true"); row.appendChild(c); row.setAttribute("aria-current", "true"); }
+      else if (r.run && !r.noChevron) { var m = el("span", "chev", "›"); m.setAttribute("aria-hidden", "true"); row.appendChild(m); }
+      if (r.run) row.addEventListener("click", r.run);
+      card.appendChild(row);
+    });
+    box.appendChild(card);
+    return card;
+  }
+
+  function renderSettings() {
+    var box = $("settings-body");
+    box.textContent = "";
+    var titles = { main: "설정", font: "폰트·크기", feedback: "의견 보내기" };
+    $("settings-title").textContent = titles[settingsPage] || "설정";
+    if (settingsPage === "font") return renderFontPage(box);
+    if (settingsPage === "feedback") return renderFeedbackPage(box);
+    var guest = !!(info && info.share);
+    settingsCard(box, "보기", [
+      { label: "폰트·크기", value: fontSummary(), run: function () { settingsGo("font"); } },
+    ]);
+    settingsCard(box, "입력", [
+      { label: "자주 쓰는 문구", value: snippets().length + "개", run: function () {
+        $("snip-text").value = snippets().join("\n");
+        $("snip-edit-dialog").showModal();
+        $("snip-text").focus();
+      } },
+    ]);
+    settingsCard(box, "이 기기", [
+      $("install").hidden ? null : { label: "앱 설치", sub: "홈 화면에 앱으로 추가", run: function () { $("install").click(); } },
+      { label: "연결 해제", sub: "이 브라우저의 연결 정보를 지움", danger: true, run: function () { $("unpair").click(); } },
+    ]);
+    settingsCard(box, "정보", [
+      { label: "PC", value: (info && info.name) || "-" },
+      { label: "PocketShell", value: info && info.version ? "v" + info.version : "-" },
+      { label: "패치내역", run: function () { window.open(REPO + "/blob/main/PATCHNOTES.md", "_blank", "noopener"); } },
+    ]);
+    settingsCard(box, "도움말", [
+      { label: "다른 PC에 설치하는 방법", run: function () { window.open(REPO + "/releases/latest", "_blank", "noopener"); } },
+      guest ? null : { label: "의견 보내기", sub: "버그 수정 · 개선 · 의견 · 문의", run: function () { settingsGo("feedback"); } },
+    ]);
+  }
+
+  function renderFontPage(box) {
+    var now = storageGet(FONT_KEY);
+    var size = now ? parseFloat(now) : autoFont();
+    var preview = el("pre", "font-preview", "PS C:\\work> claude\n한글 가나다라 0O 1lI {}[]");
+    preview.style.fontSize = size + "px";
+    box.appendChild(preview);
+    settingsCard(box, "폰트", [
+      { label: "D2Coding", sub: "한글 고정폭 (웹은 이 폰트만)", check: true },
+    ]);
+    var pick = function (v) {
+      return function () {
+        storageSet(FONT_KEY, v);
+        lastSent = "";
+        renderSettings();
+      };
+    };
+    var rows = [{ label: "자동", value: "화면 크기에 맞춤 (" + autoFontFor(window.innerWidth) + "px)", check: !now, noChevron: true, run: pick(null) }];
+    [11, 12, 13, 14, 15, 16, 18, 20].forEach(function (px) {
+      rows.push({ label: px + "px", check: now === String(px), noChevron: true, run: pick(String(px)) });
+    });
+    settingsCard(box, "크기", rows);
+    box.appendChild(el("p", "muted small settings-note", "이 브라우저에 기억. PC 콘솔은 폰 폭에 맞춰 다시 배치."));
+  }
+  /** The automatic size for a window [w] px wide (autoFont without the saved choice). */
+  function autoFontFor(w) { w = w || 1024; return w < 480 ? 13 : w < 1024 ? 14 : w < 1600 ? 15 : 16; }
+
+  function renderFeedbackPage(box) {
+    var cats = [["bug", "버그 수정"], ["improve", "개선"], ["opinion", "의견"], ["question", "문의"]];
+    var chosen = renderFeedbackPage.cat || "bug";
+    settingsCard(box, "종류", cats.map(function (c) {
+      return { label: c[1], check: c[0] === chosen, noChevron: true, run: function () { renderFeedbackPage.cat = c[0]; renderFeedbackPage.text = $("fb-text").value; renderSettings(); } };
+    }));
+    box.appendChild(el("h3", "settings-group", "내용"));
+    var ta = el("textarea", "fb-text");
+    ta.id = "fb-text";
+    ta.maxLength = 5000;
+    ta.rows = 7;
+    ta.placeholder = "무엇이 어떻게 됐는지, 바라는 점";
+    ta.value = renderFeedbackPage.text || "";
+    box.appendChild(ta);
+    var send = el("button", "primary fb-send", "보내기");
+    send.type = "button";
+    send.addEventListener("click", function () {
+      var msg = ta.value.trim();
+      if (!msg) { toast("내용을 적어 주세요", true); ta.focus(); return; }
+      send.disabled = true;
+      api("POST", "/api/feedback", { category: chosen, message: msg, source: "web", appVersion: info && info.version ? "web " + info.version : "web",
+        device: (navigator.userAgent || "").slice(0, 160) })
+        .then(function (r) {
+          renderFeedbackPage.text = "";
+          renderFeedbackPage.cat = null;
+          toast(r && r.shared ? "보냄 (공유 폴더에 저장)" : "보냄 (PC에 저장)");
+          settingsPage = settingsStack.pop() || "main";
+          renderSettings();
+        })
+        .catch(function (err) { if (err.status !== 401) toast("보내지 못함: " + err.message, true); })
+        .then(function () { send.disabled = false; });
+    });
+    box.appendChild(send);
+  }
 
   /** Connection and sizes in one line: "연결됨 · PC 91×70 · 이 화면 56×44 · 14px". */
   function termInfoLine() {
@@ -1373,18 +1517,6 @@
     if (term) parts.push("이 화면 " + term.cols + "×" + term.rows + " · " + term.options.fontSize + "px");
     if (rf) parts.push("폰 폭으로 다시 배치");
     return parts.join(" · ");
-  }
-
-  function showFontSizes() {
-    var now = storageGet(FONT_KEY);
-    var pick = function (v) {
-      return function () { storageSet(FONT_KEY, v); lastSent = ""; doFit(); if (term && !rf) term.scrollToBottom(); refocusTerm(); };
-    };
-    var rows = [{ label: "자동", value: "화면 크기에 맞춤", check: !now, noChevron: true, run: pick(null) }];
-    [11, 12, 13, 14, 15, 16, 18, 20].forEach(function (px) {
-      rows.push({ label: px + "px", check: now === String(px), noChevron: true, run: pick(String(px)) });
-    });
-    groupSheet("글자 크기", "이 브라우저에 기억", [{ title: null, rows: rows }]);
   }
 
   /** The terminal's text (scrollback + screen) as plain lines; wrapped rows are joined back. */
@@ -1606,7 +1738,7 @@
     storageSet(SNIP_KEY, list.join("\n"));
     $("snip-edit-dialog").close();
     toast("문구 " + list.length + "개 저장");
-    showSnippets();
+    if (!$("settings").hidden) renderSettings(); else showSnippets();
   });
   $("tool-keyboard").addEventListener("click", function () {
     if (!term) return;
