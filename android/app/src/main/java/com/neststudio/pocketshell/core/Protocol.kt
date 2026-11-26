@@ -157,13 +157,13 @@ data class SessionSections(
             val running = sessions.filter { it.isRunningHost }.sortedByDescending { it.lastActivity }
             val external = sessions.filter { it.isExternal }.sortedBy { it.pid ?: Int.MAX_VALUE }
             val history = sessions.filter { it.isHistory }.sortedByDescending { it.lastActivity }.distinctBy(::folderKey)
-            // 즐겨찾기: per starred folder its live session, else its newest record, else a stub that starts one there.
+            // 즐겨찾기: per starred folder its newest record, else a stub that starts one there. A folder with a live
+            // session is left out: that session is already listed above (포켓쉘 세션 / PC 콘솔).
             val starred = favorites.map(::dirKey).filter { it.isNotEmpty() }.distinct()
-            val favs = favorites.filter { dirKey(it).isNotEmpty() }.distinctBy(::dirKey).map { f ->
+            val open = (running + external).map { dirKey(it.cwd) }.toSet()
+            val favs = favorites.filter { dirKey(it).isNotEmpty() }.distinctBy(::dirKey).filterNot { dirKey(it) in open }.map { f ->
                 val key = dirKey(f)
-                sessions.filter { (it.isRunningHost || it.isExternal) && dirKey(it.cwd) == key }.maxByOrNull { it.lastActivity }
-                    ?: history.firstOrNull { dirKey(it.cwd) == key }
-                    ?: SessionInfo.favoriteStub(f)
+                history.firstOrNull { dirKey(it.cwd) == key } ?: SessionInfo.favoriteStub(f)
             }
             val recent = history.filterNot { dirKey(it.cwd) in starred }.take(recentLimit.coerceAtLeast(0))
             return SessionSections(running, external, recent, favs)

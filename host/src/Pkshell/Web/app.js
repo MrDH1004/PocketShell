@@ -218,14 +218,13 @@
     var seen = {};
     var recent = list.filter(isHistory).sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); })
       .filter(function (s) { var k = dirKey(s.cwd) || ("id:" + s.id); if (seen[k]) return false; seen[k] = true; return true; });
-    // 즐겨찾기: each starred folder once, in the order starred — its live session, else its newest record, else a
-    // card that starts a new session there. Those folders leave 최근.
-    var favs = (info && info.share) ? [] : favorites.map(function (f) {
+    // 즐겨찾기: each starred folder once, in the order starred — its newest record, else a card that starts a new
+    // session there. A folder with a live session is left out (it is listed above). Starred folders leave 최근.
+    var open = {};
+    running.concat(external).forEach(function (s) { open[dirKey(s.cwd)] = true; });
+    var favs = (info && info.share) ? [] : favorites.filter(function (f) { return !open[dirKey(f)]; }).map(function (f) {
       var k = dirKey(f);
-      var here = list.filter(function (s) { return dirKey(s.cwd) === k; });
-      var live = here.filter(function (s) { return isRunningHost(s) || s.kind === "external"; })
-        .sort(function (a, b) { return (b.lastActivity || "").localeCompare(a.lastActivity || ""); })[0];
-      return live || recent.filter(function (s) { return dirKey(s.cwd) === k; })[0] || { id: "fav:" + k, kind: "favorite", cwd: f, title: "" };
+      return recent.filter(function (s) { return dirKey(s.cwd) === k; })[0] || { id: "fav:" + k, kind: "favorite", cwd: f, title: "" };
     });
     recent = recent.filter(function (s) { return !isFavorite(s.cwd); });
 
@@ -237,8 +236,8 @@
       box.appendChild(el("p", "empty", "세션 없음. '새 세션'으로 시작."));
       return;
     }
-    section(box, "포켓쉘에서 연 세션", running);
-    section(box, "PC에서 연 콘솔", external);
+    section(box, "포켓쉘 세션", running);
+    section(box, "PC 콘솔", external);
     section(box, "즐겨찾기", favs);
     section(box, "최근", recent.slice(0, recentShown), recent.length);
     if (recent.length > recentShown) {

@@ -78,10 +78,11 @@ class ProtocolTest {
         ],"favorites":["E:\\c","e:\\B\\","E:\\gone"]}"""
         val favs = SessionInfo.favoritesFromJson(text)
         val s = SessionSections.of(SessionInfo.listFromJson(text), favorites = favs)
-        // starred order; a live session first, else the newest record, else a stub that starts one
-        assertEquals(listOf("live-c", "rec-b", "fav:e:\\gone"), s.favorites.map { it.id })
-        assertTrue(s.favorites[2].isFavoriteStub)
-        assertEquals(listOf(SessionAction.FAVORITE), SessionActions.of(s.favorites[2]))
+        // starred order; a folder open above (live-c) is not repeated; else the newest record, else a stub that starts one
+        assertEquals(listOf("rec-b", "fav:e:\\gone"), s.favorites.map { it.id })
+        assertEquals(listOf("live-c"), s.running.map { it.id })
+        assertTrue(s.favorites[1].isFavoriteStub)
+        assertEquals(listOf(SessionAction.FAVORITE), SessionActions.of(s.favorites[1]))
         // starred folders leave 최근
         assertEquals(listOf("rec-a"), s.recent.map { it.id })
         assertTrue(SessionSections.isFavorite(favs, "E:\\B"))
