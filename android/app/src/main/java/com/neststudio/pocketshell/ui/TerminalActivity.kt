@@ -437,59 +437,70 @@ class TerminalActivity : AppCompatActivity() {
         terminalView.setTextSize(px) // re-measures synchronously → onViewResized if the cell grid changed
     }
 
-    /** ⋮ top-bar menu: info, view settings (fit to screen is its own top-bar button). */
+    /**
+     * ⋮ top-bar menu as a bottom sheet: the session (full title, connection and size — the top bar truncates them),
+     * then grouped rows: 도구 / 이 세션 / 화면. Switches flip in place; other rows close the sheet first.
+     */
     private fun showOptions(anchor: View) {
-        val menu = android.widget.PopupMenu(this, anchor)
-        // "정보" submenu: connection + size info (was the title bar's second line), one read-only line per part.
-        // Each entry is its own group so group dividers draw a line between all of them (API 28+).
-        val info = menu.menu.addSubMenu(1, Menu.NONE, 99, R.string.terminal_info)
-        info.setHeaderTitle(R.string.terminal_info)
-        // First line: the full session title (the title bar truncates it).
-        info.add(9, Menu.NONE, 0, titleView.text).isEnabled = false
-        statusView.text.toString().split(" · ").filter { it.isNotBlank() }.forEachIndexed { i, part ->
-            info.add(10 + i, Menu.NONE, i + 1, part).isEnabled = false
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val d = resources.displayMetrics.density
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, (d * 8).toInt(), 0, (d * 24).toInt())
         }
-        menu.menu.add(2, OPT_SELECT, 100, R.string.term_select_copy)
-        menu.menu.add(2, OPT_SEARCH, 100, R.string.term_search)
-        menu.menu.add(4, OPT_SNIPPETS, 100, R.string.snippets_title)
-        menu.menu.add(4, OPT_QUICK, 100, R.string.quick_reply_toggle).apply {
-            isCheckable = true
-            isChecked = uiPrefs.quickReplies
-        }
-        if (sessionKind != SessionInfo.KIND_HISTORY && pcId.isNotEmpty() && sessionId.isNotEmpty()) {
-            menu.menu.add(4, OPT_MUTE, 100, if (uiPrefs.isMuted(pcId, sessionId)) R.string.notify_unmute_session else R.string.notify_mute_session)
-        }
-        // Someone else's PC: its project stays theirs.
-        if (guest == null && sessionKind != SessionInfo.KIND_HISTORY) menu.menu.add(2, OPT_GIT, 100, R.string.git_menu)
-        menu.menu.add(3, OPT_VIEW, 101, R.string.view_settings)
-        menu.menu.add(3, OPT_KEYBAR, 102, R.string.keybar_settings)
-        if (readOnly) listOf(OPT_SNIPPETS, OPT_QUICK, OPT_KEYBAR).forEach { menu.menu.removeItem(it) } // nothing to type
-        androidx.core.view.MenuCompat.setGroupDividerEnabled(menu.menu, true)
-        androidx.core.view.MenuCompat.setGroupDividerEnabled(info, true)
-        menu.setOnMenuItemClickListener {
-            when (it.itemId) {
-                OPT_SELECT -> openText(search = false)
-                OPT_SEARCH -> openText(search = true)
-                OPT_SNIPPETS -> showSnippets(anchor)
-                OPT_QUICK -> {
+        fun render() {
+            box.removeAllViews()
+            box.addView(TextView(this).apply {
+                text = titleView.text
+                textSize = 16f
+                maxLines = 2
+                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                setPadding((d * 20).toInt(), (d * 12).toInt(), (d * 20).toInt(), (d * 2).toInt())
+            })
+            val info = statusView.text.toString().split(" · ").filter { it.isNotBlank() }.joinToString(" · ")
+            if (info.isNotEmpty()) box.addView(TextView(this).apply {
+                text = info
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(context, R.color.text_muted))
+                setPadding((d * 20).toInt(), 0, (d * 20).toInt(), 0)
+            })
+            val cards = SettingsCards(this, box)
+            fun go(run: () -> Unit) { sheet.dismiss(); run() }
+            cards.section(getString(R.string.term_options_tools)) {
+                row(getString(R.string.term_select_copy), null) { go { openText(search = false) } }
+                row(getString(R.string.term_search), null) { go { openText(search = true) } }
+                // Someone else's PC: its project stays theirs.
+                if (guest == null && sessionKind != SessionInfo.KIND_HISTORY) row(getString(R.string.git_menu), null) { go { openGit() } }
+                if (!readOnly) row(getString(R.string.snippets_title), null) { go { showSnippets(anchor) } }
+            }
+            cards.section(getString(R.string.term_options_session)) {
+                if (!readOnly) switchRow(getString(R.string.quick_reply_toggle), null, uiPrefs.quickReplies) {
                     uiPrefs.quickReplies = !uiPrefs.quickReplies
                     showQuickReplies(askedPrompt.takeIf { uiPrefs.quickReplies })
+                    render()
                 }
-                OPT_MUTE -> {
-                    val muted = !uiPrefs.isMuted(pcId, sessionId)
-                    uiPrefs.setMuted(pcId, sessionId, muted)
-                    Toast.makeText(this, if (muted) R.string.notify_muted_toast else R.string.notify_unmuted_toast, Toast.LENGTH_LONG).show()
-                }
-                OPT_KEYBAR -> showKeyBarSettings()
-                OPT_GIT -> openGit()
-                OPT_VIEW -> {
-                    val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
-                    ViewSettingsDialog.show(this, note) { applyViewSettings() }
+                if (sessionKind != SessionInfo.KIND_HISTORY && pcId.isNotEmpty() && sessionId.isNotEmpty()) {
+                    switchRow(getString(R.string.term_options_notify), getString(R.string.term_options_notify_sub), !uiPrefs.isMuted(pcId, sessionId)) {
+                        uiPrefs.setMuted(pcId, sessionId, !uiPrefs.isMuted(pcId, sessionId))
+                        render()
+                    }
                 }
             }
-            true
+            cards.section(getString(R.string.term_options_screen)) {
+                val font = TerminalFont.of(uiPrefs.fontId).label.substringBefore(" (")
+                row(getString(R.string.term_options_view), "$font · ${kotlin.math.round(uiPrefs.fontSizeSp).toInt()}sp") {
+                    go {
+                        val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
+                        ViewSettingsDialog.show(this@TerminalActivity, note) { applyViewSettings() }
+                    }
+                }
+                if (!readOnly) row(getString(R.string.keybar_settings), null) { go { showKeyBarSettings() } }
+            }
         }
-        menu.show()
+        render()
+        sheet.setContentView(androidx.core.widget.NestedScrollView(this).apply { addView(box) })
+        sheet.show()
     }
 
     /** Opens the file browser at the session's current folder (asked fresh: the shell may have cd'd). */
@@ -1320,14 +1331,6 @@ class TerminalActivity : AppCompatActivity() {
         private const val MIN_IMAGE_GAP_MS = 400L
         private const val NEXT_IMAGE_WAIT_MS = 5000L
         private const val NL = "\n"
-        private const val OPT_VIEW = 2
-        private const val OPT_SELECT = 3
-        private const val OPT_SEARCH = 4
-        private const val OPT_SNIPPETS = 5
-        private const val OPT_MUTE = 6
-        private const val OPT_QUICK = 7
-        private const val OPT_KEYBAR = 8
-        private const val OPT_GIT = 9
         private const val SNIPPET_EDIT = 10_000
         private const val SNIPPET_NONE = 10_001
         private const val STATE_POLL_MS = 2000L
