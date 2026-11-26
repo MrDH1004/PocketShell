@@ -237,7 +237,7 @@
       box.appendChild(el("p", "empty", "세션 없음. '새 세션'으로 시작."));
       return;
     }
-    section(box, "실행 중", running);
+    section(box, "포켓쉘에서 연 세션", running);
     section(box, "PC에서 연 콘솔", external);
     section(box, "즐겨찾기", favs);
     section(box, "최근", recent.slice(0, recentShown), recent.length);

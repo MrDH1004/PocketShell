@@ -30,6 +30,8 @@ data class SessionInfo(
     val webPorts: List<Int> = emptyList(),
     /** People the session is shared with, open PINs included (owner's list, host ≥ 0.2.95). */
     val shares: Int = 0,
+    /** Answer to a new AI session: one was already open in that folder, this is it (host ≥ 0.2.136). */
+    val reused: Boolean = false,
 ) {
     val isExternal: Boolean get() = kind == KIND_EXTERNAL
 
@@ -81,6 +83,7 @@ data class SessionInfo(
             folderDeletable = o.optBoolean("folderDeletable", false),
             webPorts = o.optJSONArray("webPorts")?.let { a -> (0 until a.length()).map { a.optInt(it) }.filter { it in 1..65535 } }.orEmpty(),
             shares = o.optInt("shares", 0).coerceAtLeast(0),
+            reused = o.optBoolean("reused", false),
         )
 
         /** Starred folders in `GET /api/sessions` (host ≥ 0.2.133; older hosts: none). */

@@ -45,6 +45,10 @@ public sealed class SessionDto
     /// <summary>People this session is shared with right now, open invitations included (owner's list only, 0.2.95+).</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public int Shares { get; set; }
+    /// <summary>Answer to a new AI session request (0.2.136+): an AI CLI was already open in that folder, so this is that
+    /// session (PocketShell's or a console opened on the PC) instead of a new one.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Reused { get; set; }
     /// <summary>What the agent wrote last (for the "done" event); not part of the session JSON.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? AgentPreview { get; set; }

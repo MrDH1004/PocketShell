@@ -542,7 +542,8 @@ class SessionListActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val s = api.createProject(root, name, agent, UiPrefs(this@SessionListActivity).lastGrid)
-                Toast.makeText(this@SessionListActivity, getString(R.string.project_started_in, root.trimEnd('\\') + "\\" + name), Toast.LENGTH_LONG).show()
+                val note = if (s.reused) getString(R.string.session_reused) else getString(R.string.project_started_in, root.trimEnd('\\') + "\\" + name)
+                Toast.makeText(this@SessionListActivity, note, Toast.LENGTH_LONG).show()
                 openSession(s)
             } catch (e: ApiException) {
                 // The host explains why (folder exists, bad name …); show it as is when it says something.
@@ -597,7 +598,9 @@ class SessionListActivity : AppCompatActivity() {
             try {
                 // Start at the phone's last grid: an AI CLI draws for the size it starts at.
                 val grid = UiPrefs(this@SessionListActivity).lastGrid
-                openSession(api.createSession(null, com.neststudio.pocketshell.core.PcPath.name(path), grid?.first, grid?.second, cwd = path, agent = agent))
+                val s = api.createSession(null, com.neststudio.pocketshell.core.PcPath.name(path), grid?.first, grid?.second, cwd = path, agent = agent)
+                if (s.reused) Toast.makeText(this@SessionListActivity, R.string.session_reused, Toast.LENGTH_LONG).show()
+                openSession(s)
             } catch (e: ApiException) {
                 showInfo(e.message?.takeIf { it.isNotBlank() } ?: ErrorText.of(this@SessionListActivity, R.string.err_create_session, e))
             } catch (e: IOException) {

@@ -5,7 +5,7 @@
     <string name="pairing_device_name">이 기기 이름</string>
     <string name="pairing_in_progress">페어링 중…</string>
     <string name="sessions_title">세션</string>
-    <string name="section_running">실행 중</string>
+    <string name="section_running">포켓쉘에서 연 세션</string>
     <string name="section_external">외부</string>
     <string name="section_recent">최근</string>
     <string name="section_favorites">즐겨찾기</string>
@@ -28,6 +28,7 @@
     <string name="project_path_preview">PC의 이 폴더를 만들고 여기서 세션을 시작합니다:\n%1$s</string>
     <string name="project_default_root">PC 작업 폴더를 정하지 않아 문서 폴더에 만듭니다. 바꾸려면 PC 트레이 아이콘 메뉴 &gt; 프로젝트 폴더.</string>
     <string name="project_started_in">PC %1$s 폴더에서 세션을 시작했습니다</string>
+    <string name="session_reused">이 폴더에 이미 열린 세션이 있어 그 세션을 엽니다</string>
     <string name="project_no_roots">PC 트레이 아이콘 메뉴 &gt; 프로젝트 폴더에서 폴더를 먼저 추가하세요.</string>
     <string name="project_no_agents">PC에서 claude 또는 codex를 찾지 못했습니다.</string>
     <string name="project_host_old">PC 호스트가 새 프로젝트를 지원하지 않습니다. PC 호스트를 업데이트하세요.</string>

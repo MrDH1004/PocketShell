@@ -488,6 +488,22 @@ public sealed class HostServer : IDisposable
     }
 
     /// <summary>최근 PC console → new host session in its folder, continuing the AI conversation it ran.</summary>
+
+    /// <summary>A live session in [cwd] running an AI CLI (PocketShell's first, then a console opened on the PC), marked
+    /// <see cref="SessionDto.Reused"/>; null when there is none. Folders compare the Windows way (case, trailing separator).</summary>
+    private SessionDto? OpenAgentSessionIn(string? cwd)
+    {
+        var key = Favorites.Key(cwd);
+        if (key.Length == 0) return null;
+        var hit = _sessions.All.Select(s => s.Snapshot())
+            .Where(s => s.State == "running").OrderByDescending(s => s.LastActivity, StringComparer.Ordinal)
+            .Concat(_externals.List().OrderByDescending(s => s.LastActivity, StringComparer.Ordinal))
+            .FirstOrDefault(s => !string.IsNullOrEmpty(s.Agent) && Favorites.Key(s.Cwd) == key);
+        if (hit == null) return null;
+        var dto = hit.Clone();
+        dto.Reused = true;
+        return dto;
+    }
     private IResult ResumeRecent(string id)
     {
         var e = _recent.Get(id);
@@ -1031,6 +1047,12 @@ public sealed class HostServer : IDisposable
                 agent = ProjectStore.DetectAgents().FirstOrDefault(a => string.Equals(a.Id, req.Agent, StringComparison.OrdinalIgnoreCase));
                 if (agent == null) return Error(400, "PC에서 선택한 AI CLI를 찾을 수 없습니다");
             }
+            // One AI session per folder: an AI CLI already open there (PocketShell's or a PC console) is opened instead.
+            if (agent != null && OpenAgentSessionIn(req.Cwd) is { } open)
+            {
+                Log.Info($"new {agent.Id} session in {req.Cwd}: {open.Id} is already open there, reused (by {AuthOf(ctx).DeviceId ?? "local"})");
+                return Json(open);
+            }
             try
             {
                 var s = _sessions.Create(req);
@@ -1076,6 +1098,11 @@ public sealed class HostServer : IDisposable
 
             var dir = Path.Combine(root, name);
             bool existed = Directory.Exists(dir);
+            if (existed && OpenAgentSessionIn(dir) is { } open)
+            {
+                Log.Info($"project: {dir} already has {open.Id} open, reused (by {AuthOf(ctx).DeviceId ?? "local"})");
+                return Json(open);
+            }
             try
             {
                 Directory.CreateDirectory(dir);
