@@ -70,9 +70,12 @@ class SettingsActivity : AppCompatActivity() {
             row(getString(R.string.quiet_title), if (prefs.quietEnabled) "${QuietHours.format(prefs.quietStart)} ~ ${QuietHours.format(prefs.quietEnd)}" else getString(R.string.settings_off)) { showQuietHours() }
         }
         section(R.string.settings_section_view) {
-            row(getString(R.string.settings_font), TerminalFont.of(prefs.fontId).label.substringBefore(" (")) { viewSettings() }
-            row(getString(R.string.settings_font_size), "${prefs.fontSizeSp.roundToInt()}sp") { viewSettings() }
-            row(getString(R.string.settings_scroll), "${prefs.scrollPercent}%") { viewSettings() }
+            row(getString(R.string.view_font_title), ViewOptionsActivity.fontSummary(prefs, this@SettingsActivity)) {
+                startActivity(ViewOptionsActivity.intent(this@SettingsActivity, ViewOptionsActivity.MODE_FONT))
+            }
+            row(getString(R.string.view_scroll_name), "${prefs.scrollPercent}%") {
+                startActivity(ViewOptionsActivity.intent(this@SettingsActivity, ViewOptionsActivity.MODE_SCROLL))
+            }
         }
         section(R.string.settings_section_list) {
             switchRow(getString(R.string.pc_load_menu), getString(R.string.settings_pc_load_sub), prefs.pcLoad) {
@@ -94,8 +97,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     // ---- actions ----
-
-    private fun viewSettings() = ViewSettingsDialog.show(this) { render() }
 
     private fun recentLabel(n: Int): String = when (n) {
         0 -> getString(R.string.recent_limit_off)

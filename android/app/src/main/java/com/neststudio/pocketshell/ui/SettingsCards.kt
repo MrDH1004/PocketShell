@@ -96,6 +96,32 @@ class SettingsCards(private val context: Context, private val container: LinearL
             add(l)
         }
 
+        /** One choice of a list: title (in [face] when given) and ✓ on the current one; the whole row picks it. */
+        fun checkRow(title: String, checked: Boolean, face: android.graphics.Typeface? = null, onClick: () -> Unit) {
+            val l = line(title, null)
+            if (face != null) ((l.getChildAt(0) as LinearLayout).getChildAt(0) as TextView).typeface = face
+            l.addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_check)
+                imageTintList = android.content.res.ColorStateList.valueOf(color(R.color.accent))
+                visibility = if (checked) View.VISIBLE else View.INVISIBLE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(22), dp(22)))
+            l.setBackgroundResource(rippleBg())
+            l.setOnClickListener { onClick() }
+            l.contentDescription = if (checked) "$title, ${context.getString(R.string.settings_selected)}" else title
+            add(l)
+        }
+
+        /** Any view as a row (a slider with its label …), padded like the other rows. */
+        fun custom(v: View) {
+            val wrap = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPaddingRelative(dp(16), dp(12), dp(16), dp(12))
+                addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            add(wrap)
+        }
+
         /** Title (and a line under it) with a switch; the whole row toggles. */
         fun switchRow(title: String, sub: String?, on: Boolean, onToggle: () -> Unit) {
             val l = line(title, sub)

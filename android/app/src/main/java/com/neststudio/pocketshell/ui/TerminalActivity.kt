@@ -247,6 +247,10 @@ class TerminalActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        if (viewOptionsOpened) {
+            viewOptionsOpened = false
+            applyViewSettings() // back from 폰트·크기 / 스크롤 감도
+        }
         registerNetworkCallback()
         appUpdate.autoCheck()
         // AC-18: reconnect immediately when coming back (screen on / app switch).
@@ -488,11 +492,17 @@ class TerminalActivity : AppCompatActivity() {
                 }
             }
             cards.section(getString(R.string.term_options_screen)) {
-                val font = TerminalFont.of(uiPrefs.fontId).label.substringBefore(" (")
-                row(getString(R.string.term_options_view), "$font · ${kotlin.math.round(uiPrefs.fontSizeSp).toInt()}sp") {
+                row(getString(R.string.view_font_title), ViewOptionsActivity.fontSummary(uiPrefs, this@TerminalActivity)) {
                     go {
                         val note = if (sessionKind == SessionInfo.KIND_EXTERNAL) getString(R.string.view_external_note) else null
-                        ViewSettingsDialog.show(this@TerminalActivity, note) { applyViewSettings() }
+                        viewOptionsOpened = true
+                        startActivity(ViewOptionsActivity.intent(this@TerminalActivity, ViewOptionsActivity.MODE_FONT, note))
+                    }
+                }
+                row(getString(R.string.view_scroll_name), "${uiPrefs.scrollPercent}%") {
+                    go {
+                        viewOptionsOpened = true
+                        startActivity(ViewOptionsActivity.intent(this@TerminalActivity, ViewOptionsActivity.MODE_SCROLL))
                     }
                 }
                 if (!readOnly) row(getString(R.string.keybar_settings), null) { go { showKeyBarSettings() } }
@@ -542,6 +552,9 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /** Settings dialog changed the size or font: apply both (refitting an external console); the pinch zoom is kept. */
+    /** 폰트·크기 / 스크롤 감도 screen was opened from ⋮: apply what changed when this screen shows again. */
+    private var viewOptionsOpened = false
+
     private fun applyViewSettings() {
         fontSizeSp = uiPrefs.fontSizeSp
         typeface = TerminalFont.of(uiPrefs.fontId).typeface(this)

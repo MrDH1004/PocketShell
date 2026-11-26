@@ -42,6 +42,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.ViewOptionsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.PairingActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">

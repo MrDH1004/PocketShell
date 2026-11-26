@@ -97,6 +97,14 @@
     <string name="view_external_note">외부 콘솔은 PC 창 크기와 상관없이 폰 폭에 맞춰 줄바꿈해서 보여줌. PC 창은 그대로</string>
     <string name="view_font">글꼴</string>
     <string name="view_reset">기본값</string>
+    <string name="view_reset_row">기본값으로 되돌리기</string>
+    <string name="view_font_title">폰트·크기</string>
+    <string name="view_font_section">폰트</string>
+    <string name="view_size_section">크기</string>
+    <string name="view_size_value">%1$dsp</string>
+    <string name="view_scroll_value">%1$d%%</string>
+    <string name="view_font_preview">PS C:\\work&gt; claude\n한글 가나다라 0O 1lI {}[]</string>
+    <string name="settings_selected">선택됨</string>
     <string name="view_scroll">스크롤 감도: %1$d%%</string>
     <string name="view_scroll_name">스크롤 감도</string>
     <string name="view_scroll_hint">터미널을 밀거나 튕길 때 움직이는 양. 빠르게 연달아 튕기면 점점 빨라짐.</string>
