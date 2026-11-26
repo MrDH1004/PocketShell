@@ -164,6 +164,10 @@ internal sealed class TrayApp : ApplicationContext
     /// <summary>Auto start defaults to on: enabled once on the first launch, afterwards the menu toggle decides.</summary>
     private void FirstRunAutoStart()
     {
+        // The Run entry starts the tray with the default data folder: a tray for another PKSHELL_HOME (a second
+        // server, a test copy) must not point it at its own exe — after a reboot that copy would start for the
+        // default folder instead of the installed tray.
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PKSHELL_HOME"))) return;
         var flag = Path.Combine(_home, "tray-autostart-initialized");
         if (File.Exists(flag)) return;
         try
