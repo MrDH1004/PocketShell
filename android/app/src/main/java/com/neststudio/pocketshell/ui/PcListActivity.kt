@@ -43,11 +43,10 @@ class PcListActivity : AppCompatActivity() {
     private val appUpdate = AppUpdateController(this)
     private var probes: List<Job> = emptyList()
     private lateinit var prefs: com.neststudio.pocketshell.data.UiPrefs
-    private var notifyItem: android.view.MenuItem? = null
     private val askNotifications = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             Toast.makeText(this, R.string.notify_enabled, Toast.LENGTH_SHORT).show()
-            offerBatteryExemption()
+            SettingsActivity.offerBatteryExemption(this, prefs)
         } else {
             prefs.agentNotify = false
             Toast.makeText(this, R.string.notify_denied, Toast.LENGTH_LONG).show()
@@ -63,24 +62,13 @@ class PcListActivity : AppCompatActivity() {
 
         prefs = com.neststudio.pocketshell.data.UiPrefs(this)
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        notifyItem = toolbar.menu.add(0, MENU_NOTIFY, 0, R.string.notify_menu_off)
-        toolbar.menu.add(0, MENU_QUIET, 0, R.string.quiet_title)
+        // Everything else (알림, 보기, 업데이트, 도움말) lives in 설정.
         toolbar.menu.add(0, MENU_REFRESH, 0, R.string.refresh)
-        toolbar.menu.add(0, MENU_INSTALL, 1, R.string.pcs_install_menu)
-        toolbar.menu.add(0, MENU_CHECK_UPDATE, 2, R.string.update_check)
-        toolbar.menu.add(0, MENU_VIEW_SETTINGS, 3, R.string.view_settings)
-        toolbar.menu.add(0, MENU_PATCH_NOTES, 4, R.string.patch_notes_menu)
-        toolbar.menu.add(0, MENU_FEEDBACK, 4, R.string.feedback_menu)
+        toolbar.menu.add(0, MENU_SETTINGS, 1, R.string.settings_title)
         toolbar.setOnMenuItemClickListener {
             when (it.itemId) {
-                MENU_NOTIFY -> toggleNotifications()
-                MENU_QUIET -> showQuietHours()
                 MENU_REFRESH -> refresh()
-                MENU_INSTALL -> showInstallGuide()
-                MENU_CHECK_UPDATE -> appUpdate.manualCheck()
-                MENU_VIEW_SETTINGS -> ViewSettingsDialog.show(this)
-                MENU_PATCH_NOTES -> PatchNotesController.showAll(this)
-                MENU_FEEDBACK -> FeedbackController.show(this)
+                MENU_SETTINGS -> startActivity(SettingsActivity.intent(this))
             }
             true
         }
@@ -130,71 +118,7 @@ class PcListActivity : AppCompatActivity() {
     }
 
     private fun applyNotifications() {
-        notifyItem?.setTitle(if (prefs.agentNotify) R.string.notify_menu_off else R.string.notify_menu_on)
         com.neststudio.pocketshell.notify.AgentWatchService.apply(this)
-    }
-
-    private fun toggleNotifications() {
-        if (prefs.agentNotify) {
-            prefs.agentNotify = false
-            Toast.makeText(this, R.string.notify_disabled, Toast.LENGTH_SHORT).show()
-            applyNotifications()
-            return
-        }
-        prefs.agentNotify = true
-        if (!canPost()) {
-            // Android shows its dialog only the first couple of times; after that it answers "denied" at once and
-            // the denied message points to the system settings.
-            prefs.notifyPermissionAsked = true
-            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            return
-        }
-        Toast.makeText(this, R.string.notify_enabled, Toast.LENGTH_SHORT).show()
-        applyNotifications()
-        offerBatteryExemption()
-    }
-
-    /** Quiet hours: on / off and the daily range. Each row changes one thing and shows the dialog again. */
-    private fun showQuietHours() {
-        val items = arrayOf(
-            getString(if (prefs.quietEnabled) R.string.quiet_on else R.string.quiet_off),
-            getString(R.string.quiet_start, com.neststudio.pocketshell.core.QuietHours.format(prefs.quietStart)),
-            getString(R.string.quiet_end, com.neststudio.pocketshell.core.QuietHours.format(prefs.quietEnd)),
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.quiet_title)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> { prefs.quietEnabled = !prefs.quietEnabled; showQuietHours() }
-                    1 -> pickTime(prefs.quietStart) { prefs.quietStart = it; showQuietHours() }
-                    else -> pickTime(prefs.quietEnd) { prefs.quietEnd = it; showQuietHours() }
-                }
-            }
-            .setPositiveButton(R.string.confirm, null)
-            .show()
-    }
-
-    private fun pickTime(minutes: Int, onPicked: (Int) -> Unit) {
-        android.app.TimePickerDialog(this, { _, hour, minute -> onPicked(hour * 60 + minute) }, minutes / 60, minutes % 60, true).show()
-    }
-
-    /** Doze delays the long poll on a phone left idle; offer the system setting that exempts the app (once). */
-    private fun offerBatteryExemption() {
-        val pm = getSystemService(android.os.PowerManager::class.java) ?: return
-        if (prefs.batteryHintShown || pm.isIgnoringBatteryOptimizations(packageName)) return
-        prefs.batteryHintShown = true
-        AlertDialog.Builder(this)
-            .setTitle(R.string.notify_battery_title)
-            .setMessage(R.string.notify_battery_body)
-            .setPositiveButton(R.string.notify_battery_open) { _, _ ->
-                try {
-                    startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                } catch (e: android.content.ActivityNotFoundException) {
-                    Toast.makeText(this, R.string.notify_denied, Toast.LENGTH_LONG).show()
-                }
-            }
-            .setNegativeButton(R.string.notify_battery_later, null)
-            .show()
     }
 
     private fun refresh() {
@@ -312,28 +236,17 @@ class PcListActivity : AppCompatActivity() {
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DOWNLOAD_URL)))
                 } catch (e: android.content.ActivityNotFoundException) {
-                    copyLink()
+                    SettingsActivity.copyLink(this, DOWNLOAD_URL)
                 }
             }
-            .setNeutralButton(R.string.pcs_install_copy) { _, _ -> copyLink() }
+            .setNeutralButton(R.string.pcs_install_copy) { _, _ -> SettingsActivity.copyLink(this, DOWNLOAD_URL) }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
-    private fun copyLink() {
-        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("PocketShell", DOWNLOAD_URL))
-        Toast.makeText(this, R.string.pcs_link_copied, Toast.LENGTH_SHORT).show()
-    }
-
     companion object {
         private const val MENU_REFRESH = 1
-        private const val MENU_INSTALL = 2
-        private const val MENU_CHECK_UPDATE = 3
-        private const val MENU_VIEW_SETTINGS = 4
-        private const val MENU_NOTIFY = 5
-        private const val MENU_QUIET = 6
-        private const val MENU_PATCH_NOTES = 7
-        private const val MENU_FEEDBACK = 8
+        private const val MENU_SETTINGS = 2
         private const val PROBE_TIMEOUT_MS = 8000L
         private const val ALIAS_MAX = 30
         const val DOWNLOAD_URL = "https://github.com/MrDH1004/PocketShell/releases/latest"
