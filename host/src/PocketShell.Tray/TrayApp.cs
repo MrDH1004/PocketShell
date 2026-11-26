@@ -16,8 +16,10 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Icon _runningIcon;
     private readonly Icon _stoppedIcon;
     private readonly ToolStripMenuItem _status;
-    private readonly ToolStripMenuItem _start;
-    private readonly ToolStripMenuItem _stop;
+    /// <summary>One item: "서버 중지" while the server runs, "서버 시작" when it is stopped.</summary>
+    private readonly ToolStripMenuItem _serverToggle;
+    /// <summary>Top-level "업데이트 설치 (vX)…", shown only once the host knows a newer release.</summary>
+    private readonly ToolStripMenuItem _updateNow;
     private readonly ToolStripMenuItem _autoStart;
     /// <summary>"업데이트 확인…", or "업데이트 설치 (vX)…" once the host knows a newer release.</summary>
     private readonly ToolStripMenuItem _updateItem;
@@ -64,20 +66,33 @@ internal sealed class TrayApp : ApplicationContext
         _stoppedIcon = LoadIcon("tray-stopped.ico");
 
         _status = new ToolStripMenuItem { Enabled = false };
-        _start = new ToolStripMenuItem("서버 시작", null, async (_, _) => await StartAsync(userAction: true));
-        _stop = new ToolStripMenuItem("서버 중지", null, async (_, _) => await StopAsync());
-        var pair = new ToolStripMenuItem("휴대폰 연결 (PIN)…", null, (_, _) => ShowPin()) { Font = new Font(SystemFonts.MenuFont ?? Control.DefaultFont, FontStyle.Bold) };
+        var bold = new Font(SystemFonts.MenuFont ?? Control.DefaultFont, FontStyle.Bold);
+        _serverToggle = new ToolStripMenuItem("서버 중지", null, async (_, _) =>
+        {
+            if (_server.IsRunning) await StopAsync();
+            else await StartAsync(userAction: true);
+        });
+        var pair = new ToolStripMenuItem("휴대폰 연결 (PIN)…", null, (_, _) => ShowPin()) { Font = bold };
         _autoStart = new ToolStripMenuItem("Windows 시작 시 자동 실행", null, (_, _) => ToggleAutoStart());
         _updateItem = new ToolStripMenuItem("업데이트 확인…", null, async (_, _) => await CheckUpdateAsync());
+        _updateNow = new ToolStripMenuItem("업데이트 설치…", null, async (_, _) => await CheckUpdateAsync()) { Font = bold, Visible = false };
+        // Main actions first; settings and help in two submenus (was one long list of 12).
+        var settings = new ToolStripMenuItem("설정");
+        settings.DropDownItems.AddRange(new ToolStripItem[] { _autoStart, _updateItem });
+        var help = new ToolStripMenuItem("도움말");
+        help.DropDownItems.AddRange(new ToolStripItem[]
+        {
+            new ToolStripMenuItem("의견 보내기 (버그 · 개선 · 문의)…", null, (_, _) => ShowFeedback()),
+            new ToolStripSeparator(),
+            new ToolStripMenuItem("데이터 폴더 열기", null, (_, _) => OpenFolder(_home)),
+            new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(PkshellPaths.LogsDir(_home))),
+        });
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[]
         {
             _status, new ToolStripSeparator(),
-            pair, new ToolStripMenuItem("프로젝트 폴더…", null, (_, _) => ShowProjects()), _start, _stop, new ToolStripSeparator(),
-            new ToolStripMenuItem("데이터 폴더 열기", null, (_, _) => OpenFolder(_home)),
-            new ToolStripMenuItem("로그 폴더 열기", null, (_, _) => OpenFolder(PkshellPaths.LogsDir(_home))),
-            new ToolStripMenuItem("의견 보내기 (버그 · 개선 · 문의)…", null, (_, _) => ShowFeedback()),
-            _autoStart, _updateItem, new ToolStripSeparator(),
+            pair, new ToolStripMenuItem("프로젝트 폴더…", null, (_, _) => ShowProjects()), _updateNow, new ToolStripSeparator(),
+            _serverToggle, settings, help, new ToolStripSeparator(),
             new ToolStripMenuItem("종료 (서버도 중지)", null, async (_, _) => await ExitAsync()),
         });
         menu.Opening += (_, _) => { Refresh(); _ = PollUpdateAsync(); };
@@ -163,13 +178,15 @@ internal sealed class TrayApp : ApplicationContext
     private void Refresh()
     {
         var running = _server.IsRunning;
-        _status.Text = (running ? "● 서버 실행 중" : "○ 서버 중지됨") + $"  ·  포트 {_server.Port}" + (_version.Length > 0 ? $"  ·  v{_version}" : "");
-        _start.Enabled = !running && !_busy;
-        _stop.Enabled = running && !_busy;
+        _status.Text = (running ? "● 실행 중" : "○ 중지됨") + (_version.Length > 0 ? $"  ·  v{_version}" : "") + $"  ·  포트 {_server.Port}";
+        _serverToggle.Text = running ? "서버 중지" : "서버 시작";
+        _serverToggle.Enabled = !_busy;
         _autoStart.Checked = AutoStart.IsEnabled;
         _updateItem.Enabled = running && !_updateBusy;
         _updateItem.Text = _updateLatest != null ? $"업데이트 설치 (v{_updateLatest})…" : "업데이트 확인…";
-        _updateItem.Font = new Font(SystemFonts.MenuFont ?? Control.DefaultFont, _updateLatest != null ? FontStyle.Bold : FontStyle.Regular);
+        _updateNow.Visible = _updateLatest != null;
+        _updateNow.Enabled = running && !_updateBusy;
+        _updateNow.Text = $"업데이트 설치 (v{_updateLatest})…";
         _icon.Icon = running ? _runningIcon : _stoppedIcon;
         _icon.Text = $"{Brand.Name} — {(running ? "실행 중" : "중지됨")}";
         _lastRunning = running;
