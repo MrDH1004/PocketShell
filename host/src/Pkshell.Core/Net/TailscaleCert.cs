@@ -22,12 +22,13 @@ public sealed class TailscaleCert
     public sealed record Issued(string Domain, X509Certificate2 Cert, SslStreamCertificateContext Context);
 
     private readonly string _dir;
+    /// <summary>Given (tests) or null: then looked up on every load, so Tailscale installed after the host started is found.</summary>
     private readonly string? _exe;
 
     public TailscaleCert(string home, string? exe = null)
     {
         _dir = Path.Combine(home, "tls");
-        _exe = exe ?? FindExe();
+        _exe = exe;
     }
 
     public static bool Disabled => EnvVars.Get("TAILSCALE_CERT") == "0";
@@ -74,15 +75,16 @@ public sealed class TailscaleCert
     public async Task<Issued?> LoadAsync(Action<string> why, CancellationToken ct)
     {
         if (Disabled) { why("off (PKSHELL_TAILSCALE_CERT=0)"); return null; }
-        if (_exe == null) { why("Tailscale not installed"); return null; }
-        var (code, status, err) = await RunAsync(_exe, new[] { "status", "--json" }, TimeSpan.FromSeconds(15), ct);
+        var exe = _exe ?? FindExe();
+        if (exe == null) { why("Tailscale not installed"); return null; }
+        var (code, status, err) = await RunAsync(exe, new[] { "status", "--json" }, TimeSpan.FromSeconds(15), ct);
         if (code != 0) { why($"tailscale status failed ({code}): {err.Trim()}"); return null; }
         var domain = CertDomain(status);
         if (domain == null) { why("no cert domain (turn on MagicDNS and HTTPS in the Tailscale admin console)"); return null; }
         Directory.CreateDirectory(_dir);
         var crt = Path.Combine(_dir, "tailscale.crt");
         var key = Path.Combine(_dir, "tailscale.key");
-        (code, _, err) = await RunAsync(_exe, new[] { "cert", "--cert-file", crt, "--key-file", key, domain }, TimeSpan.FromSeconds(90), ct);
+        (code, _, err) = await RunAsync(exe, new[] { "cert", "--cert-file", crt, "--key-file", key, domain }, TimeSpan.FromSeconds(90), ct);
         if (code != 0 && !File.Exists(crt)) { why($"tailscale cert failed ({code}): {err.Trim()}"); return null; }
         try
         {

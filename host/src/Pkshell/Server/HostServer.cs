@@ -417,11 +417,27 @@ public sealed class HostServer : IDisposable
     /// <summary>Browser address with a trusted certificate (installable web app), or null.</summary>
     private string? WebUrl() => _tsCert is { } ts ? $"https://{ts.Domain}:{_port}/" : null;
 
-    /// <summary>Gets the Tailscale certificate at start and checks it twice a day (tailscale renews it near expiry).</summary>
+    /// <summary>Wakes WatchTailscaleCertAsync early: an interface address changed (Tailscale installed or connected).</summary>
+    private readonly SemaphoreSlim _tsRecheck = new(0, 1);
+
+    private void OnAddressChangedForCert(object? sender, EventArgs e)
+    {
+        try { _tsRecheck.Release(); }
+        catch (SemaphoreFullException) { /* a check is already queued */ }
+        catch (ObjectDisposedException) { /* shutting down */ }
+    }
+
+    /// <summary>
+    /// Gets the Tailscale certificate at start and checks it twice a day (tailscale renews it near expiry). Until it has
+    /// one (Tailscale installed, signed in or HTTPS turned on after the host started) it tries again after 1 min, backing
+    /// off to 30 min, and right away when an interface address changes.
+    /// </summary>
     private async Task WatchTailscaleCertAsync(CancellationToken ct)
     {
         var tc = new TailscaleCert(_home);
         string? lastWhy = null;
+        var retry = TimeSpan.FromMinutes(1);
+        NetworkChange.NetworkAddressChanged += OnAddressChangedForCert;
         try
         {
             do
@@ -442,11 +458,21 @@ public sealed class HostServer : IDisposable
                     }
                     else issued.Cert.Dispose();
                 }
-                await Task.Delay(TimeSpan.FromHours(12), ct);
+                if (_tsCert != null) await Task.Delay(TimeSpan.FromHours(12), ct);
+                else
+                {
+                    if (await _tsRecheck.WaitAsync(retry, ct))
+                    {
+                        retry = TimeSpan.FromMinutes(1);
+                        await Task.Delay(TimeSpan.FromSeconds(5), ct); // let Tailscale finish coming up
+                    }
+                    else retry = TimeSpan.FromMinutes(Math.Min(retry.TotalMinutes * 2, 30));
+                }
             }
             while (true);
         }
         catch (OperationCanceledException) { /* shutting down */ }
+        finally { NetworkChange.NetworkAddressChanged -= OnAddressChangedForCert; }
     }
 
     /// <summary>A running host session, or a PC console that is still open.</summary>

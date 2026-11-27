@@ -22,8 +22,8 @@ internal sealed class PinForm : Form
     private readonly string _home;
     private readonly int _port;
     private readonly Label _pin;
-    private readonly Label _fp;
-    private readonly Label _hosts;
+    /// <summary>Fingerprint + addresses: selectable (drag to copy), browser addresses open on click.</summary>
+    private readonly RichTextBox _info;
     private readonly Label _expiry;
     private readonly Button _renew;
     private readonly System.Windows.Forms.Timer _countdown;
@@ -50,7 +50,7 @@ internal sealed class PinForm : Form
         var title = new Label { Text = "휴대폰에서 이 PC 연결", Font = new Font("Segoe UI Semibold", 14f), AutoSize = true, Location = new Point(24, 20) };
         var help = new Label
         {
-            Text = "폰 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\nMac·iPhone은 아래 브라우저 주소를 열고 같은 PIN을 입력하세요.",
+            Text = "폰 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\nMac·iPhone은 아래 주소를 눌러 열고 같은 PIN을 입력하세요.",
             ForeColor = Muted, Location = new Point(24, 56), Size = new Size(412, 48),
         };
         var card = new Panel { BackColor = Panel, Location = new Point(24, 110), Size = new Size(412, 120) };
@@ -60,14 +60,30 @@ internal sealed class PinForm : Form
             TextAlign = ContentAlignment.MiddleCenter, Dock = DockStyle.Fill,
         };
         card.Controls.Add(_pin);
+        var pinMenu = new ContextMenuStrip();
+        pinMenu.Items.Add("PIN 복사", null, (_, _) =>
+        {
+            var digits = new string(_pin.Text.Where(char.IsDigit).ToArray());
+            if (digits.Length > 0) Clipboard.SetText(digits);
+        });
+        _pin.ContextMenuStrip = pinMenu;
         _expiry = new Label { ForeColor = Muted, Location = new Point(24, 238), Size = new Size(412, 22), TextAlign = ContentAlignment.MiddleCenter };
-        _fp = new Label { Location = new Point(24, 270), Size = new Size(412, 22) };
-        _hosts = new Label { ForeColor = Muted, Location = new Point(24, 296), Size = new Size(412, 60) };
+        _info = new RichTextBox
+        {
+            ReadOnly = true, BorderStyle = BorderStyle.None, BackColor = Bg, ForeColor = Muted, DetectUrls = true,
+            ScrollBars = RichTextBoxScrollBars.None, WordWrap = true, ShortcutsEnabled = true, TabStop = false,
+            Location = new Point(24, 270), Size = new Size(412, 88),
+        };
+        _info.LinkClicked += (_, e) => OpenUrl(e.LinkText);
+        var copy = new ContextMenuStrip();
+        copy.Items.Add("복사", null, (_, _) => { if (_info.SelectionLength > 0) _info.Copy(); });
+        copy.Items.Add("모두 선택", null, (_, _) => _info.SelectAll());
+        _info.ContextMenuStrip = copy;
         _renew = MakeButton("새 PIN", new Point(236, 366));
         _renew.Click += async (_, _) => await IssueAsync();
         var close = MakeButton("닫기", new Point(340, 366));
         close.Click += (_, _) => Close();
-        Controls.AddRange(new Control[] { title, help, card, _expiry, _fp, _hosts, _renew, close });
+        Controls.AddRange(new Control[] { title, help, card, _expiry, _info, _renew, close });
 
         _countdown = new System.Windows.Forms.Timer { Interval = 1000 };
         _countdown.Tick += (_, _) => UpdateExpiry();
@@ -78,6 +94,14 @@ internal sealed class PinForm : Form
     /// <summary>The browser client's address (Mac / iPhone): https://host:port/ (IPv6 in brackets).</summary>
     internal static string BrowserUrl(string host, int port) =>
         $"https://{(host.Contains(':') && !host.StartsWith('[') ? "[" + host + "]" : host)}:{port}/";
+
+    /// <summary>Opens a browser address from the text (only http/https).</summary>
+    private void OpenUrl(string? url)
+    {
+        if (url == null || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) || (u.Scheme != Uri.UriSchemeHttps && u.Scheme != Uri.UriSchemeHttp)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.AbsoluteUri) { UseShellExecute = true }); }
+        catch (System.ComponentModel.Win32Exception ex) { TrayLog.Write(_home, "open url failed: " + ex.Message); }
+    }
 
     private static Button MakeButton(string text, Point at) => new()
     {
@@ -96,10 +120,10 @@ internal sealed class PinForm : Form
             var r = await StartPinAsync();
             var pin = r.GetProperty("pin").GetString() ?? "";
             _pin.Text = pin.Length == 6 ? pin[..3] + " " + pin[3..] : pin;
-            _fp.Text = "인증서 지문   " + (r.TryGetProperty("fpShort", out var f) ? f.GetString() : "");
+            var fp = "인증서 지문   " + (r.TryGetProperty("fpShort", out var f) ? f.GetString() : "");
             var list = r.TryGetProperty("hosts", out var h) && h.ValueKind == JsonValueKind.Array
                 ? h.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList() : new List<string>();
-            _hosts.Text = $"이 PC 주소   {string.Join(", ", list)}  (포트 {_port})"
+            _info.Text = fp + "\n" + $"이 PC 주소   {string.Join(", ", list)}  (포트 {_port})"
                 + (r.TryGetProperty("webUrl", out var wu) && wu.GetString() is { Length: > 0 } web
                     ? $"\n브라우저·앱 설치   {web}"
                     : list.Count > 0 ? $"\n브라우저   {BrowserUrl(list[0], _port)}" : "");
