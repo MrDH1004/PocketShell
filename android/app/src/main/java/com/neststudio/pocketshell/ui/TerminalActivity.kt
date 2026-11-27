@@ -183,7 +183,7 @@ class TerminalActivity : AppCompatActivity() {
             }
         })
 
-        connection = TerminalConnection(apiClient.http, apiClient.hosts, pairing.port, pairing.token, connectionListener) {
+        connection = TerminalConnection(apiClient.http, apiClient.hosts, pairing.port, pairing.token, com.neststudio.pocketshell.net.HandlerPoster, connectionListener) {
             if (viewCols > 0) viewCols to viewRows else 80 to 24
         }
 

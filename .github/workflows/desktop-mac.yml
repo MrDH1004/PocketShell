@@ -1,0 +1,77 @@
+# macOS desktop client (desktop/): builds the .dmg on Apple silicon and Intel runners, smoke-tests the app (it starts and
+# writes its log), and attaches PocketShell-mac-<arm64|x64>-v<ver>.dmg to the GitHub release. Runs when
+# scripts/release.ps1 publishes a release, or by hand for a tag. Free on GitHub-hosted runners: the repository is public.
+name: desktop-mac
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach to (e.g. v0.2.147)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Unit tests
+        working-directory: desktop
+        run: ./gradlew test --no-daemon
+
+      - name: Build .dmg
+        working-directory: desktop
+        run: ./gradlew packageDmg --no-daemon
+
+      - name: Smoke test (the app starts and logs its version)
+        run: |
+          set -e
+          APP=$(ls -d desktop/build/compose/binaries/main/app/PocketShell.app)
+          codesign -dv "$APP" 2>&1 | head -5 || true
+          export PKSHELL_CLIENT_HOME="$RUNNER_TEMP/pshc"
+          "$APP/Contents/MacOS/PocketShell" > "$RUNNER_TEMP/app.out" 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do
+            if grep -q "PocketShell desktop" "$PKSHELL_CLIENT_HOME/client.log" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          sleep 3
+          kill -0 $PID   # still running after start-up
+          kill $PID || true
+          cat "$PKSHELL_CLIENT_HOME/client.log"
+          grep -q "PocketShell desktop ${TAG#v}" "$PKSHELL_CLIENT_HOME/client.log"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          VER=${TAG#v}
+          SRC=$(ls desktop/build/compose/binaries/main/dmg/*.dmg | head -1)
+          OUT="PocketShell-mac-${{ matrix.arch }}-v${VER}.dmg"
+          cp "$SRC" "$OUT"
+          shasum -a 256 "$OUT"
+          gh release upload "$TAG" "$OUT" --clobber

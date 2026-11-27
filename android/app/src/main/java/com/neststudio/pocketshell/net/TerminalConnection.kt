@@ -1,7 +1,5 @@
 package com.neststudio.pocketshell.net
 
-import android.os.Handler
-import android.os.Looper
 import com.neststudio.pocketshell.core.Backoff
 import com.neststudio.pocketshell.core.ClientProtocol
 import com.neststudio.pocketshell.core.ServerMessage
@@ -26,6 +24,8 @@ class TerminalConnection(
     private val selector: HostSelector,
     private val port: Int,
     private val token: String,
+    /** The UI thread: every callback and retry timer runs there. */
+    private val main: Poster,
     private val listener: Listener,
     private val sizeProvider: () -> Pair<Int, Int>,
 ) {
@@ -42,7 +42,6 @@ class TerminalConnection(
 
     private enum class State { IDLE, CONNECTING, OPEN, FATAL }
 
-    private val main = Handler(Looper.getMainLooper())
     private val backoff = Backoff()
     private var state = State.IDLE
     private var socket: WebSocket? = null
@@ -57,6 +56,9 @@ class TerminalConnection(
 
     /** Past output the PC replays on each (re)connect; read at every attempt so a changed option applies. */
     var history: com.neststudio.pocketshell.core.TerminalHistory = com.neststudio.pocketshell.core.TerminalHistory.DEFAULT
+
+    /** Also show the session in a Windows Terminal tab on the PC (`openPcTab=1`); tests turn it off. */
+    var openPcTab: Boolean = true
 
     /** False after the remote shell exited: a dropped socket is then not re-opened. */
     var autoReconnect: Boolean = true
@@ -126,12 +128,12 @@ class TerminalConnection(
         val gen = ++generation
         val host = hosts[index]
         val (cols, rows) = sizeProvider()
-        val url = ClientProtocol.webSocketUrl(host, port, sessionId, cols, rows, openPcTab = true, history = history)
+        val url = ClientProtocol.webSocketUrl(host, port, sessionId, cols, rows, openPcTab = openPcTab, history = history)
         val request = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
             private var opened = false
 
-            private fun post(block: () -> Unit) = main.post { if (gen == generation) block() }
+            private fun post(block: () -> Unit) = main.post(Runnable { if (gen == generation) block() })
 
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 opened = true

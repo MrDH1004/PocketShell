@@ -50,7 +50,7 @@ internal sealed class PinForm : Form
         var title = new Label { Text = "휴대폰에서 이 PC 연결", Font = new Font("Segoe UI Semibold", 14f), AutoSize = true, Location = new Point(24, 20) };
         var help = new Label
         {
-            Text = "폰 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\nMac·iPhone은 아래 주소를 눌러 열고 같은 PIN을 입력하세요.",
+            Text = "폰·Mac 앱의 PIN 연결에서 이 PC를 고르고 아래 PIN을 입력하세요.\niPhone은 아래 주소를 눌러 열고 같은 PIN을 입력하세요.",
             ForeColor = Muted, Location = new Point(24, 56), Size = new Size(412, 48),
         };
         var card = new Panel { BackColor = Panel, Location = new Point(24, 110), Size = new Size(412, 120) };

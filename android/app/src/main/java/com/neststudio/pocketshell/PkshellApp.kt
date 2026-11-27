@@ -18,6 +18,7 @@ class PkshellApp : Application() {
     override fun onCreate() {
         super.onCreate()
         store = PairingStore(this)
+        ApiClient.warn = { msg, e -> android.util.Log.w(ApiClient.TAG, msg, e) }
     }
 
     /** Every paired PC, in the order they were added. */

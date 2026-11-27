@@ -1,6 +1,5 @@
 package com.neststudio.pocketshell.net
 
-import android.util.Log
 import com.neststudio.pocketshell.core.AgentEvents
 import com.neststudio.pocketshell.core.ClaimResult
 import com.neststudio.pocketshell.core.ClientProtocol
@@ -103,7 +102,7 @@ class ApiClient(
             } catch (e: IOException) {
                 lastError = e
                 failures.add("$host: ${e.message ?: e.javaClass.simpleName}")
-                Log.w(TAG, "$method $path via $host failed", e)
+                warn("$method $path via $host failed", e)
                 continue
             }
             hosts.reportSuccess(host)
@@ -311,8 +310,11 @@ class ApiClient(
         else -> serverErrorText(body) ?: "서버 오류 ($code) ${body.take(200)}"
     }
 
-    private companion object {
+    companion object {
         const val TAG = "ApiClient"
+
+        /** Failed attempts (the next host is tried); the Android app sends them to logcat, the desktop app to its log. */
+        @Volatile var warn: (String, Throwable) -> Unit = { _, _ -> }
         val JSON = "application/json; charset=utf-8".toMediaType()
         val PNG = "image/png".toMediaType()
         val JPEG = "image/jpeg".toMediaType()

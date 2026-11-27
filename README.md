@@ -26,6 +26,7 @@ PC에서 직접 띄운 터미널과 Claude/GPT(codex)가 돌고 있는 콘솔도
 | `host/src/PocketShell.Tray` | 트레이 앱 `PocketShell.exe` — 서버를 백그라운드로 실행·중지(꺼지면 다시 띄움), 휴대폰 연결(PIN), 프로젝트 폴더, 로그인 시 자동 실행, 업데이트. 터미널은 직접 다루지 않음 |
 | `host/src/Pkshell` | 서버 + CLI `psh.exe`. 같은 파일이 역할별로 여러 개 뜸: `psh serve`(서버 본체, 7380), `psh attach`(Windows Terminal 탭 하나당 하나), `psh pty-hold`(세션 셸을 붙잡아 업데이트에도 세션 유지), `psh console-reader`(PC에서 연 콘솔 화면 읽기) |
 | `host/src/Pkshell/Web` | 브라우저 클라이언트(Mac·iPhone) — psh.exe에 내장, `https://<PC>:7380/`에서 서빙. xterm.js 5.5(MIT), D2Coding(NAVER, SIL OFL, `Web/fonts`) 포함 |
+| `desktop/` | Mac 앱(Kotlin Compose Desktop + JediTerm 3.76, LGPL-3.0/Apache-2.0). 안드로이드 앱의 `core`·통신 코드(프로토콜·PIN 연결·인증서 지문 고정·REST/WebSocket)를 그대로 공유. 서버는 PC 전용 |
 | `android/` | Kotlin Android 앱 `com.neststudio.pocketshell` (Termux terminal-emulator/view 기반, Apache-2.0) |
 | `qa/Pkshell.QA` | E2E QA 드라이버 |
 | `installer/PocketShell.iss` | Windows 원클릭 설치 파일(Inno Setup) 스크립트 |
@@ -81,6 +82,19 @@ PowerShell로 하고, 단계마다 결과를 확인한 뒤 다음으로 넘어�
 PC CLI: `psh list`, `psh new`, `psh attach <id>` (분리: `Ctrl+]` 후 `d`), `psh pair`, `psh devices`, `psh revoke <id>`, `psh share <id> [--view] [--hours N]`, `psh shares`, `psh unshare <id>`, `psh update [--check] [--force [--kill-working]]`, `psh firewall-cleanup [--list]`
 - 업데이트해도 실행 중인 세션은 안 끊김(0.2.98부터): 셸을 세션마다 따로 띄운 `psh pty-hold` 프로세스가 쥐고 있고, 새 버전 서버가 뜨면 다시 붙음. 폰은 몇 초 끊겼다 자동으로 다시 연결. 0.2.97 이하 서버가 만든 세션만 예전처럼 끝날 세션 목록을 보여 주고 다시 물음(`--force`, AI 작업 중이면 `--kill-working`).
 - `psh firewall-cleanup`: 예전 설치(이전 이름 mpta 포함)와 지워진 실행 파일이 남긴 Windows 방화벽 규칙을 지움. `--list`는 목록만. 지울 때 관리자 권한 확인 창이 뜸.
+
+## Mac 앱
+PC에 붙는 클라이언트(서버는 PC만). 안드로이드 앱과 같은 방식으로 연결: 같은 망 자동 찾기 + PIN + 인증서 지문 고정이라 Tailscale 인증서나 브라우저 경고가 필요 없음.
+1. [GitHub Releases](https://github.com/MrDH1004/PocketShell/releases/latest)에서 받기: Apple 실리콘(M1~) `PocketShell-mac-arm64-v<버전>.dmg`, Intel `PocketShell-mac-x64-v<버전>.dmg`
+2. dmg 열기 → **PocketShell**을 **응용 프로그램** 폴더로 끌어 놓기
+3. 처음 실행: Apple 개발자 서명이 없어 "확인되지 않은 개발자" 경고 → **시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기** (macOS 14 이하는 앱 우클릭 → 열기). 안 되면 터미널에서 `xattr -dr com.apple.quarantine /Applications/PocketShell.app`
+4. **PC 연결** → 같은 망의 PC 선택(또는 주소 입력, Tailscale 이름·IP 가능) → PC 트레이 **휴대폰 연결** 창의 PIN 입력 → 인증서 지문이 같은지 확인
+- 화면: 왼쪽 PC 목록(여러 대), 오른쪽 세션 목록(실행 중 · 즐겨찾기 · 최근, 5초마다 갱신, AI 작업 중·응답 대기·완료 표시). 세션을 누르면 터미널이 창 하나로 열림(같은 세션은 같은 창). ⋮ 메뉴: 즐겨찾기, 세션 종료, 기록 삭제
+- **새 세션**: PC의 프로젝트 폴더 아래 폴더(없으면 만듦) + Claude/Codex 또는 터미널만. 같은 폴더에 AI 세션이 이미 있으면 그 세션을 엶
+- 터미널: D2Coding, 한글 입력, 복사 ⌘C · 붙여넣기 ⌘V, 연결이 끊기면 자동 재연결(화면 다시 받음). PC 콘솔은 PC 창 크기에 맞춰 창 크기를 조절
+- 설정: 폰트 크기, 기기 이름, 업데이트 확인(새 버전이 있으면 위쪽 띠 → 눌러서 dmg 받기). 데이터: `~/Library/Application Support/PocketShell`
+- 아직 없음(폰 앱에만 있음): 파일 탐색·전송, git 변경, 웹 보기, 세션 공유, 알림
+- 빌드: `cd desktop && ./gradlew run`(Windows에서도 실행돼 테스트 가능), dmg는 Mac에서 `./gradlew packageDmg`. 릴리스 때 GitHub Actions(`desktop-mac`, macOS 러너 무료)가 arm64·x64 dmg를 만들고 실행 확인 후 릴리스에 붙임
 
 ## Mac · iPhone (브라우저)
 Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·개발자 계정·서명 불필요.
@@ -261,6 +275,7 @@ Android 앱 대신 브라우저(Safari·Chrome·Edge·Firefox)로 씀. 설치·�
 ```
 dotnet build host/Pkshell.sln && dotnet test host/Pkshell.sln
 cd android && gradlew.bat test assembleRelease   # JDK 17, Android SDK 35
+cd desktop && gradlew.bat test run               # Mac 앱 (Windows에서도 실행). PKSHELL_IT_PORT/PKSHELL_IT_HOME 주면 테스트 호스트에 실제 연결 테스트
 dotnet run --project qa/Pkshell.QA -c Release       # E2E QA
 powershell -File scripts/release.ps1 -Version x.y.z   # 릴리스 (GitHub Releases → 자동 업데이트, Inno Setup 6 필요)
 ```
